@@ -8,6 +8,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case tabs = "Tabs"
     case browsing = "Browsing"
     case privacy = "Privacy"
+    case history = "History"
 
     var id: String { rawValue }
 
@@ -19,6 +20,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .tabs: return "square.stack.3d.forward.dottedline"
         case .browsing: return "globe"
         case .privacy: return "shield"
+        case .history: return "clock"
         }
     }
 
@@ -30,6 +32,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .tabs: return "Tab strip presentation and switcher previews"
         case .browsing: return "Scrollbar styling and scrolling mechanics"
         case .privacy: return "Search provider, content filtering, and local data"
+        case .history: return "Recently visited pages"
         }
     }
 }
@@ -246,9 +249,377 @@ struct SettingsView: View {
             BrowsingSection(store: store)
         case .privacy:
             PrivacySection(store: store)
+        case .history:
+            HistorySection(store: store)
         }
     }
 }
+
+// MARK: - History Section
+private struct HistorySection: View {
+    @ObservedObject var store: LeanStore
+    @State private var searchText = ""
+    @State private var isClearingConfirm = false
+
+    private var filteredItems: [HistoryItem] {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return store.historyItems }
+        let lower = trimmed.lowercased()
+        return store.historyItems.filter { item in
+            item.title.lowercased().contains(lower) ||
+            item.url.absoluteString.lowercased().contains(lower) ||
+            (item.url.host?.lowercased().contains(lower) == true)
+        }
+    }
+
+    private struct HistoryGroup: Identifiable {
+        let id: String
+        let title: String
+        let items: [HistoryItem]
+    }
+
+    private var groupedItems: [HistoryGroup] {
+        let items = filteredItems
+        guard !items.isEmpty else { return [] }
+
+        var today: [HistoryItem] = []
+        var yesterday: [HistoryItem] = []
+        var thisWeek: [HistoryItem] = []
+        var earlier: [HistoryItem] = []
+
+        let calendar = Calendar.current
+        let now = Date()
+
+        for item in items {
+            if calendar.isDateInToday(item.timestamp) {
+                today.append(item)
+            } else if calendar.isDateInYesterday(item.timestamp) {
+                yesterday.append(item)
+            } else if let diff = calendar.dateComponents([.day], from: item.timestamp, to: now).day, diff < 7 {
+                thisWeek.append(item)
+            } else {
+                earlier.append(item)
+            }
+        }
+
+        var groups: [HistoryGroup] = []
+        if !today.isEmpty { groups.append(HistoryGroup(id: "today", title: "Today", items: today)) }
+        if !yesterday.isEmpty { groups.append(HistoryGroup(id: "yesterday", title: "Yesterday", items: yesterday)) }
+        if !thisWeek.isEmpty { groups.append(HistoryGroup(id: "thisWeek", title: "This Week", items: thisWeek)) }
+        if !earlier.isEmpty { groups.append(HistoryGroup(id: "earlier", title: "Earlier", items: earlier)) }
+        return groups
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Search and Filter Bar
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
+
+                TextField("Search history by title or domain...", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(store.leanUIFont.font(size: 12.5))
+                    .foregroundColor(store.isDarkMode ? Color.white : Color.black)
+
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 32)
+            .background(
+                store.isDarkMode ? Color.white.opacity(0.04) : Color.black.opacity(0.035),
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.05), lineWidth: 0.75)
+            )
+
+            // Header Stats & Clear Action
+            HStack {
+                let count = filteredItems.count
+                Text(searchText.isEmpty ? "\(count) \(count == 1 ? "page" : "pages") recorded" : "\(count) \(count == 1 ? "result" : "results")")
+                    .font(store.leanUIFont.font(size: 11, weight: .medium))
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
+                    .textCase(.uppercase)
+                    .tracking(0.7)
+
+                Spacer()
+
+                if !store.historyItems.isEmpty {
+                    if isClearingConfirm {
+                        Button {
+                            withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                                store.clearHistory()
+                                isClearingConfirm = false
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "trash.fill")
+                                    .font(.system(size: 9.5))
+                                Text("Confirm Clear All")
+                                    .font(store.leanUIFont.font(size: 11, weight: .semibold))
+                            }
+                            .foregroundColor(Color.red.opacity(0.95))
+                            .padding(.horizontal, 9)
+                            .frame(height: 24)
+                            .background(
+                                Color.red.opacity(store.isDarkMode ? 0.16 : 0.10),
+                                in: Capsule()
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Button {
+                            withAnimation(.spring(response: 0.20, dampingFraction: 0.8)) {
+                                isClearingConfirm = true
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                                withAnimation {
+                                    isClearingConfirm = false
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 9.5))
+                                Text("Clear All")
+                                    .font(store.leanUIFont.font(size: 11, weight: .medium))
+                            }
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.60) : Color.black.opacity(0.55))
+                            .padding(.horizontal, 9)
+                            .frame(height: 24)
+                            .background(
+                                store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            // History List or Empty States
+            if store.historyItems.isEmpty {
+                // Empty History Canvas
+                VStack(spacing: 12) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 32, weight: .ultraLight))
+                        .foregroundColor(store.isDarkMode ? Color.white.opacity(0.30) : Color.black.opacity(0.30))
+
+                    Text("No Browsing History")
+                        .font(store.leanUIFont.font(size: 14, weight: .medium))
+                        .foregroundColor(store.isDarkMode ? Color(white: 0.92) : Color(white: 0.15))
+
+                    Text("Websites and pages you navigate to will be neatly organized here.")
+                        .font(store.leanUIFont.font(size: 12))
+                        .foregroundColor(store.isDarkMode ? Color.white.opacity(0.45) : Color.black.opacity(0.45))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 54)
+            } else if filteredItems.isEmpty {
+                // No Search Matches
+                VStack(spacing: 12) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 28, weight: .light))
+                        .foregroundColor(store.isDarkMode ? Color.white.opacity(0.30) : Color.black.opacity(0.30))
+
+                    Text("No Matches Found")
+                        .font(store.leanUIFont.font(size: 14, weight: .medium))
+                        .foregroundColor(store.isDarkMode ? Color(white: 0.92) : Color(white: 0.15))
+
+                    Text("No visited pages matched \"\(searchText)\".")
+                        .font(store.leanUIFont.font(size: 12))
+                        .foregroundColor(store.isDarkMode ? Color.white.opacity(0.45) : Color.black.opacity(0.45))
+
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Text("Clear Search")
+                            .font(store.leanUIFont.font(size: 11.5, weight: .medium))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.85) : Color.black.opacity(0.80))
+                            .padding(.horizontal, 10)
+                            .frame(height: 24)
+                            .background(
+                                store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 48)
+            } else {
+                // Chronological Grouped History List
+                VStack(alignment: .leading, spacing: 18) {
+                    ForEach(groupedItems) { group in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("\(group.title) • \(group.items.count)")
+                                .font(store.leanUIFont.font(size: 10.5, weight: .semibold))
+                                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
+                                .textCase(.uppercase)
+                                .tracking(0.8)
+                                .padding(.horizontal, 2)
+
+                            SettingsGroup(isDark: store.isDarkMode) {
+                                ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
+                                    if index > 0 {
+                                        SettingsRowDivider(isDark: store.isDarkMode, inset: 44)
+                                    }
+
+                                    HistoryItemRow(item: item, store: store)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - History Item Row
+private struct HistoryItemRow: View {
+    let item: HistoryItem
+    @ObservedObject var store: LeanStore
+
+    @State private var isHovered = false
+    @State private var isCopied = false
+
+    private var formattedTime: String {
+        let formatter = DateFormatter()
+        if Calendar.current.isDateInToday(item.timestamp) {
+            formatter.dateFormat = "h:mm a"
+        } else if Calendar.current.isDateInYesterday(item.timestamp) {
+            formatter.dateFormat = "h:mm a"
+        } else {
+            formatter.dateFormat = "MMM d, h:mm a"
+        }
+        return formatter.string(from: item.timestamp)
+    }
+
+    private var displayHostAndPath: String {
+        let host = item.url.host ?? ""
+        let path = item.url.path.isEmpty || item.url.path == "/" ? "" : item.url.path
+        return "\(host)\(path)"
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            // Favicon
+            SiteFaviconView(url: item.url, isDark: store.isDarkMode, size: 18)
+                .frame(width: 22, height: 22)
+
+            // Titles & URL
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title)
+                    .font(store.leanUIFont.font(size: 13, weight: .medium))
+                    .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                    .lineLimit(1)
+
+                Text(displayHostAndPath)
+                    .font(store.leanUIFont.font(size: 11))
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.45) : Color.black.opacity(0.45))
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 12)
+
+            // Timestamp or Hover Actions
+            HStack(spacing: 6) {
+                if isHovered {
+                    // Copy URL Button
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(item.url.absoluteString, forType: .string)
+                        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                            isCopied = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            withAnimation {
+                                isCopied = false
+                            }
+                        }
+                    } label: {
+                        Image(systemName: isCopied ? "checkmark" : "link")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(isCopied ? Color.green : (store.isDarkMode ? Color.white.opacity(0.7) : Color.black.opacity(0.65)))
+                            .frame(width: 26, height: 26)
+                            .background(
+                                store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05),
+                                in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help(isCopied ? "Copied" : "Copy Link")
+
+                    // Open in New Tab Button
+                    Button {
+                        store.openHistoryItem(item, inNewTab: true)
+                    } label: {
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.7) : Color.black.opacity(0.65))
+                            .frame(width: 26, height: 26)
+                            .background(
+                                store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05),
+                                in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open in New Tab")
+
+                    // Delete Entry Button
+                    Button {
+                        withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
+                            store.deleteHistoryItem(id: item.id)
+                        }
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.6) : Color.black.opacity(0.55))
+                            .frame(width: 26, height: 26)
+                            .background(
+                                store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05),
+                                in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove from History")
+                } else {
+                    Text(formattedTime)
+                        .font(store.leanUIFont.font(size: 11))
+                        .foregroundColor(store.isDarkMode ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+                        .padding(.trailing, 2)
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .background(
+            isHovered
+                ? (store.isDarkMode ? Color.white.opacity(0.035) : Color.black.opacity(0.02))
+                : Color.clear
+        )
+        .onHover { isHovered = $0 }
+        .onTapGesture {
+            let inNewTab = NSEvent.modifierFlags.contains(.command)
+            store.openHistoryItem(item, inNewTab: inNewTab)
+        }
+    }
+}
+
 
 // MARK: - 1. General Section (Zen Mode & Window Frame)
 private struct GeneralSection: View {
@@ -732,51 +1103,26 @@ private struct PrivacySection: View {
 
                         Spacer(minLength: 16)
 
-                        Text("Google")
-                            .font(store.leanUIFont.font(size: 12, weight: .medium))
-                            .foregroundColor(primaryText)
-                            .padding(.horizontal, 10)
-                            .frame(height: 26)
-                            .background(
-                                store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05),
-                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            )
+                        Picker("Default search engine", selection: $store.searchEngine) {
+                            ForEach(SearchEngine.allCases) { engine in
+                                Text(engine.name).tag(engine)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
 
                     SettingsRowDivider(isDark: store.isDarkMode)
 
-                    // Content Blocker
-                    HStack(alignment: .center, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 2.5) {
-                            Text("Tracker & ad filtering")
-                                .font(store.leanUIFont.font(size: 13, weight: .medium))
-                                .foregroundColor(primaryText)
-                            Text("WebKit native rules for blocking tracking scripts and invasive banners")
-                                .font(store.leanUIFont.font(size: 11.5))
-                                .foregroundColor(secondaryText)
-                        }
-
-                        Spacer(minLength: 16)
-
-                        HStack(spacing: 5) {
-                            Circle()
-                                .fill(Color(red: 48/255, green: 209/255, blue: 88/255))
-                                .frame(width: 6, height: 6)
-                            Text("Active")
-                                .font(store.leanUIFont.font(size: 11.5, weight: .semibold))
-                                .foregroundColor(Color(red: 48/255, green: 209/255, blue: 88/255))
-                        }
-                        .padding(.horizontal, 9)
-                        .frame(height: 24)
-                        .background(
-                            Color(red: 48/255, green: 209/255, blue: 88/255).opacity(0.12),
-                            in: Capsule()
-                        )
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    CustomToggleRow(
+                        title: "Tracker & ad filtering",
+                        subtitle: "Block common ad networks, trackers, and invasive banners.",
+                        isOn: $store.adBlockingEnabled,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
                 }
             }
 

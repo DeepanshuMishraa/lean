@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct LeanApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = LeanStore()
 
     var body: some Scene {
@@ -13,6 +14,11 @@ struct LeanApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             LeanCommands(store: store)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                store.saveSession()
+            }
         }
     }
 }

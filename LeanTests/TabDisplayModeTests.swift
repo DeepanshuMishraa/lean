@@ -207,4 +207,41 @@ struct TabDisplayModeTests {
         #expect(store.tabs.count == countBefore)
         #expect(store.selectedID == tab.id)
     }
+
+    @MainActor
+    @Test("HistoryItem recording, deletion, and clear management")
+    func historyManagementTests() {
+        let store = LeanStore()
+        store.clearHistory()
+        #expect(store.historyItems.isEmpty)
+        #expect(store.visitedHistory.isEmpty)
+
+        let url1 = URL(string: "https://apple.com")!
+        let url2 = URL(string: "https://github.com")!
+
+        store.recordHistory(url: url1, title: "Apple")
+        store.recordHistory(url: url2, title: "GitHub")
+
+        #expect(store.historyItems.count == 2)
+        #expect(store.historyItems.first?.title == "GitHub")
+        #expect(store.visitedHistory.count == 2)
+        #expect(store.visitedHistory.first?.title == "GitHub")
+
+        // Ignores lean:// internal URLs
+        let internalURL = URL(string: "lean://settings")!
+        store.recordHistory(url: internalURL, title: "Settings")
+        #expect(store.historyItems.count == 2)
+
+        // Deleting individual item
+        if let first = store.historyItems.first {
+            store.deleteHistoryItem(id: first.id)
+            #expect(store.historyItems.count == 1)
+            #expect(store.historyItems.first?.title == "Apple")
+        }
+
+        // Clear history
+        store.clearHistory()
+        #expect(store.historyItems.isEmpty)
+        #expect(store.visitedHistory.isEmpty)
+    }
 }

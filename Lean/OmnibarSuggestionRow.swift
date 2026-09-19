@@ -17,7 +17,7 @@ struct SuggestionRow: View {
                 BrandFaviconView(match: match, isSelected: isSelected, isDark: store.isDarkMode)
                     .frame(width: 22, height: 22)
 
-                Text(match.isSearch ? "Search Google for \"\(match.primaryText)\"" : match.primaryText)
+                Text(match.isSearch ? "Search \(match.searchEngine?.name ?? match.secondaryText) for \"\(match.primaryText)\"" : match.primaryText)
                     .font(store.leanUIFont.font(size: 13.5, weight: .medium))
                     .foregroundColor(titleColor)
                     .lineLimit(1)
@@ -114,7 +114,7 @@ private struct BrandFaviconView: View {
 
     private var brand: BrandType {
         if match.isSearch {
-            return .google
+            return .search
         }
         let text = (match.primaryText + " " + match.secondaryText + " " + match.targetURL.absoluteString).lowercased()
         if text.contains("youtube") || text.contains("youtu.be") { return .youtube }
@@ -192,7 +192,7 @@ private struct BrandFaviconView: View {
                 .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
 
         case .search:
-            GoogleFaviconView()
+            SearchEngineFaviconView(engine: match.searchEngine ?? .google, isDark: isDark)
 
         case .generic:
             if match.isSwitchToTab {
@@ -203,6 +203,34 @@ private struct BrandFaviconView: View {
                 Image(systemName: "globe")
                     .font(.system(size: 13))
                     .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
+            }
+        }
+    }
+}
+
+private struct SearchEngineFaviconView: View {
+    let engine: SearchEngine
+    let isDark: Bool
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: "globe")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(isDark ? .white.opacity(0.7) : .black.opacity(0.55))
+            }
+        }
+        .frame(width: 20, height: 20)
+        .onAppear {
+            image = FaviconService.shared.cachedFavicon(for: engine.searchURL)
+            guard image == nil else { return }
+            FaviconService.shared.loadFavicon(for: engine.searchURL) { loadedImage in
+                image = loadedImage
             }
         }
     }

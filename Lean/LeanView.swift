@@ -13,9 +13,6 @@ struct LeanView: View {
         if !store.enableZenMode {
             return true
         }
-        if store.selectedTab?.url == nil {
-            return true
-        }
         return isZenTopBarRevealed
     }
 

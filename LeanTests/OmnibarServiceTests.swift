@@ -3,16 +3,15 @@ import Testing
 @testable import Lean
 
 struct OmnibarServiceTests {
-    @Test("Suggests Office Commun for off query")
-    func suggestsOfficeCommun() {
-        let suggestions = OmnibarService.shared.suggestions(for: "off")
-        #expect(!suggestions.isEmpty)
-        #expect(suggestions.first?.primaryText == "officecommun.com")
-        #expect(suggestions.first?.secondaryText == "Office Commun")
+    @Test("Suggests matching history before search")
+    func suggestsMatchingHistory() {
+        let history = [(url: URL(string: "https://example.com/sigma")!, title: "Sigma")]
+        let suggestions = OmnibarService.shared.suggestions(for: "sig", history: history)
+        #expect(suggestions.first?.primaryText == "Sigma")
         #expect(suggestions.first?.isSearch == false)
 
         let searchSuggestion = suggestions.first { $0.isSearch }
-        #expect(searchSuggestion?.primaryText == "off")
+        #expect(searchSuggestion?.primaryText == "sig")
         #expect(searchSuggestion?.secondaryText == "Google")
     }
 
@@ -21,7 +20,7 @@ struct OmnibarServiceTests {
         let suggestions = OmnibarService.shared.suggestions(for: "officecommun.com")
         #expect(!suggestions.isEmpty)
         #expect(suggestions.first?.primaryText == "officecommun.com")
-        #expect(suggestions.first?.secondaryText == "Office Commun")
+        #expect(suggestions.first?.secondaryText == "officecommun.com")
     }
 
     @Test("Does not invent a dot-com URL for plain search text")

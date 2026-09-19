@@ -14,6 +14,7 @@ struct OmnibarSuggestion: Identifiable, Equatable {
     let secondaryText: String
     let isSearch: Bool
     let targetURL: URL
+    var searchEngine: SearchEngine? = nil
     var isSwitchToTab: Bool = false
     var tabID: UUID? = nil
 }
@@ -21,25 +22,11 @@ struct OmnibarSuggestion: Identifiable, Equatable {
 final class OmnibarService {
     static let shared = OmnibarService()
 
-    private let knownSites: [(domain: String, title: String, keywords: [String])] = [
-        ("officecommun.com", "Office Commun", ["off", "office", "commun", "officecommun"]),
-        ("x.com", "X", ["x", "twitter", "twt"]),
-        ("discord.com", "Discord", ["d", "dis", "discord"]),
-        ("claude.ai", "Claude", ["c", "cla", "claude", "anthropic"]),
-        ("github.com", "GitHub", ["g", "git", "github"]),
-        ("slack.com", "Slack", ["s", "sla", "slack"]),
-        ("google.com", "Google", ["g", "goog", "google"]),
-        ("apple.com", "Apple", ["app", "appl", "apple"]),
-        ("youtube.com", "YouTube", ["yt", "you", "youtube"]),
-        ("figma.com", "Figma", ["fig", "figma"]),
-        ("reddit.com", "Reddit", ["red", "reddit"]),
-        ("news.ycombinator.com", "Hacker News", ["hn", "hacker", "ycombinator"])
-    ]
-
     func suggestions(
         for query: String,
         history: [(url: URL, title: String)] = [],
-        openTabs: [(id: UUID, title: String, url: URL)] = []
+        openTabs: [(id: UUID, title: String, url: URL)] = [],
+        searchEngine: SearchEngine = .google
     ) -> [OmnibarSuggestion] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = trimmed.lowercased()
@@ -65,7 +52,10 @@ final class OmnibarService {
         for tab in openTabs {
             let tabTitleLower = tab.title.lowercased()
             let tabHostLower = tab.url.host?.lowercased() ?? ""
-            if tabTitleLower.contains(lower) || tabHostLower.contains(lower) {
+            let matchesTab = lower.count == 1
+                ? (tabTitleLower.hasPrefix(lower) || tabHostLower.hasPrefix(lower))
+                : (tabTitleLower.contains(lower) || tabHostLower.contains(lower))
+            if matchesTab {
                 results.append(OmnibarSuggestion(
                     primaryText: tab.title.isEmpty ? (tab.url.host ?? "Tab") : tab.title,
                     secondaryText: tab.url.host ?? "",
@@ -77,38 +67,31 @@ final class OmnibarService {
             }
         }
 
-        // 2. Direct match from known sites
+        // 2. Add matching history entries
         var directMatch: OmnibarSuggestion?
+        let historyMatches = history.filter { item in
+            let title = item.title.lowercased()
+            let host = item.url.host?.lowercased() ?? ""
+            let matchesQuery = lower.count == 1
+                ? (title.hasPrefix(lower) || host.hasPrefix(lower))
+                : (host.contains(lower) || title.contains(lower))
+            guard matchesQuery else { return false }
 
-        if let site = knownSites.first(where: {
-            $0.domain.lowercased().hasPrefix(lower) ||
-            $0.title.lowercased().hasPrefix(lower) ||
-            $0.keywords.contains { $0.lowercased().hasPrefix(lower) }
-        }) {
-            if let url = URL(string: "https://\(site.domain)") {
-                directMatch = OmnibarSuggestion(
-                    primaryText: site.domain,
-                    secondaryText: site.title,
-                    isSearch: false,
-                    targetURL: url
-                )
+            guard let openTab = openTabs.first(where: {
+                $0.url.host?.lowercased().replacingOccurrences(of: "www.", with: "") == item.url.host?.lowercased().replacingOccurrences(of: "www.", with: "")
+            }) else {
+                return true
             }
+            let isHomePage = item.url.path.isEmpty || item.url.path == "/"
+            return item.url != openTab.url && !isHomePage
         }
-
-        // 2. Check history
-        if directMatch == nil {
-            if let item = history.first(where: {
-                ($0.url.host?.lowercased().contains(lower) == true) ||
-                $0.title.lowercased().contains(lower)
-            }) {
-                let host = item.url.host ?? trimmed
-                directMatch = OmnibarSuggestion(
-                    primaryText: host,
-                    secondaryText: item.title,
-                    isSearch: false,
-                    targetURL: item.url
-                )
-            }
+        for item in historyMatches.prefix(5) {
+            results.append(OmnibarSuggestion(
+                primaryText: item.title.isEmpty ? (item.url.host ?? trimmed) : item.title,
+                secondaryText: item.url.host ?? "",
+                isSearch: false,
+                targetURL: item.url
+            ))
         }
 
         // 3. Fallback for domain-like input
@@ -133,15 +116,16 @@ final class OmnibarService {
             results.append(directMatch)
         }
 
-        // 4. Search suggestion with Google
-        var comp = URLComponents(string: "https://www.google.com/search")
+        // 4. Search suggestion with the selected search engine
+        var comp = searchEngine.searchURL.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
         comp?.queryItems = [URLQueryItem(name: "q", value: trimmed)]
         if let searchURL = comp?.url {
             results.append(OmnibarSuggestion(
                 primaryText: trimmed,
-                secondaryText: "Google",
+                secondaryText: searchEngine.name,
                 isSearch: true,
-                targetURL: searchURL
+                targetURL: searchURL,
+                searchEngine: searchEngine
             ))
         }
 

@@ -75,6 +75,20 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
     }
 }
 
+struct HistoryItem: Identifiable, Equatable, Hashable {
+    let id: UUID
+    let url: URL
+    let title: String
+    let timestamp: Date
+
+    init(id: UUID = UUID(), url: URL, title: String, timestamp: Date = Date()) {
+        self.id = id
+        self.url = url
+        self.title = title
+        self.timestamp = timestamp
+    }
+}
+
 @MainActor
 final class LeanStore: ObservableObject {
     @Published private(set) var tabs: [LeanTab] = []
@@ -90,7 +104,23 @@ final class LeanStore: ObservableObject {
     @Published var inlineSuggestionsFrame: CGRect = .zero
     @Published var isTabSwitcherVisible = false
     @Published var switcherSelectedIndex = 0
-    @Published var visitedHistory: [(url: URL, title: String)] = []
+    @Published var historyItems: [HistoryItem] = []
+    var visitedHistory: [(url: URL, title: String)] {
+        historyItems.map { ($0.url, $0.title) }
+    }
+
+    @Published var searchEngine: SearchEngine {
+        didSet {
+            UserDefaults.standard.set(searchEngine.rawValue, forKey: Self.searchEngineKey)
+        }
+    }
+
+    @Published var adBlockingEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(adBlockingEnabled, forKey: Self.adBlockingKey)
+            updateAllTabsAdBlocking()
+        }
+    }
 
     @Published var theme: AppTheme {
         didSet {
@@ -186,6 +216,32 @@ final class LeanStore: ObservableObject {
     init(dataStore: WKWebsiteDataStore? = nil) {
         self.dataStore = dataStore ?? WKWebsiteDataStore.default()
 
+        let savedSearchEngine = UserDefaults.standard.string(forKey: Self.searchEngineKey) ?? SearchEngine.google.rawValue
+        self.searchEngine = SearchEngine(rawValue: savedSearchEngine) ?? .google
+
+        let savedAdBlocking = UserDefaults.standard.object(forKey: Self.adBlockingKey) as? Bool ?? true
+        self.adBlockingEnabled = savedAdBlocking
+
+        if let savedHistory = UserDefaults.standard.array(forKey: Self.historyKey) as? [[String: Any]] {
+            self.historyItems = savedHistory.compactMap { item in
+                guard let rawURL = item["url"] as? String,
+                      let url = URL(string: rawURL),
+                      let title = item["title"] as? String else { return nil }
+                let timestamp: Date
+                if let timeVal = item["timestamp"] as? Double {
+                    timestamp = Date(timeIntervalSince1970: timeVal)
+                } else {
+                    timestamp = Date()
+                }
+                return HistoryItem(url: url, title: title, timestamp: timestamp)
+            }
+        } else if let savedHistoryLegacy = UserDefaults.standard.array(forKey: Self.historyKey) as? [[String: String]] {
+            self.historyItems = savedHistoryLegacy.compactMap { item in
+                guard let rawURL = item["url"], let url = URL(string: rawURL), let title = item["title"] else { return nil }
+                return HistoryItem(url: url, title: title, timestamp: Date())
+            }
+        }
+
         // Load saved theme (default to light or saved preference)
         let savedTheme = UserDefaults.standard.string(forKey: Self.themeKey) ?? AppTheme.light.rawValue
         self.theme = AppTheme(rawValue: savedTheme) ?? .light
@@ -247,11 +303,18 @@ final class LeanStore: ObservableObject {
             self.hiddenToolbarItems = []
         }
 
-        // Clear any old session tabs so we never have unwanted default tabs on startup!
-        UserDefaults.standard.removeObject(forKey: Self.sessionKey)
+        deduplicateHistory()
+        saveHistory()
 
-        // Always start clean with exactly 1 New Tab
-        newTab()
+        let savedSession = UserDefaults.standard.stringArray(forKey: Self.sessionKey) ?? []
+        let sessionURLs = savedSession.compactMap(URL.init(string:))
+        if sessionURLs.isEmpty {
+            newTab()
+        } else {
+            for (index, url) in sessionURLs.enumerated() {
+                newTab(url: url, select: index == sessionURLs.count - 1)
+            }
+        }
     }
 
     var isDarkMode: Bool {
@@ -386,6 +449,12 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    func updateAllTabsAdBlocking() {
+        for tab in tabs {
+            tab.applyAdBlocking(adBlockingEnabled)
+        }
+    }
+
     var selectedTab: LeanTab? {
         tabs.first { $0.id == selectedID }
     }
@@ -400,16 +469,63 @@ final class LeanStore: ObservableObject {
 
     func recordHistory(url: URL, title: String) {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanTitle.isEmpty, cleanTitle != "New Tab" else { return }
-        visitedHistory.removeAll { $0.url == url }
-        visitedHistory.insert((url: url, title: cleanTitle), at: 0)
-        if visitedHistory.count > 50 {
-            visitedHistory = Array(visitedHistory.prefix(50))
+        guard !cleanTitle.isEmpty, cleanTitle != "New Tab", !url.absoluteString.hasPrefix("lean://") else { return }
+        historyItems.removeAll {
+            $0.url == url || ($0.url.host == url.host && $0.title == cleanTitle)
         }
+        historyItems.insert(HistoryItem(url: url, title: cleanTitle, timestamp: Date()), at: 0)
+        if historyItems.count > 200 {
+            historyItems = Array(historyItems.prefix(200))
+        }
+        saveHistory()
+    }
+
+    func deleteHistoryItem(id: UUID) {
+        historyItems.removeAll { $0.id == id }
+        saveHistory()
+    }
+
+    func deleteHistoryItem(url: URL) {
+        historyItems.removeAll { $0.url == url }
+        saveHistory()
     }
 
     func clearHistory() {
-        visitedHistory.removeAll()
+        historyItems.removeAll()
+        saveHistory()
+    }
+
+    func openHistoryItem(_ item: HistoryItem, inNewTab: Bool = false) {
+        if inNewTab {
+            newTab(url: item.url, select: true)
+        } else {
+            if let current = selectedTab, current.isSettingsPage || current.url == nil {
+                current.load(item.url)
+            } else {
+                newTab(url: item.url, select: true)
+            }
+        }
+    }
+
+    private func deduplicateHistory() {
+        var seen = Set<String>()
+        historyItems = historyItems.filter { item in
+            let host = item.url.host?.lowercased() ?? ""
+            let key = "\(host)|\(item.title.lowercased())"
+            return seen.insert(key).inserted
+        }
+    }
+
+    private func saveHistory() {
+        deduplicateHistory()
+        let history: [[String: Any]] = historyItems.map {
+            [
+                "url": $0.url.absoluteString,
+                "title": $0.title,
+                "timestamp": $0.timestamp.timeIntervalSince1970
+            ]
+        }
+        UserDefaults.standard.set(history, forKey: Self.historyKey)
     }
 
     func handleNewTabCommand() {
@@ -436,6 +552,11 @@ final class LeanStore: ObservableObject {
         NotificationCenter.default.post(name: .focusAddress, object: nil)
     }
 
+    func saveSession() {
+        let urls = tabs.compactMap { $0.url?.absoluteString }
+        UserDefaults.standard.set(urls, forKey: Self.sessionKey)
+    }
+
     func newTab(url: URL? = nil, select: Bool = true) {
         let tab = LeanTab(
             dataStore: dataStore,
@@ -443,7 +564,8 @@ final class LeanStore: ObservableObject {
             isDark: isDarkMode,
             scrollbarStyle: scrollbarStyle,
             smoothScrolling: smoothScrollingEnabled,
-            pageFont: webPageFont
+            pageFont: webPageFont,
+            adBlockingEnabled: adBlockingEnabled
         )
         tab.onStateChange = { [weak self] in
             guard let self else { return }
@@ -451,6 +573,7 @@ final class LeanStore: ObservableObject {
             if let tabURL = tab.url, !tab.isLoading {
                 self.recordHistory(url: tabURL, title: tab.title)
             }
+            self.saveSession()
         }
         tab.onOpenNewTab = { [weak self] url in self?.newTab(url: url) }
         tabs.append(tab)
@@ -461,6 +584,7 @@ final class LeanStore: ObservableObject {
                 NotificationCenter.default.post(name: .focusAddress, object: nil)
             }
         }
+        saveSession()
     }
 
     func close(_ tab: LeanTab) {
@@ -473,6 +597,7 @@ final class LeanStore: ObservableObject {
         let wasSelected = selectedID == tab.id
         let closedTab = tabs.remove(at: index)
         closedTab.destroy()
+        saveSession()
 
         if tabs.isEmpty {
             newTab()
@@ -607,6 +732,9 @@ final class LeanStore: ObservableObject {
     }
 
     private static let sessionKey = "sessionURLs"
+    private static let historyKey = "visitedHistory"
+    private static let searchEngineKey = "searchEngine"
+    private static let adBlockingKey = "adBlockingEnabled"
     private static let themeKey = "appTheme"
     private static let scrollbarKey = "scrollbarStyle"
     private static let tabDisplayModeKey = "tabDisplayMode"

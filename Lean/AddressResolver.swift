@@ -1,7 +1,40 @@
 import Foundation
 
+enum SearchEngine: String, CaseIterable, Identifiable, Codable {
+    case google
+    case bing
+    case duckDuckGo
+    case brave
+    case ecosia
+    case yahoo
+
+    var id: String { rawValue }
+
+    var name: String {
+        switch self {
+        case .google: return "Google"
+        case .bing: return "Bing"
+        case .duckDuckGo: return "DuckDuckGo"
+        case .brave: return "Brave Search"
+        case .ecosia: return "Ecosia"
+        case .yahoo: return "Yahoo"
+        }
+    }
+
+    var searchURL: URL? {
+        switch self {
+        case .google: return URL(string: "https://www.google.com/search")
+        case .bing: return URL(string: "https://www.bing.com/search")
+        case .duckDuckGo: return URL(string: "https://duckduckgo.com/")
+        case .brave: return URL(string: "https://search.brave.com/search")
+        case .ecosia: return URL(string: "https://www.ecosia.org/search")
+        case .yahoo: return URL(string: "https://search.yahoo.com/search")
+        }
+    }
+}
+
 enum AddressResolver {
-    static func resolve(_ input: String) -> URL? {
+    static func resolve(_ input: String, searchEngine: SearchEngine = .google) -> URL? {
         let value = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
 
@@ -14,7 +47,7 @@ enum AddressResolver {
             return url
         }
 
-        var components = URLComponents(string: "https://www.google.com/search")
+        var components = searchEngine.searchURL.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
         components?.queryItems = [URLQueryItem(name: "q", value: value)]
         return components?.url
     }

@@ -408,7 +408,8 @@ private struct InlineURLBar: View {
         return OmnibarService.shared.suggestions(
             for: text,
             history: store.visitedHistory,
-            openTabs: openTabsForSuggestions
+            openTabs: openTabsForSuggestions,
+            searchEngine: store.searchEngine
         )
     }
 
@@ -440,7 +441,7 @@ private struct InlineURLBar: View {
                 }
                 .onKeyPress(.downArrow) {
                     if !suggestions.isEmpty {
-                        selectedIndex = min(selectedIndex + 1, suggestions.count - 1)
+                        selectedIndex = (selectedIndex + 1) % suggestions.count
                         return .handled
                     }
                     return .ignored

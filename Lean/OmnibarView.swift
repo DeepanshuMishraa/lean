@@ -19,7 +19,8 @@ struct OmnibarView: View {
         OmnibarService.shared.suggestions(
             for: query,
             history: store.visitedHistory,
-            openTabs: openTabsForOmnibar
+            openTabs: openTabsForOmnibar,
+            searchEngine: store.searchEngine
         )
     }
 
@@ -120,8 +121,8 @@ struct OmnibarView: View {
                         submitCurrent()
                     }
                     .onKeyPress(.downArrow) {
-                        if selectedIndex < suggestions.count - 1 {
-                            selectedIndex += 1
+                        if !suggestions.isEmpty {
+                            selectedIndex = (selectedIndex + 1) % suggestions.count
                         }
                         return .handled
                     }
@@ -276,7 +277,7 @@ struct OmnibarView: View {
             store.dismissNewTabOmnibar()
         }
 
-        guard let targetURL = AddressResolver.resolve(trimmed) else { return }
+        guard let targetURL = AddressResolver.resolve(trimmed, searchEngine: store.searchEngine) else { return }
 
         if store.floatingOmnibarMode == .newTab && store.selectedTab?.url != nil {
             store.newTab(url: targetURL)

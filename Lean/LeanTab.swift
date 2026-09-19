@@ -16,6 +16,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private(set) var scrollbarStyle: ScrollbarStyle
     private(set) var smoothScrollingEnabled: Bool
     private(set) var pageFont: LeanFont
+    private(set) var adBlockingEnabled: Bool
 
     var isSettingsPage: Bool {
         guard let url = url else { return false }
@@ -32,11 +33,13 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         isDark: Bool = false,
         scrollbarStyle: ScrollbarStyle = .normal,
         smoothScrolling: Bool = true,
-        pageFont: LeanFont = .system
+        pageFont: LeanFont = .system,
+        adBlockingEnabled: Bool = true
     ) {
         self.scrollbarStyle = scrollbarStyle
         self.smoothScrollingEnabled = smoothScrolling
         self.pageFont = pageFont
+        self.adBlockingEnabled = adBlockingEnabled
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore
         configuration.preferences.isElementFullscreenEnabled = true
@@ -114,15 +117,23 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             }
         }
 
-        Task { [weak self] in
-            guard let self else { return }
-            if let ruleList = await ContentBlocker.ruleList() {
-                self.webView.configuration.userContentController.add(ruleList)
-            }
-        }
+        applyAdBlocking(adBlockingEnabled)
 
         if let initialURL {
             self.load(initialURL)
+        }
+    }
+
+    func applyAdBlocking(_ enabled: Bool) {
+        adBlockingEnabled = enabled
+        Task { [weak self] in
+            guard let self, let ruleList = await ContentBlocker.ruleList() else { return }
+            guard self.adBlockingEnabled == enabled else { return }
+            if enabled {
+                self.webView.configuration.userContentController.add(ruleList)
+            } else {
+                self.webView.configuration.userContentController.remove(ruleList)
+            }
         }
     }
 
@@ -162,12 +173,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             )
         )
 
-        Task { [weak self] in
-            guard let self else { return }
-            if let ruleList = await ContentBlocker.ruleList() {
-                self.webView.configuration.userContentController.add(ruleList)
-            }
-        }
+        applyAdBlocking(adBlockingEnabled)
     }
 
     func applyScrollbarStyle(_ style: ScrollbarStyle) {

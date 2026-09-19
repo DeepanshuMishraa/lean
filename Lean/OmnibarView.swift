@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct OmnibarView: View {
@@ -30,23 +29,6 @@ struct OmnibarView: View {
         } else {
             return (store.isNewTabOmnibarFloating || !query.isEmpty) && !suggestions.isEmpty
         }
-    }
-
-    private var inlineSuffix: String {
-        let queryWidth = (query as NSString).size(
-            withAttributes: [.font: NSFont.systemFont(ofSize: 14)]
-        ).width
-        guard queryWidth < 430,
-              !query.isEmpty,
-              let first = suggestions.first,
-              !first.isSearch,
-              !first.isSwitchToTab,
-              first.primaryText.lowercased().hasPrefix(query.lowercased()),
-              first.primaryText.count > query.count else {
-            return ""
-        }
-        let startIndex = first.primaryText.index(first.primaryText.startIndex, offsetBy: query.count)
-        return String(first.primaryText[startIndex...])
     }
 
     var body: some View {
@@ -127,23 +109,6 @@ struct OmnibarView: View {
                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
                 }
 
-                if !query.isEmpty && !inlineSuffix.isEmpty {
-                    HStack(spacing: 0) {
-                        Text(query)
-                            .font(store.leanUIFont.font(size: 14))
-                            .foregroundColor(.clear)
-                        Text(inlineSuffix)
-                            .font(store.leanUIFont.font(size: 14))
-                            .foregroundColor(store.themeColors.omnibarText)
-                            .padding(.horizontal, 2)
-                            .background(
-                                store.isDarkMode ? Color.white.opacity(0.18) : Color.black.opacity(0.12),
-                                in: RoundedRectangle(cornerRadius: 3)
-                            )
-                    }
-                    .allowsHitTesting(false)
-                }
-
                 TextField("", text: $query)
                     .textFieldStyle(.plain)
                     .font(store.leanUIFont.font(size: 14))
@@ -163,17 +128,6 @@ struct OmnibarView: View {
                             selectedIndex -= 1
                         }
                         return .handled
-                    }
-                    .onKeyPress(.tab) {
-                        acceptAutocomplete()
-                        return .handled
-                    }
-                    .onKeyPress(.rightArrow) {
-                        if !inlineSuffix.isEmpty {
-                            acceptAutocomplete()
-                            return .handled
-                        }
-                        return .ignored
                     }
                     .onKeyPress(.escape) {
                         handleEscape()
@@ -262,12 +216,6 @@ struct OmnibarView: View {
         } else {
             store.dismissNewTabOmnibar()
             query = ""
-        }
-    }
-
-    private func acceptAutocomplete() {
-        if let first = suggestions.first, !first.isSearch, !first.isSwitchToTab {
-            query = first.primaryText
         }
     }
 

@@ -33,9 +33,8 @@ struct LeanCommands: Commands {
             .keyboardShortcut("f", modifiers: .command)
 
             Button("Focus Address Bar") {
-                store.floatingOmnibarMode = .navigate
                 withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
-                    store.isFloatingOmnibarVisible = true
+                    store.isInlineURLEditing = true
                 }
                 NotificationCenter.default.post(name: .focusAddress, object: nil)
             }

@@ -10,6 +10,7 @@ struct LeanView: View {
         VStack(spacing: 0) {
             // Top Bar on the exact same horizontal level as traffic lights
             TopBarView(store: store)
+                .zIndex(20)
 
             // Main Content Area
             ZStack {
@@ -102,6 +103,17 @@ struct LeanView: View {
                         .animation(.spring(response: 0.22, dampingFraction: 0.84), value: store.isTabSwitcherVisible)
                         .zIndex(100)
                 }
+
+                // When inline URL bar is being edited, clicking anywhere in the content area collapses it
+                if store.isInlineURLEditing {
+                    Color.black.opacity(0.0001)
+                        .contentShape(Rectangle())
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            store.dismissInlineURLEditing()
+                        }
+                        .zIndex(15)
+                }
             }
         }
         .ignoresSafeArea(.all)
@@ -113,7 +125,19 @@ struct LeanView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .focusAddress)) { _ in
             if store.selectedTab?.url != nil {
-                store.showFloatingOmnibar(mode: .navigate)
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                    store.isInlineURLEditing = true
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
+            if store.isInlineURLEditing {
+                store.dismissInlineURLEditing()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            if store.isInlineURLEditing {
+                store.dismissInlineURLEditing()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .showFind)) { _ in
@@ -128,11 +152,30 @@ struct LeanView: View {
         guard !hasSetupKeyMonitor else { return }
         hasSetupKeyMonitor = true
 
-        // Monitor mouse clicks when floating omnibar is open:
-        // Only clicking outside the command palette region or escape key should close it!
+        // Monitor mouse clicks when inline URL bar or floating omnibar is open:
+        // Only clicking outside the active region collapses / closes it!
         NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { event in
-            guard store.isFloatingOmnibarVisible else { return event }
             guard let window = event.window ?? NSApp.keyWindow else { return event }
+
+            // Convert AppKit window coordinates (origin bottom-left) to SwiftUI global coordinates (origin top-left)
+            let windowHeight = window.contentView?.frame.height ?? window.frame.height
+            let clickLocation = event.locationInWindow
+            let swiftUIPoint = CGPoint(x: clickLocation.x, y: windowHeight - clickLocation.y)
+
+            // When inline URL bar is being edited, dismiss when clicking outside its bounds (and dropdown)
+            if store.isInlineURLEditing {
+                let barFrame = store.inlineURLBarFrame.insetBy(dx: -4, dy: -4)
+                let suggFrame = store.inlineSuggestionsFrame.insetBy(dx: -4, dy: -4)
+                let isInsideBar = store.inlineURLBarFrame.width > 0 && barFrame.contains(swiftUIPoint)
+                let isInsideSugg = store.inlineSuggestionsFrame.width > 0 && suggFrame.contains(swiftUIPoint)
+
+                if !isInsideBar && !isInsideSugg {
+                    store.dismissInlineURLEditing()
+                }
+                return event
+            }
+
+            guard store.isFloatingOmnibarVisible else { return event }
 
             let paletteFrame = store.floatingPaletteFrame
             let effectivePaletteFrame: CGRect
@@ -143,11 +186,6 @@ struct LeanView: View {
                 let x = max(0, (windowWidth - 580) / 2)
                 effectivePaletteFrame = CGRect(x: x, y: 72, width: 580, height: 350)
             }
-
-            // Convert AppKit window coordinates (origin bottom-left) to SwiftUI global coordinates (origin top-left)
-            let windowHeight = window.contentView?.frame.height ?? window.frame.height
-            let clickLocation = event.locationInWindow
-            let swiftUIPoint = CGPoint(x: clickLocation.x, y: windowHeight - clickLocation.y)
 
             if effectivePaletteFrame.contains(swiftUIPoint) {
                 return event
@@ -177,14 +215,24 @@ struct LeanView: View {
                 return nil
             }
 
-            // Intercept Cmd+L to focus address bar in navigate mode (keyCode 37 = 'L')
+            // Intercept Cmd+L to focus inline address bar or new tab address (keyCode 37 = 'L')
             if isCommand && (event.keyCode == 37 || event.charactersIgnoringModifiers?.lowercased() == "l") {
-                store.showFloatingOmnibar(mode: .navigate)
+                if store.selectedTab?.url != nil {
+                    withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                        store.isInlineURLEditing = true
+                    }
+                } else {
+                    NotificationCenter.default.post(name: .focusAddress, object: nil)
+                }
                 return nil
             }
 
-            // Intercept Escape (keyCode 53) to close floating omnibar, new tab omnibar, or tab switcher
+            // Intercept Escape (keyCode 53) to close inline url bar, floating omnibar, new tab omnibar, or tab switcher
             if event.keyCode == 53 {
+                if store.isInlineURLEditing {
+                    store.dismissInlineURLEditing()
+                    return nil
+                }
                 if store.isFloatingOmnibarVisible {
                     store.dismissFloatingOmnibar()
                     return nil

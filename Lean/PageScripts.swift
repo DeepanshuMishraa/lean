@@ -4,13 +4,54 @@ enum PageScripts {
     static let pageReadyMessageName = "pageReady"
 
     static let pageReady = """
-    document.addEventListener('DOMContentLoaded', function() {
-        requestAnimationFrame(function() {
-            requestAnimationFrame(function() {
+    (function() {
+        var notified = false;
+        function notify() {
+            if (notified) return;
+            notified = true;
+            try {
                 window.webkit.messageHandlers.\(pageReadyMessageName).postMessage(location.href);
+            } catch(e) {}
+        }
+
+        try {
+            var po = new PerformanceObserver(function(list) {
+                var entries = list.getEntries();
+                for (var i = 0; i < entries.length; i++) {
+                    if (entries[i].name === 'first-contentful-paint' || entries[i].name === 'first-paint') {
+                        notify();
+                        po.disconnect();
+                        return;
+                    }
+                }
             });
-        });
-    }, { once: true });
+            po.observe({ type: 'paint', buffered: true });
+        } catch(e) {}
+
+        try {
+            var mo = new MutationObserver(function() {
+                if (document.body && (document.body.children.length > 0 || (document.body.innerText && document.body.innerText.trim().length > 0))) {
+                    notify();
+                    mo.disconnect();
+                }
+            });
+            if (document.documentElement) {
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            }
+        } catch(e) {}
+
+        if (document.readyState === 'interactive' || document.readyState === 'complete') {
+            notify();
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            requestAnimationFrame(function() {
+                requestAnimationFrame(function() {
+                    notify();
+                });
+            });
+        }, { once: true });
+    })();
     """
 
     static func font(_ font: LeanFont) -> String {

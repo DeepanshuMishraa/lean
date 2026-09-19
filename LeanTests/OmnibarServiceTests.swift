@@ -24,6 +24,15 @@ struct OmnibarServiceTests {
         #expect(suggestions.first?.secondaryText == "Office Commun")
     }
 
+    @Test("Does not invent a dot-com URL for plain search text")
+    func doesNotInventDotComURL() {
+        let suggestions = OmnibarService.shared.suggestions(for: "hello")
+
+        #expect(suggestions.count == 1)
+        #expect(suggestions.first?.isSearch == true)
+        #expect(suggestions.first?.primaryText == "hello")
+    }
+
     @Test("Rejects empty query with no open tabs")
     func rejectsEmptyWithNoTabs() {
         let suggestions = OmnibarService.shared.suggestions(for: "   ")

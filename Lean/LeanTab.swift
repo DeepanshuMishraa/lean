@@ -19,6 +19,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     var onStateChange: (() -> Void)?
     var onOpenNewTab: ((URL) -> Void)?
+    private var progressObserver: NSKeyValueObservation?
 
     init(
         dataStore: WKWebsiteDataStore,
@@ -91,6 +92,16 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             webView.isInspectable = true
         }
         #endif
+
+        progressObserver = webView.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
+            if webView.estimatedProgress >= 0.7 {
+                DispatchQueue.main.async {
+                    guard let self, self.isLoading else { return }
+                    self.isLoading = false
+                    self.refreshState()
+                }
+            }
+        }
 
         Task { [weak self] in
             guard let self else { return }
@@ -227,6 +238,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     func destroy() {
+        progressObserver?.invalidate()
+        progressObserver = nil
         isLoading = false
         onStateChange = nil
         onOpenNewTab = nil
@@ -342,8 +355,13 @@ extension LeanTab: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation?) {
         refreshState()
         applyScrollbarStyle(scrollbarStyle)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.captureSnapshot()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self else { return }
+            if self.isLoading {
+                self.isLoading = false
+                self.refreshState()
+            }
+            self.captureSnapshot()
         }
     }
 
@@ -379,7 +397,41 @@ extension LeanTab: WKNavigationDelegate {
         decidePolicyFor navigationResponse: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
-        decisionHandler(navigationResponse.canShowMIMEType ? .allow : .download)
+        // If WebKit natively displays this MIME type, always allow
+        if navigationResponse.canShowMIMEType {
+            decisionHandler(.allow)
+            return
+        }
+
+        // Never trigger downloads for HTTP redirects or informational responses
+        if let httpResponse = navigationResponse.response as? HTTPURLResponse {
+            if (300...399).contains(httpResponse.statusCode) {
+                decisionHandler(.allow)
+                return
+            }
+
+            // Only trigger download if header explicitly specifies "attachment"
+            let disposition = (httpResponse.value(forHTTPHeaderField: "Content-Disposition") ?? "").lowercased()
+            if disposition.contains("attachment") {
+                decisionHandler(.download)
+                return
+            }
+
+            // If it is standard web content (HTML, text, json, xml, script, image), allow WebKit to render
+            let mime = (httpResponse.mimeType ?? "").lowercased()
+            if mime.isEmpty || mime.contains("html") || mime.contains("text") || mime.contains("json") || mime.contains("xml") || mime.contains("javascript") || mime.contains("svg") {
+                decisionHandler(.allow)
+                return
+            }
+        }
+
+        // For main frame navigations without explicit attachment headers, allow rather than downloading
+        if navigationResponse.isForMainFrame {
+            decisionHandler(.allow)
+            return
+        }
+
+        decisionHandler(.download)
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
@@ -408,11 +460,23 @@ extension LeanTab: WKDownloadDelegate {
         suggestedFilename: String,
         completionHandler: @escaping (URL?) -> Void
     ) {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = suggestedFilename
-        panel.begin { result in
-            completionHandler(result == .OK ? panel.url : nil)
+        guard let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
+            completionHandler(nil)
+            return
         }
+
+        var destination = downloadsURL.appendingPathComponent(suggestedFilename)
+        var counter = 1
+        let name = (suggestedFilename as NSString).deletingPathExtension
+        let ext = (suggestedFilename as NSString).pathExtension
+
+        while FileManager.default.fileExists(atPath: destination.path) {
+            let uniqueName = ext.isEmpty ? "\(name) \(counter)" : "\(name) \(counter).\(ext)"
+            destination = downloadsURL.appendingPathComponent(uniqueName)
+            counter += 1
+        }
+
+        completionHandler(destination)
     }
 }
 

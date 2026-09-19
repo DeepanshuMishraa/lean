@@ -126,16 +126,6 @@ final class OmnibarService {
                         targetURL: url
                     )
                 }
-            } else {
-                let candidate = "\(trimmed).com"
-                if let url = URL(string: "https://\(candidate)") {
-                    directMatch = OmnibarSuggestion(
-                        primaryText: candidate,
-                        secondaryText: candidate,
-                        isSearch: false,
-                        targetURL: url
-                    )
-                }
             }
         }
 

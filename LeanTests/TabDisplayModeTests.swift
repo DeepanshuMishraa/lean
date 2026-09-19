@@ -32,4 +32,19 @@ struct TabDisplayModeTests {
         #expect(store.tabDisplayMode == .textOnly)
         #expect(UserDefaults.standard.string(forKey: "tabDisplayMode") == "textOnly")
     }
+
+    @MainActor
+    @Test("LeanStore dismissInlineURLEditing resets state and frames")
+    func dismissInlineURLEditing() {
+        let store = LeanStore()
+        store.isInlineURLEditing = true
+        store.inlineURLBarFrame = CGRect(x: 10, y: 10, width: 200, height: 30)
+        store.inlineSuggestionsFrame = CGRect(x: 10, y: 40, width: 200, height: 100)
+
+        store.dismissInlineURLEditing()
+
+        #expect(store.isInlineURLEditing == false)
+        #expect(store.inlineURLBarFrame == .zero)
+        #expect(store.inlineSuggestionsFrame == .zero)
+    }
 }

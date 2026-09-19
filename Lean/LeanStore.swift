@@ -40,9 +40,12 @@ final class LeanStore: ObservableObject {
     @Published var showsFindBar = false
     @Published var isFloatingOmnibarVisible = false
     @Published var floatingOmnibarMode: FloatingOmnibarMode = .newTab
+    @Published var isInlineURLEditing = false
     @Published var isNewTabOmnibarFloating = false
     @Published var showsSettings = false
     @Published var floatingPaletteFrame: CGRect = .zero
+    @Published var inlineURLBarFrame: CGRect = .zero
+    @Published var inlineSuggestionsFrame: CGRect = .zero
     @Published var isTabSwitcherVisible = false
     @Published var switcherSelectedIndex = 0
     @Published var visitedHistory: [(url: URL, title: String)] = []
@@ -292,6 +295,9 @@ final class LeanStore: ObservableObject {
         } else if wasSelected {
             selectedID = tabs[min(index, tabs.count - 1)].id
             isNewTabOmnibarFloating = false
+            isInlineURLEditing = false
+            inlineURLBarFrame = .zero
+            inlineSuggestionsFrame = .zero
         }
     }
 
@@ -320,9 +326,26 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    func dismissInlineURLEditing() {
+        guard isInlineURLEditing else { return }
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+            isInlineURLEditing = false
+        }
+        inlineURLBarFrame = .zero
+        inlineSuggestionsFrame = .zero
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let tab = self.selectedTab else { return }
+            tab.webView.evaluateJavaScript("window.getSelection()?.removeAllRanges()", completionHandler: nil)
+            tab.webView.window?.makeFirstResponder(tab.webView)
+        }
+    }
+
     func switchToTab(id: LeanTab.ID) {
         isFloatingOmnibarVisible = false
         isNewTabOmnibarFloating = false
+        isInlineURLEditing = false
+        inlineURLBarFrame = .zero
+        inlineSuggestionsFrame = .zero
         floatingPaletteFrame = .zero
         selectedID = id
         DispatchQueue.main.async { [weak self] in

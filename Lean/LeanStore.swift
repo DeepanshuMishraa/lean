@@ -33,6 +33,48 @@ enum TabDisplayMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Hashable {
+    case back = "back"
+    case forward = "forward"
+    case reload = "reload"
+    case newTab = "newTab"
+    case themeToggle = "themeToggle"
+    case settings = "settings"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .back: return "Back"
+        case .forward: return "Forward"
+        case .reload: return "Reload"
+        case .newTab: return "New Tab"
+        case .themeToggle: return "Theme"
+        case .settings: return "Settings"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .back: return "chevron.left"
+        case .forward: return "chevron.right"
+        case .reload: return "arrow.clockwise"
+        case .newTab: return "plus"
+        case .themeToggle: return "sun.max.fill"
+        case .settings: return "gearshape"
+        }
+    }
+
+    var isNavigationItem: Bool {
+        switch self {
+        case .back, .forward, .reload:
+            return true
+        case .newTab, .themeToggle, .settings:
+            return false
+        }
+    }
+}
+
 @MainActor
 final class LeanStore: ObservableObject {
     @Published private(set) var tabs: [LeanTab] = []
@@ -102,6 +144,42 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    @Published var enableZenMode: Bool {
+        didSet {
+            UserDefaults.standard.set(enableZenMode, forKey: Self.zenModeKey)
+        }
+    }
+
+    @Published var enableWindowBorder: Bool {
+        didSet {
+            UserDefaults.standard.set(enableWindowBorder, forKey: Self.windowBorderKey)
+        }
+    }
+
+    @Published var windowBorderColor: Color {
+        didSet {
+            UserDefaults.standard.set(windowBorderColor.toHex(), forKey: Self.windowBorderColorKey)
+        }
+    }
+
+    @Published var windowBorderWidth: CGFloat {
+        didSet {
+            UserDefaults.standard.set(windowBorderWidth, forKey: Self.windowBorderWidthKey)
+        }
+    }
+
+    @Published var shownToolbarItems: [ToolbarItemType] {
+        didSet {
+            UserDefaults.standard.set(shownToolbarItems.map(\.rawValue), forKey: Self.shownToolbarItemsKey)
+        }
+    }
+
+    @Published var hiddenToolbarItems: [ToolbarItemType] {
+        didSet {
+            UserDefaults.standard.set(hiddenToolbarItems.map(\.rawValue), forKey: Self.hiddenToolbarItemsKey)
+        }
+    }
+
     private let dataStore: WKWebsiteDataStore
     private var recentlyClosed: [URL] = []
 
@@ -138,6 +216,37 @@ final class LeanStore: ObservableObject {
         let savedWebPageFont = UserDefaults.standard.string(forKey: Self.webPageFontKey) ?? LeanFont.system.rawValue
         self.webPageFont = LeanFont(rawValue: savedWebPageFont) ?? .system
 
+        let savedZen = UserDefaults.standard.object(forKey: Self.zenModeKey) as? Bool ?? false
+        self.enableZenMode = savedZen
+
+        let savedBorder = UserDefaults.standard.object(forKey: Self.windowBorderKey) as? Bool ?? false
+        self.enableWindowBorder = savedBorder
+
+        let savedBorderHex = UserDefaults.standard.string(forKey: Self.windowBorderColorKey) ?? "#2C2D32"
+        self.windowBorderColor = Color(hex: savedBorderHex)
+
+        let savedBorderWidth = UserDefaults.standard.object(forKey: Self.windowBorderWidthKey) as? CGFloat ?? 8.0
+        self.windowBorderWidth = savedBorderWidth
+
+        // Load saved toolbar items (default to all shown, none hidden)
+        let savedShown = UserDefaults.standard.stringArray(forKey: Self.shownToolbarItemsKey)
+        let savedHidden = UserDefaults.standard.stringArray(forKey: Self.hiddenToolbarItemsKey)
+        if let savedShown = savedShown {
+            var shown = savedShown.compactMap { ToolbarItemType(rawValue: $0) }
+            let hidden = (savedHidden ?? []).compactMap { ToolbarItemType(rawValue: $0) }
+            // Ensure any newly added ToolbarItemType cases are present
+            for item in ToolbarItemType.allCases {
+                if !shown.contains(item) && !hidden.contains(item) {
+                    shown.append(item)
+                }
+            }
+            self.shownToolbarItems = shown
+            self.hiddenToolbarItems = hidden
+        } else {
+            self.shownToolbarItems = ToolbarItemType.allCases
+            self.hiddenToolbarItems = []
+        }
+
         // Clear any old session tabs so we never have unwanted default tabs on startup!
         UserDefaults.standard.removeObject(forKey: Self.sessionKey)
 
@@ -156,8 +265,24 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    static let zenModeLightColor = Color(hex: "#E5E5EA")
+    static let zenModeDarkColor = Color(hex: "#18181B")
+
+    var effectiveZenColor: Color {
+        isDarkMode ? Self.zenModeDarkColor : Self.zenModeLightColor
+    }
+
     var themeColors: ThemeColors {
         ThemeColors(isDark: isDarkMode)
+    }
+
+    var adaptiveTheme: AdaptiveFrameTheme {
+        AdaptiveFrameTheme(
+            isBorderEnabled: enableWindowBorder,
+            frameColor: effectiveZenColor,
+            baseThemeColors: themeColors,
+            isBaseDark: isDarkMode
+        )
     }
 
     var colorScheme: ColorScheme? {
@@ -173,7 +298,65 @@ final class LeanStore: ObservableObject {
     }
 
     func openSettings() {
-        SettingsWindowManager.shared.show(store: self)
+        SettingsWindowManager.shared.close()
+
+        if let existingSettingsTab = tabs.first(where: { $0.isSettingsPage }) {
+            switchToTab(id: existingSettingsTab.id)
+            return
+        }
+
+        if let current = selectedTab, current.url == nil {
+            if let settingsURL = URL(string: "lean://settings") {
+                current.load(settingsURL)
+                return
+            }
+        }
+
+        newTab(url: URL(string: "lean://settings"), select: true)
+    }
+
+    func isToolbarItemShown(_ item: ToolbarItemType) -> Bool {
+        shownToolbarItems.contains(item)
+    }
+
+    func showToolbarItem(_ item: ToolbarItemType) {
+        if let index = hiddenToolbarItems.firstIndex(of: item) {
+            hiddenToolbarItems.remove(at: index)
+        }
+        if !shownToolbarItems.contains(item) {
+            shownToolbarItems.append(item)
+        }
+    }
+
+    func hideToolbarItem(_ item: ToolbarItemType) {
+        if let index = shownToolbarItems.firstIndex(of: item) {
+            shownToolbarItems.remove(at: index)
+        }
+        if !hiddenToolbarItems.contains(item) {
+            hiddenToolbarItems.append(item)
+        }
+    }
+
+    func toggleToolbarItem(_ item: ToolbarItemType) {
+        if shownToolbarItems.contains(item) {
+            hideToolbarItem(item)
+        } else {
+            showToolbarItem(item)
+        }
+    }
+
+    func resetToolbarItems() {
+        shownToolbarItems = ToolbarItemType.allCases
+        hiddenToolbarItems = []
+    }
+
+    func moveToolbarItem(withId id: String, toShown: Bool) {
+        guard let item = ToolbarItemType(rawValue: id) else { return }
+        if toShown {
+            showToolbarItem(item)
+        } else {
+            hideToolbarItem(item)
+        }
     }
 
     func updateAllTabsTheme() {
@@ -243,6 +426,7 @@ final class LeanStore: ObservableObject {
     }
 
     func showFloatingOmnibar(mode: FloatingOmnibarMode = .newTab) {
+        isInlineURLEditing = false
         floatingOmnibarMode = mode
         isFloatingOmnibarVisible = true
     }
@@ -431,4 +615,10 @@ final class LeanStore: ObservableObject {
     private static let showFullTitleKey = "showFullTitleOnActiveTab"
     private static let leanUIFontKey = "leanUIFont"
     private static let webPageFontKey = "webPageFont"
+    private static let zenModeKey = "enableZenMode"
+    private static let windowBorderKey = "enableWindowBorder"
+    private static let windowBorderColorKey = "windowBorderColor"
+    private static let windowBorderWidthKey = "windowBorderWidth"
+    private static let shownToolbarItemsKey = "shownToolbarItems"
+    private static let hiddenToolbarItemsKey = "hiddenToolbarItems"
 }

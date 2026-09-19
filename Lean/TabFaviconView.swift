@@ -26,7 +26,11 @@ struct TabFaviconView: View {
 
     @ViewBuilder
     private var fallbackIcon: some View {
-        if tab.url == nil {
+        if tab.isSettingsPage {
+            Image(systemName: "gearshape")
+                .font(.system(size: size * 0.85, weight: .semibold))
+                .foregroundColor(isDark ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
+        } else if tab.url == nil {
             Image(systemName: "globe")
                 .font(.system(size: size * 0.85, weight: .regular))
                 .foregroundColor(isDark ? Color.white.opacity(0.4) : Color.black.opacity(0.4))

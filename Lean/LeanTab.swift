@@ -17,6 +17,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private(set) var smoothScrollingEnabled: Bool
     private(set) var pageFont: LeanFont
 
+    var isSettingsPage: Bool {
+        guard let url = url else { return false }
+        return url.absoluteString == "lean://settings" || (url.scheme == "lean" && url.host == "settings")
+    }
+
     var onStateChange: (() -> Void)?
     var onOpenNewTab: ((URL) -> Void)?
     private var progressObserver: NSKeyValueObservation?
@@ -70,7 +75,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         super.init()
         webView.configuration.userContentController.add(self, name: PageScripts.pageReadyMessageName)
         self.url = initialURL
-        if let host = initialURL?.host {
+        if initialURL?.scheme == "lean" && (initialURL?.host == "settings" || initialURL?.absoluteString == "lean://settings") {
+            self.title = "Settings"
+        } else if let host = initialURL?.host {
             self.title = host
             updateFavicon()
         }
@@ -81,6 +88,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         if #available(macOS 12.0, *) {
             webView.underPageBackgroundColor = isDark ? NSColor.black : NSColor.white
         }
+
+        // Standard Desktop Safari User-Agent ensures YouTube, Google, Twitter, etc. send full desktop content
+        let defaultSafariUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15"
+        webView.customUserAgent = defaultSafariUA
 
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -108,9 +119,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             if let ruleList = await ContentBlocker.ruleList() {
                 self.webView.configuration.userContentController.add(ruleList)
             }
-            if let initialURL {
-                self.load(initialURL)
-            }
+        }
+
+        if let initialURL {
+            self.load(initialURL)
         }
     }
 
@@ -180,6 +192,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
 
     func displayTitle(isSelected: Bool, showFullTitle: Bool = true) -> String {
+        if isSettingsPage {
+            return "Settings"
+        }
         if isSelected && showFullTitle {
             // When we are on a site and showFullTitle is enabled, show its full title
             return title.isEmpty ? "New Tab" : title
@@ -205,6 +220,19 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     func load(_ url: URL) {
+        self.url = url
+        if title == "New Tab" || title.isEmpty {
+            self.title = url.host ?? "Loading..."
+        }
+        if url.scheme == "lean" && (url.host == "settings" || url.absoluteString == "lean://settings") {
+            self.title = "Settings"
+            self.isLoading = false
+            self.favicon = nil
+            self.canGoBack = webView.canGoBack
+            self.canGoForward = webView.canGoForward
+            onStateChange?()
+            return
+        }
         isLoading = true
         onStateChange?()
         updateFavicon(for: url)
@@ -397,41 +425,16 @@ extension LeanTab: WKNavigationDelegate {
         decidePolicyFor navigationResponse: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
-        // If WebKit natively displays this MIME type, always allow
-        if navigationResponse.canShowMIMEType {
-            decisionHandler(.allow)
-            return
-        }
-
-        // Never trigger downloads for HTTP redirects or informational responses
+        // Only trigger download if Content-Disposition explicitly specifies attachment
         if let httpResponse = navigationResponse.response as? HTTPURLResponse {
-            if (300...399).contains(httpResponse.statusCode) {
-                decisionHandler(.allow)
-                return
-            }
-
-            // Only trigger download if header explicitly specifies "attachment"
             let disposition = (httpResponse.value(forHTTPHeaderField: "Content-Disposition") ?? "").lowercased()
             if disposition.contains("attachment") {
                 decisionHandler(.download)
                 return
             }
-
-            // If it is standard web content (HTML, text, json, xml, script, image), allow WebKit to render
-            let mime = (httpResponse.mimeType ?? "").lowercased()
-            if mime.isEmpty || mime.contains("html") || mime.contains("text") || mime.contains("json") || mime.contains("xml") || mime.contains("javascript") || mime.contains("svg") {
-                decisionHandler(.allow)
-                return
-            }
         }
 
-        // For main frame navigations without explicit attachment headers, allow rather than downloading
-        if navigationResponse.isForMainFrame {
-            decisionHandler(.allow)
-            return
-        }
-
-        decisionHandler(.download)
+        decisionHandler(.allow)
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {

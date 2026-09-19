@@ -15,30 +15,37 @@ struct TopBarView: View {
 
             // Horizontal Tabs (New Tab or user opened tabs only - no default pinned sites!)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     ForEach(store.tabs) { tab in
                         TopBarTabItem(
                             tab: tab,
                             isSelected: tab.id == store.selectedID,
                             store: store,
-                            onSelect: {
-                                if tab.id == store.selectedID {
-                                    if !store.isInlineURLEditing {
-                                        withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
-                                            store.isInlineURLEditing = true
-                                        }
-                                    }
-                                } else {
-                                    store.switchToTab(id: tab.id)
-                                }
-                            },
-                            onClose: {
-                                store.close(tab)
-                            }
+                            onSelect: { handleTabSelection(tab) },
+                            onClose: { store.close(tab) }
                         )
                     }
+
+                    if store.isToolbarItemShown(.newTab) {
+                        InteractiveIconButton(
+                            systemImage: "plus",
+                            helpText: "New Tab (⌘T)",
+                            size: store.enableWindowBorder ? 26 : 24,
+                            iconSize: 11,
+                            color: store.adaptiveTheme.secondaryText,
+                            hoverColor: store.adaptiveTheme.primaryText,
+                            disabledColor: store.adaptiveTheme.disabledIconText,
+                            hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                            pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                            isDark: store.adaptiveTheme.effectiveIsDark
+                        ) {
+                            withAnimation(.spring(response: 0.26, dampingFraction: 0.8)) {
+                                store.newTab()
+                            }
+                        }
+                    }
                 }
-                .padding(.vertical, 5)
+                .padding(.vertical, store.enableWindowBorder ? 3 : 5)
                 .background {
                     GeometryReader { geometry in
                         Color.clear.preference(key: TabContentWidthKey.self, value: geometry.size.width)
@@ -63,7 +70,7 @@ struct TopBarView: View {
                         let thumbTravel = max(0, trackWidth - thumbWidth)
                         let thumbOffset = thumbTravel * min(tabScrollMetrics.offset, scrollableWidth) / scrollableWidth
                         Capsule()
-                            .fill(store.isDarkMode ? Color.white.opacity(0.45) : Color.black.opacity(0.35))
+                            .fill(store.adaptiveTheme.scrollIndicatorColor)
                             .frame(width: thumbWidth, height: 2)
                             .offset(
                                 x: 4 + thumbOffset,
@@ -77,97 +84,126 @@ struct TopBarView: View {
 
             Spacer()
 
-            // Navigation Controls (Back, Forward, Reload) - Hidden on homepage
+            // Navigation Controls (Back, Forward, Reload) - Hidden on homepage or if not shown
             if store.selectedTab?.url != nil {
-                HStack(spacing: 2) {
-                    InteractiveIconButton(
-                        systemImage: "chevron.left",
-                        helpText: "Back (⌘[)",
-                        size: 24,
-                        iconSize: 12,
-                        color: store.themeColors.secondaryText,
-                        isDark: store.isDarkMode,
-                        isEnabled: store.selectedTab?.canGoBack == true
-                    ) {
-                        store.selectedTab?.goBack()
-                    }
+                let showBack = store.isToolbarItemShown(.back)
+                let showForward = store.isToolbarItemShown(.forward)
+                let showReload = store.isToolbarItemShown(.reload)
 
-                    InteractiveIconButton(
-                        systemImage: "chevron.right",
-                        helpText: "Forward (⌘])",
-                        size: 24,
-                        iconSize: 12,
-                        color: store.themeColors.secondaryText,
-                        isDark: store.isDarkMode,
-                        isEnabled: store.selectedTab?.canGoForward == true
-                    ) {
-                        store.selectedTab?.goForward()
-                    }
+                if showBack || showForward || showReload {
+                    HStack(spacing: 2) {
+                        if showBack {
+                            InteractiveIconButton(
+                                systemImage: "chevron.left",
+                                helpText: "Back (⌘[)",
+                                size: 24,
+                                iconSize: 12,
+                                color: store.adaptiveTheme.secondaryText,
+                                hoverColor: store.adaptiveTheme.primaryText,
+                                disabledColor: store.adaptiveTheme.disabledIconText,
+                                hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                                pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                                isDark: store.adaptiveTheme.effectiveIsDark,
+                                isEnabled: store.selectedTab?.canGoBack == true
+                            ) {
+                                store.selectedTab?.goBack()
+                            }
+                        }
 
-                    InteractiveIconButton(
-                        systemImage: "arrow.clockwise",
-                        helpText: "Reload (⌘R)",
-                        size: 24,
-                        iconSize: 12,
-                        color: store.themeColors.secondaryText,
-                        isDark: store.isDarkMode,
-                        isEnabled: store.selectedTab?.url != nil
-                    ) {
-                        store.selectedTab?.reload()
+                        if showForward {
+                            InteractiveIconButton(
+                                systemImage: "chevron.right",
+                                helpText: "Forward (⌘])",
+                                size: 24,
+                                iconSize: 12,
+                                color: store.adaptiveTheme.secondaryText,
+                                hoverColor: store.adaptiveTheme.primaryText,
+                                disabledColor: store.adaptiveTheme.disabledIconText,
+                                hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                                pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                                isDark: store.adaptiveTheme.effectiveIsDark,
+                                isEnabled: store.selectedTab?.canGoForward == true
+                            ) {
+                                store.selectedTab?.goForward()
+                            }
+                        }
+
+                        if showReload {
+                            InteractiveIconButton(
+                                systemImage: "arrow.clockwise",
+                                helpText: "Reload (⌘R)",
+                                size: 24,
+                                iconSize: 12,
+                                color: store.adaptiveTheme.secondaryText,
+                                hoverColor: store.adaptiveTheme.primaryText,
+                                disabledColor: store.adaptiveTheme.disabledIconText,
+                                hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                                pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                                isDark: store.adaptiveTheme.effectiveIsDark,
+                                isEnabled: store.selectedTab?.url != nil
+                            ) {
+                                store.selectedTab?.reload()
+                            }
+                        }
                     }
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+
+                    Spacer().frame(width: 4)
                 }
-                .transition(.opacity.combined(with: .scale(scale: 0.96)))
-
-                Spacer().frame(width: 4)
             }
 
             // Window & Workspace Actions
-            HStack(spacing: 2) {
-                InteractiveIconButton(
-                    systemImage: "plus",
-                    helpText: "New Tab (⌘T)",
-                    size: 24,
-                    iconSize: 12,
-                    color: store.themeColors.secondaryText,
-                    isDark: store.isDarkMode
-                ) {
-                    withAnimation(.spring(response: 0.26, dampingFraction: 0.8)) {
-                        store.newTab()
-                    }
-                }
+            let showTheme = store.isToolbarItemShown(.themeToggle)
+            let showSettings = store.isToolbarItemShown(.settings)
 
-                // Quick Theme Toggle (Light / Dark Mode)
-                InteractiveIconButton(
-                    systemImage: store.isDarkMode ? "sun.max.fill" : "moon.fill",
-                    helpText: store.isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
-                    size: 24,
-                    iconSize: 12,
-                    color: store.themeColors.secondaryText,
-                    isDark: store.isDarkMode
-                ) {
-                    withAnimation(.easeInOut(duration: 0.22)) {
-                        store.toggleTheme()
+            if showTheme || showSettings {
+                HStack(spacing: 2) {
+                    if showTheme {
+                        InteractiveIconButton(
+                            systemImage: store.isDarkMode ? "sun.max.fill" : "moon.fill",
+                            helpText: store.isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
+                            size: 24,
+                            iconSize: 12,
+                            color: store.adaptiveTheme.secondaryText,
+                            hoverColor: store.adaptiveTheme.primaryText,
+                            disabledColor: store.adaptiveTheme.disabledIconText,
+                            hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                            pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                            isDark: store.adaptiveTheme.effectiveIsDark
+                        ) {
+                            withAnimation(.easeInOut(duration: 0.22)) {
+                                store.toggleTheme()
+                            }
+                        }
                     }
-                }
 
-                // Settings Button (⌘,)
-                InteractiveIconButton(
-                    systemImage: "gearshape",
-                    helpText: "Settings (⌘,)",
-                    size: 24,
-                    iconSize: 12,
-                    color: store.themeColors.secondaryText,
-                    isDark: store.isDarkMode
-                ) {
-                    store.openSettings()
+                    if showSettings {
+                        InteractiveIconButton(
+                            systemImage: "gearshape",
+                            helpText: "Settings (⌘,)",
+                            size: 24,
+                            iconSize: 12,
+                            color: store.adaptiveTheme.secondaryText,
+                            hoverColor: store.adaptiveTheme.primaryText,
+                            disabledColor: store.adaptiveTheme.disabledIconText,
+                            hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                            pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                            isDark: store.adaptiveTheme.effectiveIsDark
+                        ) {
+                            store.openSettings()
+                        }
+                    }
                 }
             }
 
             Spacer().frame(width: 12)
         }
-        .frame(height: 36)
-        .padding(.bottom, 2)
-        .background(store.themeColors.topBarBackground)
+        .frame(height: store.enableWindowBorder ? 34 : 36)
+        .background(
+            store.enableWindowBorder
+                ? AnyView(Color.clear)
+                : AnyView(store.themeColors.topBarBackground)
+        )
         .contentShape(Rectangle())
         .onTapGesture {
             if store.isInlineURLEditing {
@@ -175,6 +211,20 @@ struct TopBarView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: store.isDarkMode)
+        .animation(.easeInOut(duration: 0.2), value: store.enableWindowBorder)
+        .animation(.easeInOut(duration: 0.2), value: store.effectiveZenColor)
+    }
+
+    private func handleTabSelection(_ tab: LeanTab) {
+        if tab.id == store.selectedID {
+            if !store.isInlineURLEditing {
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                    store.isInlineURLEditing = true
+                }
+            }
+        } else {
+            store.switchToTab(id: tab.id)
+        }
     }
 }
 
@@ -193,12 +243,26 @@ private struct TopBarTabItem: View {
 
     var body: some View {
         tabContent
-            .frame(height: 26)
+            .frame(height: store.enableWindowBorder ? 27 : 26)
             .background(
-                isSelected
-                    ? store.themeColors.activeTabBackground
-                    : (isHovered ? store.themeColors.inactiveTabHover : Color.clear),
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(
+                        isSelected
+                            ? store.adaptiveTheme.activeTabBackground
+                            : (isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : store.adaptiveTheme.inactiveTabBackground)
+                    )
+                    .overlay(
+                        isSelected && store.enableWindowBorder
+                            ? RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
+                            : nil
+                    )
+                    .shadow(
+                        color: isSelected && store.enableWindowBorder ? store.adaptiveTheme.activeTabShadow : Color.clear,
+                        radius: store.adaptiveTheme.isFrameLight ? 2 : 4,
+                        x: 0,
+                        y: 1
+                    )
             )
             .contentShape(Rectangle())
             .help(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
@@ -253,8 +317,8 @@ private struct TopBarTabItem: View {
                 .font(store.leanUIFont.font(size: 12.5, weight: .medium))
                 .foregroundColor(
                     isSelected
-                        ? store.themeColors.activeTabText
-                        : store.themeColors.inactiveTabText
+                        ? store.adaptiveTheme.activeTabText
+                        : store.adaptiveTheme.inactiveTabText
                 )
                 .lineLimit(1)
 
@@ -268,7 +332,7 @@ private struct TopBarTabItem: View {
     @ViewBuilder
     private var iconOnlyContent: some View {
         HStack(spacing: 5) {
-            TabFaviconView(tab: tab, isDark: store.isDarkMode, size: 14)
+            TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
 
             if showCloseOnHover {
                 closeButton
@@ -287,14 +351,14 @@ private struct TopBarTabItem: View {
     @ViewBuilder
     private var hybridContent: some View {
         HStack(spacing: 6) {
-            TabFaviconView(tab: tab, isDark: store.isDarkMode, size: 14)
+            TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
 
             Text(tab.displayTitle(isSelected: isSelected, showFullTitle: store.showFullTitleOnActiveTab))
                 .font(store.leanUIFont.font(size: 12.5, weight: .medium))
                 .foregroundColor(
                     isSelected
-                        ? store.themeColors.activeTabText
-                        : store.themeColors.inactiveTabText
+                        ? store.adaptiveTheme.activeTabText
+                        : store.adaptiveTheme.inactiveTabText
                 )
                 .lineLimit(1)
 
@@ -313,12 +377,12 @@ private struct TopBarTabItem: View {
         }) {
             Image(systemName: "xmark")
                 .font(.system(size: 8.5, weight: .bold))
-                .foregroundColor(store.themeColors.secondaryText)
+                .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
                 .frame(width: 14, height: 14)
                 .background(
-                isHovered ? (store.isDarkMode ? Color.white.opacity(0.12) : Color.black.opacity(0.08)) : Color.clear,
-                in: Circle()
-            )
+                    isHovered ? store.adaptiveTheme.tabCloseButtonHoverBackground : Color.clear,
+                    in: Circle()
+                )
         }
         .buttonStyle(.plain)
         .transition(.scale.combined(with: .opacity))
@@ -360,12 +424,12 @@ private struct InlineURLBar: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            TabFaviconView(tab: tab, isDark: store.isDarkMode, size: 13)
+            TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 13)
 
             TextField("Search or enter URL...", text: $text)
                 .textFieldStyle(.plain)
                 .font(store.leanUIFont.font(size: 12.5, weight: .medium))
-                .foregroundColor(store.themeColors.activeTabText)
+                .foregroundColor(store.adaptiveTheme.primaryText)
                 .focused($isFieldFocused)
                 .onSubmit {
                     submitCurrent()
@@ -393,7 +457,7 @@ private struct InlineURLBar: View {
                 Button(action: { text = "" }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 10))
-                        .foregroundColor(store.themeColors.secondaryText)
+                        .foregroundColor(store.adaptiveTheme.secondaryText)
                 }
                 .buttonStyle(.plain)
             }
@@ -460,35 +524,14 @@ private struct InlineURLBar: View {
 
     private var suggestionsDropdown: some View {
         VStack(spacing: 1) {
-            ForEach(Array(suggestions.prefix(6).enumerated()), id: \.element.id) { index, match in
-                HStack(spacing: 8) {
-                    Image(systemName: suggestionIcon(for: match))
-                        .font(.system(size: 11))
-                        .foregroundColor(store.themeColors.secondaryText)
-                        .frame(width: 14)
-
-                    Text(match.primaryText)
-                        .font(store.leanUIFont.font(size: 12, weight: .regular))
-                        .foregroundColor(store.themeColors.omnibarText)
-                        .lineLimit(1)
-
-                    Spacer()
-
-                    Text(match.secondaryText)
-                        .font(store.leanUIFont.font(size: 11, weight: .regular))
-                        .foregroundColor(store.themeColors.secondaryText)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    selectedIndex == index
-                        ? store.themeColors.omnibarSuggestionSelected
-                        : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                )
-                .contentShape(Rectangle())
-                .onTapGesture {
+            let items = Array(suggestions.prefix(6).enumerated())
+            ForEach(items, id: \.element.id) { index, match in
+                InlineSuggestionRow(
+                    match: match,
+                    icon: suggestionIcon(for: match),
+                    isSelected: selectedIndex == index,
+                    store: store
+                ) {
                     execute(match)
                 }
             }
@@ -496,14 +539,14 @@ private struct InlineURLBar: View {
         .padding(4)
         .frame(width: 380)
         .background(
-            store.themeColors.omnibarBackground,
+            store.adaptiveTheme.dropdownBackground,
             in: RoundedRectangle(cornerRadius: 10, style: .continuous)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(store.themeColors.omnibarBorder, lineWidth: 1)
+                .stroke(store.adaptiveTheme.dropdownStroke, lineWidth: 1)
         )
-        .shadow(color: store.isDarkMode ? Color.black.opacity(0.35) : Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
+        .shadow(color: store.adaptiveTheme.dropdownShadow, radius: 12, x: 0, y: 4)
         .background(
             GeometryReader { geo in
                 Color.clear
@@ -546,12 +589,55 @@ private struct InlineURLBar: View {
     }
 }
 
+private struct InlineSuggestionRow: View {
+    let match: OmnibarSuggestion
+    let icon: String
+    let isSelected: Bool
+    let store: LeanStore
+    let onSelect: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .foregroundColor(store.adaptiveTheme.secondaryText)
+                .frame(width: 14)
+
+            Text(match.primaryText)
+                .font(store.leanUIFont.font(size: 12, weight: .regular))
+                .foregroundColor(store.adaptiveTheme.primaryText)
+                .lineLimit(1)
+
+            Spacer()
+
+            Text(match.secondaryText)
+                .font(store.leanUIFont.font(size: 11, weight: .regular))
+                .foregroundColor(store.adaptiveTheme.secondaryText)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            isSelected
+                ? (store.adaptiveTheme.isFrameLight ? Color.black.opacity(0.06) : Color.white.opacity(0.12))
+                : Color.clear,
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+    }
+}
+
 private struct InteractiveIconButton: View {
     let systemImage: String
     let helpText: String
     let size: CGFloat
     let iconSize: CGFloat
     let color: Color
+    var hoverColor: Color? = nil
+    var disabledColor: Color? = nil
+    var hoverBackground: Color? = nil
+    var pressedBackground: Color? = nil
     let isDark: Bool
     var isEnabled = true
     let action: () -> Void
@@ -559,20 +645,34 @@ private struct InteractiveIconButton: View {
     @State private var isHovered = false
     @State private var isPressed = false
 
+    private var foregroundColor: Color {
+        guard isEnabled else {
+            return disabledColor ?? color.opacity(0.35)
+        }
+        if isHovered {
+            return hoverColor ?? (isDark ? Color.white : Color.black)
+        }
+        return color
+    }
+
+    private var backgroundColor: Color {
+        if isPressed {
+            return pressedBackground ?? (isDark ? Color.white.opacity(0.18) : Color.black.opacity(0.12))
+        }
+        if isHovered {
+            return hoverBackground ?? (isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.06))
+        }
+        return Color.clear
+    }
+
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: iconSize, weight: .medium))
-                .foregroundColor(
-                    isEnabled
-                        ? (isHovered ? (isDark ? .white : .black) : color)
-                        : color.opacity(0.35)
-                )
+                .foregroundColor(foregroundColor)
                 .frame(width: size, height: size)
                 .background(
-                    (isPressed
-                        ? (isDark ? Color.white.opacity(0.18) : Color.black.opacity(0.12))
-                        : (isHovered ? (isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.06)) : Color.clear)),
+                    backgroundColor,
                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                 )
                 .scaleEffect(isPressed ? 0.92 : (isHovered ? 1.05 : 1.0))

@@ -64,13 +64,14 @@ struct OmnibarView: View {
                     }
             }
         )
+        .background(OmnibarFocusAcquirer())
         .animation(.easeOut(duration: 0.12), value: showSuggestions)
         .onAppear(perform: handleAppear)
         .onChange(of: store.isFloatingOmnibarVisible) { _, isVisible in
             handleFloatingVisibilityChange(isVisible)
         }
         .onReceive(NotificationCenter.default.publisher(for: .focusAddress)) { _ in
-            isFieldFocused = true
+            requestFieldFocus()
         }
         .onChange(of: isFieldFocused) { _, focused in
             if !focused && isFloating && store.isFloatingOmnibarVisible {
@@ -107,6 +108,7 @@ struct OmnibarView: View {
                     Text("Search or Enter URL...")
                         .font(store.leanUIFont.font(size: 14))
                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+                        .allowsHitTesting(false)
                 }
 
                 TextField("", text: $query)
@@ -194,7 +196,7 @@ struct OmnibarView: View {
                 query = store.selectedTab?.url?.absoluteString ?? ""
             }
         }
-        isFieldFocused = true
+        requestFieldFocus()
     }
 
     private func handleFloatingVisibilityChange(_ isVisible: Bool) {
@@ -205,6 +207,19 @@ struct OmnibarView: View {
             } else {
                 query = store.selectedTab?.url?.absoluteString ?? ""
             }
+            requestFieldFocus()
+        }
+    }
+
+    private func requestFieldFocus() {
+        isFieldFocused = true
+        DispatchQueue.main.async {
+            isFieldFocused = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            isFieldFocused = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
             isFieldFocused = true
         }
     }
@@ -261,11 +276,67 @@ struct OmnibarView: View {
             store.dismissNewTabOmnibar()
         }
 
+        guard let targetURL = AddressResolver.resolve(trimmed) else { return }
+
         if store.floatingOmnibarMode == .newTab && store.selectedTab?.url != nil {
-            store.newTab()
-            store.selectedTab?.submit(trimmed)
+            store.newTab(url: targetURL)
         } else {
-            store.selectedTab?.submit(trimmed)
+            store.selectedTab?.load(targetURL)
         }
+    }
+}
+
+// MARK: - Native AppKit Focus Acquirer
+private struct OmnibarFocusAcquirer: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            focusTextField(near: view)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            focusTextField(near: view)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            focusTextField(near: view)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            focusTextField(near: nsView)
+        }
+    }
+
+    private func focusTextField(near view: NSView) {
+        guard let window = view.window else { return }
+        var current: NSView? = view
+        while let parent = current?.superview {
+            if let tf = findTextField(in: parent) {
+                if window.firstResponder != tf && !(window.firstResponder is NSTextView && (window.firstResponder as? NSTextView)?.delegate === tf) {
+                    window.makeFirstResponder(tf)
+                }
+                return
+            }
+            current = parent
+        }
+        if let tf = findTextField(in: window.contentView) {
+            if window.firstResponder != tf && !(window.firstResponder is NSTextView && (window.firstResponder as? NSTextView)?.delegate === tf) {
+                window.makeFirstResponder(tf)
+            }
+        }
+    }
+
+    private func findTextField(in view: NSView?) -> NSTextField? {
+        guard let view = view else { return nil }
+        if let tf = view as? NSTextField, tf.isEditable {
+            return tf
+        }
+        for sub in view.subviews {
+            if let found = findTextField(in: sub) {
+                return found
+            }
+        }
+        return nil
     }
 }

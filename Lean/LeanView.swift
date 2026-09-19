@@ -6,38 +6,109 @@ struct LeanView: View {
     @State private var findQuery = ""
     @State private var hasSetupKeyMonitor = false
 
+    @State private var isZenTopBarRevealed = false
+    @State private var hideTopBarWorkItem: DispatchWorkItem?
+
+    private var isTopBarVisible: Bool {
+        if !store.enableZenMode {
+            return true
+        }
+        if store.selectedTab?.url == nil {
+            return true
+        }
+        return isZenTopBarRevealed
+    }
+
+    private func setZenHoverState(isHoveringTop: Bool) {
+        if isHoveringTop {
+            hideTopBarWorkItem?.cancel()
+            hideTopBarWorkItem = nil
+            if !isZenTopBarRevealed {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                    isZenTopBarRevealed = true
+                }
+            }
+        } else {
+            hideTopBarWorkItem?.cancel()
+            let item = DispatchWorkItem {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                    isZenTopBarRevealed = false
+                }
+            }
+            hideTopBarWorkItem = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: item)
+        }
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            // Top Bar on the exact same horizontal level as traffic lights
-            TopBarView(store: store)
-                .zIndex(20)
-
-            // Main Content Area
-            ZStack {
-                store.themeColors.windowBackground
-                    .ignoresSafeArea()
-
-                if let tab = store.selectedTab {
-                    if tab.url != nil {
-                        // Web Page Loaded
-                        ZStack(alignment: .topTrailing) {
-                            WebView(tab: tab)
-                                .id(tab.id)
-
-                            // 3x3 Dot Matrix Loader in the center while page is loading
-                            if tab.isLoading {
-                                ZStack {
-                                    DotMatrixLoader(color: store.themeColors.secondaryText)
-                                }
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .allowsHitTesting(false)
-                                .transition(.opacity)
+        ZStack(alignment: .top) {
+            VStack(spacing: 0) {
+                // Top Bar - In Zen mode, disappears and reveals on hover
+                if isTopBarVisible {
+                    TopBarView(store: store)
+                        .onHover { hovering in
+                            if store.enableZenMode {
+                                setZenHoverState(isHoveringTop: hovering)
                             }
+                        }
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .move(edge: .top).combined(with: .opacity)
+                        ))
+                        .zIndex(20)
+                }
+
+                // Main Content Area
+                ZStack {
+                    (store.enableWindowBorder ? Color.clear : store.themeColors.windowBackground)
+                        .ignoresSafeArea()
+
+                    let cardSidePadding: CGFloat = store.enableWindowBorder ? store.windowBorderWidth : 0
+                    let cardBottomPadding: CGFloat = store.enableWindowBorder ? store.windowBorderWidth : 0
+                    let cardTopPadding: CGFloat = store.enableWindowBorder ? (isTopBarVisible ? 2 : store.windowBorderWidth) : 0
+
+                    if let tab = store.selectedTab {
+                        if tab.isSettingsPage {
+                            SettingsView(store: store)
+                                .id(tab.id)
+                                .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
+                                        .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
+                                )
+                                .shadow(
+                                    color: store.adaptiveTheme.webCardShadow,
+                                    radius: store.adaptiveTheme.webCardShadowRadius,
+                                    x: 0,
+                                    y: store.adaptiveTheme.isFrameLight ? 2 : 3
+                                )
+                                .padding(.horizontal, cardSidePadding)
+                                .padding(.bottom, cardBottomPadding)
+                                .padding(.top, cardTopPadding)
+                        } else if tab.url != nil {
+                            // Web Page Loaded
+                            ZStack(alignment: .topTrailing) {
+                                WebView(tab: tab)
+                                    .id(tab.id)
 
                             if store.showsFindBar {
                                 floatingFindBar
                             }
                         }
+                        .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
+                                .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
+                        )
+                        .shadow(
+                            color: store.adaptiveTheme.webCardShadow,
+                            radius: store.adaptiveTheme.webCardShadowRadius,
+                            x: 0,
+                            y: store.adaptiveTheme.isFrameLight ? 2 : 3
+                        )
+                        .padding(.horizontal, cardSidePadding)
+                        .padding(.bottom, cardBottomPadding)
+                        .padding(.top, cardTopPadding)
                     } else {
                         // New Tab Empty Canvas
                         ZStack {
@@ -68,58 +139,96 @@ struct LeanView: View {
                             }
                             .animation(.spring(response: 0.34, dampingFraction: 0.82), value: store.isNewTabOmnibarFloating)
                         }
+                        .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
+                                .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
+                        )
+                        .shadow(
+                            color: store.adaptiveTheme.webCardShadow,
+                            radius: store.adaptiveTheme.webCardShadowRadius,
+                            x: 0,
+                            y: store.adaptiveTheme.isFrameLight ? 2 : 3
+                        )
+                        .padding(.horizontal, cardSidePadding)
+                        .padding(.bottom, cardBottomPadding)
+                        .padding(.top, cardTopPadding)
                     }
-                }
-
-                // Floating Omnibar Overlay (Cmd+T / Cmd+L / Active Tab Pill Click)
-                if store.isFloatingOmnibarVisible {
-                    ZStack(alignment: .top) {
-                        Color.black.opacity(0.0001)
-                            .contentShape(Rectangle())
-                            .ignoresSafeArea()
-                            .onTapGesture {
-                                store.dismissFloatingOmnibar()
-                            }
-
-                        VStack(spacing: 0) {
-                            Spacer().frame(height: 72)
-                            OmnibarView(store: store, isFloating: true)
-                        }
-                    }
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .top)),
-                        removal: .opacity
-                    ))
-                    .animation(.easeOut(duration: 0.12), value: store.isFloatingOmnibarVisible)
-                }
-
-                // Ctrl+Tab Thumbnail Switcher Overlay
-                if store.isTabSwitcherVisible {
-                    TabSwitcherView(store: store)
-                        .transition(.asymmetric(
-                            insertion: .scale(scale: 0.96).combined(with: .opacity),
-                            removal: .scale(scale: 0.98).combined(with: .opacity)
-                        ))
-                        .animation(.spring(response: 0.22, dampingFraction: 0.84), value: store.isTabSwitcherVisible)
-                        .zIndex(100)
-                }
-
-                // When inline URL bar is being edited, clicking anywhere in the content area collapses it
-                if store.isInlineURLEditing {
-                    Color.black.opacity(0.0001)
-                        .contentShape(Rectangle())
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            store.dismissInlineURLEditing()
-                        }
-                        .zIndex(15)
                 }
             }
         }
+
+        // Floating Omnibar Overlay (Cmd+T / Cmd+L / Active Tab Pill Click)
+        if store.isFloatingOmnibarVisible {
+            ZStack(alignment: .top) {
+                Color.black.opacity(0.0001)
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        store.dismissFloatingOmnibar()
+                    }
+
+                VStack(spacing: 0) {
+                    Spacer().frame(height: 72)
+                    OmnibarView(store: store, isFloating: true)
+                }
+            }
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .top)),
+                removal: .opacity
+            ))
+            .animation(.easeOut(duration: 0.12), value: store.isFloatingOmnibarVisible)
+            .zIndex(150)
+        }
+
+        // Ctrl+Tab Thumbnail Switcher Overlay
+        if store.isTabSwitcherVisible {
+            TabSwitcherView(store: store)
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.96).combined(with: .opacity),
+                    removal: .scale(scale: 0.98).combined(with: .opacity)
+                ))
+                .animation(.spring(response: 0.22, dampingFraction: 0.84), value: store.isTabSwitcherVisible)
+                .zIndex(100)
+        }
+
+        // When inline URL bar is being edited, clicking anywhere in the content area collapses it
+        if store.isInlineURLEditing {
+            Color.black.opacity(0.0001)
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .onTapGesture {
+                    store.dismissInlineURLEditing()
+                }
+                .zIndex(15)
+        }
+
+            // Top Hover Detection Zone (invisible trigger active at top edge in Zen mode when top bar is hidden)
+            if store.enableZenMode && !isTopBarVisible {
+                Color.clear
+                    .frame(height: 28)
+                    .contentShape(Rectangle())
+                    .onHover { hovering in
+                        if hovering {
+                            setZenHoverState(isHoveringTop: true)
+                        }
+                    }
+                    .zIndex(50)
+            }
+        }
         .ignoresSafeArea(.all)
-        .background(store.themeColors.windowBackground)
-        .background(WindowConfigurator(store: store))
+        .background(
+            store.enableWindowBorder
+                ? AnyView(store.effectiveZenColor.ignoresSafeArea())
+                : AnyView(store.themeColors.windowBackground.ignoresSafeArea())
+        )
+        .background(WindowConfigurator(store: store, isTopBarVisible: isTopBarVisible))
         .preferredColorScheme(store.colorScheme)
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: isTopBarVisible)
+        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.enableZenMode)
+        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.enableWindowBorder)
+        .animation(.easeInOut(duration: 0.2), value: store.effectiveZenColor)
+        .animation(.spring(response: 0.24, dampingFraction: 0.8), value: store.windowBorderWidth)
         .onAppear {
             setupKeyMonitor()
         }
@@ -339,6 +448,7 @@ private struct WebView: NSViewRepresentable {
 
 private struct WindowConfigurator: NSViewRepresentable {
     @ObservedObject var store: LeanStore
+    let isTopBarVisible: Bool
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -361,9 +471,21 @@ private struct WindowConfigurator: NSViewRepresentable {
         window.styleMask.insert(.fullSizeContentView)
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
-        window.backgroundColor = store.isDarkMode
-            ? NSColor.black
-            : NSColor.white
+        window.backgroundColor = store.enableWindowBorder
+            ? NSColor(store.effectiveZenColor)
+            : (store.isDarkMode ? NSColor.black : NSColor.white)
+        window.appearance = store.enableWindowBorder
+            ? (store.adaptiveTheme.isFrameLight ? NSAppearance(named: .aqua) : NSAppearance(named: .darkAqua))
+            : (store.isDarkMode ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua))
+
+        let targetAlpha: CGFloat = (!store.enableZenMode || isTopBarVisible) ? 1.0 : 0.0
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.22
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.standardWindowButton(.closeButton)?.animator().alphaValue = targetAlpha
+            window.standardWindowButton(.miniaturizeButton)?.animator().alphaValue = targetAlpha
+            window.standardWindowButton(.zoomButton)?.animator().alphaValue = targetAlpha
+        }
     }
 }
 

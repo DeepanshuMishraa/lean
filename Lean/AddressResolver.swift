@@ -5,6 +5,11 @@ enum AddressResolver {
         let value = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
 
+        let lower = value.lowercased()
+        if lower == "lean://settings" || lower == "settings" || lower == "about:settings" || lower == "chrome://settings" {
+            return URL(string: "lean://settings")
+        }
+
         if let url = webURL(from: value) {
             return url
         }
@@ -17,7 +22,7 @@ enum AddressResolver {
     private static func webURL(from value: String) -> URL? {
         if let components = URLComponents(string: value),
            let scheme = components.scheme?.lowercased(),
-           ["http", "https"].contains(scheme),
+           ["http", "https", "lean"].contains(scheme),
            components.host != nil {
             return components.url
         }

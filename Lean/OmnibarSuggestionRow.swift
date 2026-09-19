@@ -113,6 +113,9 @@ private struct BrandFaviconView: View {
     }
 
     private var brand: BrandType {
+        if match.isSearch {
+            return .google
+        }
         let text = (match.primaryText + " " + match.secondaryText + " " + match.targetURL.absoluteString).lowercased()
         if text.contains("youtube") || text.contains("youtu.be") { return .youtube }
         if text.contains("x.com") || text.contains("twitter") || match.primaryText.lowercased().contains("on x") { return .x }
@@ -124,7 +127,6 @@ private struct BrandFaviconView: View {
         if text.contains("apple") { return .apple }
         if text.contains("google") { return .google }
         if text.contains("contact") || text.contains("team") { return .contact }
-        if match.isSearch { return .search }
         return .generic
     }
 
@@ -190,9 +192,7 @@ private struct BrandFaviconView: View {
                 .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
 
         case .search:
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
+            GoogleFaviconView()
 
         case .generic:
             if match.isSwitchToTab {
@@ -209,29 +209,32 @@ private struct BrandFaviconView: View {
 }
 
 private struct GoogleFaviconView: View {
-    @State private var image: NSImage?
+    private static let googleSVGData: Data = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M23.745 12.27c0-.7-.07-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.2 3.665-9.17z"/>
+        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.12-6.72-4.97H1.23v3.13C3.26 21.32 7.34 24 12 24z"/>
+        <path fill="#FBBC05" d="M5.28 14.23c-.25-.72-.38-1.49-.38-2.23s.13-1.51.38-2.23V6.64H1.23C.45 8.19 0 9.99 0 12s.45 3.81 1.23 5.36l4.05-3.13z"/>
+        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.68 1.23 6.64l4.05 3.13c.95-2.85 3.6-4.97 6.72-4.97z"/>
+    </svg>
+    """.data(using: .utf8)!
+
+    private static let googleImage: NSImage? = {
+        guard let img = NSImage(data: googleSVGData) else { return nil }
+        img.size = NSSize(width: 16, height: 16)
+        return img
+    }()
 
     var body: some View {
-        Group {
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-            } else {
-                Image(systemName: "globe")
-                    .foregroundColor(Color(red: 66/255, green: 133/255, blue: 244/255))
-            }
-        }
-        .frame(width: 16, height: 16)
-        .onAppear {
-            let googleURL = URL(string: "https://www.google.com")
-            if let cached = FaviconService.shared.cachedFavicon(for: googleURL) {
-                image = cached
-                return
-            }
-            FaviconService.shared.loadFavicon(for: googleURL) { loadedImage in
-                image = loadedImage
-            }
+        if let img = Self.googleImage {
+            Image(nsImage: img)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 16, height: 16)
+        } else {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(Color(red: 66/255, green: 133/255, blue: 244/255))
+                .frame(width: 16, height: 16)
         }
     }
 }

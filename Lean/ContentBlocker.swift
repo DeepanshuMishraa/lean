@@ -3,6 +3,7 @@ import WebKit
 @MainActor
 enum ContentBlocker {
     private static let identifier = "BuiltInBlocker"
+    private static var cachedRuleList: WKContentRuleList?
 
     private static let rules = #"""
     [
@@ -39,12 +40,16 @@ enum ContentBlocker {
     """#
 
     static func ruleList() async -> WKContentRuleList? {
+        if let cachedRuleList {
+            return cachedRuleList
+        }
         guard let store = WKContentRuleListStore.default() else { return nil }
         if let cached = try? await store.contentRuleList(forIdentifier: identifier) {
+            cachedRuleList = cached
             return cached
         }
 
-        return try? await withCheckedThrowingContinuation { continuation in
+        let compiled = try? await withCheckedThrowingContinuation { continuation in
             store.compileContentRuleList(
                 forIdentifier: identifier,
                 encodedContentRuleList: rules
@@ -56,6 +61,8 @@ enum ContentBlocker {
                 }
             }
         }
+        cachedRuleList = compiled
+        return compiled
     }
 }
 

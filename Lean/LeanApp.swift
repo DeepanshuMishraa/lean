@@ -14,9 +14,5 @@ struct LeanApp: App {
         .commands {
             LeanCommands(store: store)
         }
-
-        Settings {
-            SettingsView(store: store)
-        }
     }
 }

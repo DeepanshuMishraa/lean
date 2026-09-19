@@ -1,109 +1,82 @@
 import SwiftUI
 
-// MARK: - Font Picker
-
-struct FontPickerRow: View {
-    let title: String
-    @Binding var selection: LeanFont
-    let uiFont: LeanFont
+// MARK: - Settings Group Container
+/// A continuous, quiet surface that groups related settings with subtle hairline borders and dividers.
+struct SettingsGroup<Content: View>: View {
     let isDark: Bool
-
-    @State private var isPresented = false
-
-    var body: some View {
-        HStack {
-            Text(title)
-                .font(uiFont.font(size: 13, weight: .medium))
-                .foregroundColor(primaryText)
-
-            Spacer()
-
-            Button {
-                isPresented.toggle()
-            } label: {
-                HStack {
-                    Text(selection.rawValue)
-                        .font(uiFont.font(size: 13, weight: .medium))
-                    Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
-                }
-                .foregroundColor(primaryText)
-                .padding(.horizontal, 10)
-                .frame(width: 160, height: 32)
-                .background(
-                    isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.06),
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                )
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $isPresented) {
-                VStack(spacing: 2) {
-                    ForEach(LeanFont.allCases) { choice in
-                        Button {
-                            selection = choice
-                            isPresented = false
-                        } label: {
-                            HStack {
-                                Text(choice.rawValue)
-                                    .font(choice.font(size: 14, weight: .medium))
-                                Spacer()
-                                if selection == choice {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 10, weight: .bold))
-                                }
-                            }
-                            .foregroundColor(primaryText)
-                            .padding(.horizontal, 10)
-                            .frame(width: 220, height: 32)
-                            .background(
-                                selection == choice
-                                    ? (isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.06))
-                                    : Color.clear,
-                                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(6)
-            }
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 48)
-    }
-
-    private var primaryText: Color {
-        isDark ? Color(white: 0.96) : Color(white: 0.12)
-    }
-}
-
-// MARK: - Section Container
-
-struct SettingsSection<Content: View>: View {
-    let title: String
-    let uiFont: LeanFont
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text(title)
-                .font(uiFont.font(size: 11, weight: .bold))
-                .foregroundColor(Color(white: 0.45))
-                .textCase(.uppercase)
-                .tracking(0.7)
-
+        VStack(spacing: 0) {
             content()
         }
+        .background(
+            isDark ? Color.white.opacity(0.035) : Color.black.opacity(0.02),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.05), lineWidth: 0.75)
+        )
     }
 }
 
-// MARK: - Custom Minimal Segmented Picker (Non-native, bespoke craft)
+// MARK: - Settings Row Divider
+struct SettingsRowDivider: View {
+    let isDark: Bool
+    var inset: CGFloat = 16
 
-struct SegmentOption {
+    var body: some View {
+        Rectangle()
+            .fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+            .frame(height: 0.75)
+            .padding(.leading, inset)
+    }
+}
+
+// MARK: - Section Header
+struct SettingsHeaderLabel: View {
+    let title: String
+    let subtitle: String?
+    let uiFont: LeanFont
+    let isDark: Bool
+
+    init(_ title: String, subtitle: String? = nil, uiFont: LeanFont, isDark: Bool) {
+        self.title = title
+        self.subtitle = subtitle
+        self.uiFont = uiFont
+        self.isDark = isDark
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(uiFont.font(size: 11, weight: .semibold))
+                .foregroundColor(isDark ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
+                .textCase(.uppercase)
+                .tracking(0.8)
+
+            if let subtitle = subtitle {
+                Text(subtitle)
+                    .font(uiFont.font(size: 12))
+                    .foregroundColor(isDark ? Color.white.opacity(0.50) : Color.black.opacity(0.50))
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+}
+
+// MARK: - Custom Minimal Segmented Picker with Fluid Geometry Slider
+struct SegmentOption: Identifiable {
     let id: String
     let label: String
-    let icon: String
+    let icon: String?
+
+    init(id: String, label: String, icon: String? = nil) {
+        self.id = id
+        self.label = label
+        self.icon = icon
+    }
 }
 
 struct CustomSegmentedPicker: View {
@@ -113,121 +86,336 @@ struct CustomSegmentedPicker: View {
     let uiFont: LeanFont
     let onSelect: (String) -> Void
 
+    @Namespace private var segmentAnimation
+
     var body: some View {
-        HStack(spacing: 3) {
-            ForEach(options, id: \.id) { opt in
+        HStack(spacing: 2) {
+            ForEach(options) { opt in
                 let isSelected = opt.id == selectedId
-                Button(action: {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                Button {
+                    withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
                         onSelect(opt.id)
                     }
-                }) {
+                } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: opt.icon)
-                            .font(.system(size: 11.5, weight: isSelected ? .semibold : .regular))
+                        if let icon = opt.icon {
+                            Image(systemName: icon)
+                                .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
+                        }
                         Text(opt.label)
                             .font(uiFont.font(size: 12, weight: isSelected ? .semibold : .medium))
                     }
                     .foregroundColor(
                         isSelected
-                            ? (isDark ? .white : Color.black)
+                            ? (isDark ? Color.white : Color.black)
                             : (isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.45))
                     )
                     .frame(maxWidth: .infinity)
-                    .frame(height: 32)
-                    .background(
-                        isSelected
-                            ? (isDark ? Color(red: 44/255, green: 44/255, blue: 48/255) : Color.white)
-                            : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(
-                                isSelected
-                                    ? (isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.08))
-                                    : Color.clear,
-                                lineWidth: 1
-                            )
-                    )
-                    .shadow(
-                        color: isSelected && !isDark ? Color.black.opacity(0.06) : Color.clear,
-                        radius: 2,
-                        y: 1
-                    )
+                    .frame(height: 28)
+                    .background {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(isDark ? Color.white.opacity(0.14) : Color.white)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .stroke(isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08), lineWidth: 0.5)
+                                )
+                                .shadow(color: isDark ? Color.clear : Color.black.opacity(0.05), radius: 2, y: 1)
+                                .matchedGeometryEffect(id: "activeSegment", in: segmentAnimation)
+                        }
+                    }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(3)
+        .padding(2.5)
         .background(
-            isDark ? Color(red: 26/255, green: 26/255, blue: 29/255) : Color(red: 236/255, green: 236/255, blue: 240/255),
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.04),
+            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(isDark ? Color.white.opacity(0.07) : Color.black.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05), lineWidth: 0.5)
         )
     }
 }
 
-// MARK: - Custom Switch / Toggle (Completely Non-Native, High-End Pill Design)
-
+// MARK: - Custom Minimal Switch / Toggle
 struct CustomToggleRow: View {
     let title: String
-    let subtitle: String
+    let subtitle: String?
     @Binding var isOn: Bool
     let isDark: Bool
     let uiFont: LeanFont
 
+    @State private var isHovered = false
+
+    init(
+        title: String,
+        subtitle: String? = nil,
+        isOn: Binding<Bool>,
+        isDark: Bool,
+        uiFont: LeanFont
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self._isOn = isOn
+        self.isDark = isDark
+        self.uiFont = uiFont
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2.5) {
                 Text(title)
                     .font(uiFont.font(size: 13, weight: .medium))
-                    .foregroundColor(isDark ? Color.white : Color(white: 0.12))
-                Text(subtitle)
-                    .font(uiFont.font(size: 11))
-                    .foregroundColor(isDark ? Color(white: 0.50) : Color(white: 0.48))
-            }
+                    .foregroundColor(isDark ? Color(white: 0.94) : Color(white: 0.12))
 
-            Spacer()
-
-            // Bespoke sleek capsule switch
-            Button(action: {
-                withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
-                    isOn.toggle()
-                }
-            }) {
-                ZStack(alignment: isOn ? .trailing : .leading) {
-                    Capsule()
-                        .fill(
-                            isOn
-                                ? (isDark ? Color.white : Color.black)
-                                : (isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.10))
-                        )
-                        .frame(width: 38, height: 22)
-
-                    Circle()
-                        .fill(
-                            isOn
-                                ? (isDark ? Color.black : Color.white)
-                                : (isDark ? Color.white.opacity(0.7) : Color.white)
-                        )
-                        .frame(width: 16, height: 16)
-                        .padding(3)
-                        .shadow(color: Color.black.opacity(0.15), radius: 1, y: 1)
+                if let subtitle = subtitle {
+                    Text(subtitle)
+                        .font(uiFont.font(size: 11.5))
+                        .foregroundColor(isDark ? Color(white: 0.50) : Color(white: 0.48))
+                        .lineSpacing(1.5)
                 }
             }
-            .buttonStyle(.plain)
+
+            Spacer(minLength: 16)
+
+            // Tactile Minimal Capsule Switch
+            ZStack(alignment: isOn ? .trailing : .leading) {
+                Capsule()
+                    .fill(
+                        isOn
+                            ? (isDark ? Color.white : Color.black)
+                            : (isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.10))
+                    )
+                    .frame(width: 36, height: 21)
+
+                Circle()
+                    .fill(
+                        isOn
+                            ? (isDark ? Color.black : Color.white)
+                            : (isDark ? Color.white.opacity(0.75) : Color.white)
+                    )
+                    .frame(width: 15, height: 15)
+                    .padding(3)
+                    .shadow(color: Color.black.opacity(0.18), radius: 1, y: 1)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .contentShape(Rectangle())
+        .background(
+            isHovered
+                ? (isDark ? Color.white.opacity(0.02) : Color.black.opacity(0.015))
+                : Color.clear
+        )
+        .onHover { isHovered = $0 }
         .onTapGesture {
-            withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
                 isOn.toggle()
             }
         }
+    }
+}
+
+// MARK: - Font Picker Row
+struct FontPickerRow: View {
+    let title: String
+    let subtitle: String?
+    @Binding var selection: LeanFont
+    let uiFont: LeanFont
+    let isDark: Bool
+
+    @State private var isPresented = false
+    @State private var isHovered = false
+
+    init(
+        title: String,
+        subtitle: String? = nil,
+        selection: Binding<LeanFont>,
+        uiFont: LeanFont,
+        isDark: Bool
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self._selection = selection
+        self.uiFont = uiFont
+        self.isDark = isDark
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2.5) {
+                Text(title)
+                    .font(uiFont.font(size: 13, weight: .medium))
+                    .foregroundColor(primaryText)
+
+                if let subtitle = subtitle {
+                    Text(subtitle)
+                        .font(uiFont.font(size: 11.5))
+                        .foregroundColor(secondaryText)
+                }
+            }
+
+            Spacer(minLength: 16)
+
+            Button {
+                isPresented.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    Text(selection.rawValue)
+                        .font(selection.font(size: 12.5, weight: .medium))
+                        .foregroundColor(primaryText)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(secondaryText)
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 28)
+                .background(
+                    isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.05),
+                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06), lineWidth: 0.5)
+                )
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+                VStack(spacing: 1) {
+                    ForEach(LeanFont.allCases) { fontChoice in
+                        let isChosen = selection == fontChoice
+                        Button {
+                            withAnimation(.spring(response: 0.20, dampingFraction: 0.8)) {
+                                selection = fontChoice
+                            }
+                            isPresented = false
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text(fontChoice.rawValue)
+                                    .font(fontChoice.font(size: 13, weight: isChosen ? .semibold : .regular))
+                                Spacer()
+                                if isChosen {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(primaryText)
+                                }
+                            }
+                            .foregroundColor(primaryText)
+                            .padding(.horizontal, 10)
+                            .frame(width: 200, height: 30)
+                            .background(
+                                isChosen
+                                    ? (isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.06))
+                                    : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(5)
+                .background(isDark ? Color(white: 0.12) : Color(white: 0.98))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .background(
+            isHovered
+                ? (isDark ? Color.white.opacity(0.02) : Color.black.opacity(0.015))
+                : Color.clear
+        )
+        .onHover { isHovered = $0 }
+    }
+
+    private var primaryText: Color {
+        isDark ? Color(white: 0.94) : Color(white: 0.12)
+    }
+
+    private var secondaryText: Color {
+        isDark ? Color(white: 0.50) : Color(white: 0.48)
+    }
+}
+
+// MARK: - Frame Width Picker Row
+struct FrameWidthPickerRow: View {
+    @ObservedObject var store: LeanStore
+    let isDark: Bool
+    let uiFont: LeanFont
+
+    private let widths: [(label: String, width: CGFloat, previewLine: CGFloat)] = [
+        ("Thin", 5.0, 1.5),
+        ("Normal", 8.0, 3.0),
+        ("Thick", 12.0, 5.0)
+    ]
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2.5) {
+                Text("Border thickness")
+                    .font(uiFont.font(size: 13, weight: .medium))
+                    .foregroundColor(isDark ? Color(white: 0.94) : Color(white: 0.12))
+                Text("Outer margin width around the web page canvas")
+                    .font(uiFont.font(size: 11.5))
+                    .foregroundColor(isDark ? Color(white: 0.50) : Color(white: 0.48))
+            }
+
+            Spacer(minLength: 16)
+
+            HStack(spacing: 2) {
+                ForEach(widths, id: \.width) { item in
+                    let isSelected = store.windowBorderWidth == item.width
+                    Button {
+                        withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
+                            store.windowBorderWidth = item.width
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Capsule()
+                                .fill(isSelected ? (isDark ? Color.white : Color.black) : (isDark ? Color.white.opacity(0.4) : Color.black.opacity(0.35)))
+                                .frame(width: 10, height: item.previewLine)
+
+                            Text(item.label)
+                                .font(uiFont.font(size: 11.5, weight: isSelected ? .semibold : .regular))
+                        }
+                        .foregroundColor(
+                            isSelected
+                                ? (isDark ? Color.white : Color.black)
+                                : (isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.45))
+                        )
+                        .padding(.horizontal, 9)
+                        .frame(height: 26)
+                        .background(
+                            isSelected
+                                ? (isDark ? Color.white.opacity(0.14) : Color.white)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(
+                                    isSelected
+                                        ? (isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08))
+                                        : Color.clear,
+                                    lineWidth: 0.5
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(2)
+            .background(
+                isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.04),
+                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+            )
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 }

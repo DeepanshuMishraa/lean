@@ -46,6 +46,21 @@ struct LeanCommands: Commands {
                 store.toggleTheme()
             }
             .keyboardShortcut("d", modifiers: [.command, .shift])
+
+            Button(store.enableZenMode ? "Exit Zen Mode" : "Enter Zen Mode") {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    store.enableZenMode.toggle()
+                }
+            }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+
+            Button(store.enableWindowBorder ? "Hide Window Frame" : "Show Window Frame") {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    store.enableWindowBorder.toggle()
+                }
+            }
+            .keyboardShortcut("b", modifiers: [.command, .shift])
+
             Divider()
             Button("Zoom In") { store.selectedTab?.zoomIn() }
                 .keyboardShortcut("+", modifiers: .command)

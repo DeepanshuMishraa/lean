@@ -1,0 +1,33 @@
+name: Lean
+options:
+  bundleIdPrefix: com.dipxsy
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+targets:
+  Lean:
+    type: application
+    platform: macOS
+    sources:
+      - Lean
+    settings:
+      base:
+        PRODUCT_NAME: Lean
+        PRODUCT_BUNDLE_IDENTIFIER: com.dipxsy.lean
+        CODE_SIGN_ENTITLEMENTS: Lean/Lean.entitlements
+  LeanTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - LeanTests
+    dependencies:
+      - target: Lean
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dipxsy.lean.tests

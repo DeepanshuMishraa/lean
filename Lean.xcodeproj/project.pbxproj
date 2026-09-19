@@ -1,0 +1,499 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		099C3F07574FA15E03AB213A /* ContentBlocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14191AAB2D796CC5DE1EA6CB /* ContentBlocker.swift */; };
+		14A2E99A6C34753A725F173B /* SmoothScrollingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8236FF60B8280FBD4BFA5233 /* SmoothScrollingTests.swift */; };
+		1D9FED4451F17326C14D6A43 /* OmnibarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE299D40B9F2B4D61F3D41AD /* OmnibarService.swift */; };
+		2B6C54991EBAF1358B5B6F5F /* FaviconService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 169383803BA6823BA5839E0D /* FaviconService.swift */; };
+		33EFA190F234F3C2C2A3D380 /* LeanTabTitleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 990C495395F1F1C48EE3ABDA /* LeanTabTitleTests.swift */; };
+		3C148F2CAF286BDD2E6095F3 /* SettingsControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA97354673D3289795AA33C7 /* SettingsControls.swift */; };
+		4D642F93D1BCE6BACD83B656 /* PageLoadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F223D3E0E5D21A9B6965446 /* PageLoadingTests.swift */; };
+		571263C8F841874C413F13EB /* LeanTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D34204B30CD8161D2E590DF /* LeanTheme.swift */; };
+		5833C030B039CAC18AB17D73 /* PageScripts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F359A809C7FBA774892C62A2 /* PageScripts.swift */; };
+		5A638900363577A489504B7F /* DotMatrixLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27EC5E6F10DEA6F39123642 /* DotMatrixLoader.swift */; };
+		5A95D7EC207A24098228BBF3 /* LeanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CABED7395D472182B5B8279 /* LeanStore.swift */; };
+		6082FA83A361BE568DBBD304 /* AddressResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 329359943D08761604195E40 /* AddressResolverTests.swift */; };
+		60D4BC2DA22051A477CFB208 /* TopBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55ACE65E20A203180C11BDDD /* TopBarView.swift */; };
+		69AC4FF3AD87A8C412AB8AA2 /* TabFaviconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E570BC18AD372821AB350BC /* TabFaviconView.swift */; };
+		78C6CF86E4E44D9D9BCE3E8E /* SettingsWindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84A5B4BCED207122DB77E61C /* SettingsWindowManager.swift */; };
+		850717383D672DE296316A1A /* TabDisplayModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45114A1E37748C7110643D1C /* TabDisplayModeTests.swift */; };
+		85AF75933CD5073D9F2E185F /* AddressResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86BD95EC684E0650335C24A2 /* AddressResolver.swift */; };
+		9F7CDF17FBB0540000928EA0 /* OmnibarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AC627B2D3E8E4EB789B7523 /* OmnibarView.swift */; };
+		B0F0B41EACFCFE4F5B932665 /* LeanApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E216B57DF202061DC88FE6D /* LeanApp.swift */; };
+		B2BE76A97BB55360B3E12B92 /* FontSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B6255463FA3D1604089AAF5 /* FontSettingsTests.swift */; };
+		BDA7E266340C8AF371134E07 /* LeanTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFACE78AD721D215A84F3FCD /* LeanTab.swift */; };
+		CFA967BA5CF33A8F4C36B321 /* OmnibarSuggestionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7FCB01A3F3CCDE9AA9530E /* OmnibarSuggestionRow.swift */; };
+		D8DA1C37849FCBD67C9EE9DF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A848AF7624C91DF439D4069E /* SettingsView.swift */; };
+		E50C5126DF34E590F29F4815 /* TabSwitcherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67C2A4D475488A80C44F21C /* TabSwitcherView.swift */; };
+		E5BFC6064A14CB1E7A7C4D03 /* TabStripScrollSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECBB6F58B56C5F78D6616416 /* TabStripScrollSupport.swift */; };
+		EF81104AE976E2079F2656FE /* LeanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53149805E8E44A5ECCE884F3 /* LeanView.swift */; };
+		F20F5A75FB1AE3B3F4EFF939 /* OmnibarServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79752CAC905E311310040C7 /* OmnibarServiceTests.swift */; };
+		F8F072CF63D139768651B686 /* LeanCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0848E1405C94F6D577AC6C4F /* LeanCommands.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		11EDB3269723DC57B17E0DD0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AF61B94AE0F50A9E164C2C6B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F6DA7C4D542CC683D02D9F4F;
+			remoteInfo = Lean;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0848E1405C94F6D577AC6C4F /* LeanCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanCommands.swift; sourceTree = "<group>"; };
+		0E216B57DF202061DC88FE6D /* LeanApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanApp.swift; sourceTree = "<group>"; };
+		14191AAB2D796CC5DE1EA6CB /* ContentBlocker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentBlocker.swift; sourceTree = "<group>"; };
+		169383803BA6823BA5839E0D /* FaviconService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconService.swift; sourceTree = "<group>"; };
+		329359943D08761604195E40 /* AddressResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressResolverTests.swift; sourceTree = "<group>"; };
+		3CABED7395D472182B5B8279 /* LeanStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanStore.swift; sourceTree = "<group>"; };
+		45114A1E37748C7110643D1C /* TabDisplayModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabDisplayModeTests.swift; sourceTree = "<group>"; };
+		4C7FCB01A3F3CCDE9AA9530E /* OmnibarSuggestionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmnibarSuggestionRow.swift; sourceTree = "<group>"; };
+		53149805E8E44A5ECCE884F3 /* LeanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanView.swift; sourceTree = "<group>"; };
+		55ACE65E20A203180C11BDDD /* TopBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopBarView.swift; sourceTree = "<group>"; };
+		5F223D3E0E5D21A9B6965446 /* PageLoadingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageLoadingTests.swift; sourceTree = "<group>"; };
+		6AC627B2D3E8E4EB789B7523 /* OmnibarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmnibarView.swift; sourceTree = "<group>"; };
+		6E77360D10ACD1A5D4909F84 /* LeanTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LeanTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7B6255463FA3D1604089AAF5 /* FontSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontSettingsTests.swift; sourceTree = "<group>"; };
+		7D34204B30CD8161D2E590DF /* LeanTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanTheme.swift; sourceTree = "<group>"; };
+		8236FF60B8280FBD4BFA5233 /* SmoothScrollingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmoothScrollingTests.swift; sourceTree = "<group>"; };
+		84A5B4BCED207122DB77E61C /* SettingsWindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowManager.swift; sourceTree = "<group>"; };
+		86BD95EC684E0650335C24A2 /* AddressResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressResolver.swift; sourceTree = "<group>"; };
+		990C495395F1F1C48EE3ABDA /* LeanTabTitleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanTabTitleTests.swift; sourceTree = "<group>"; };
+		9E570BC18AD372821AB350BC /* TabFaviconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabFaviconView.swift; sourceTree = "<group>"; };
+		A848AF7624C91DF439D4069E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		AA93006FF8D0CD999AA120C4 /* Lean.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lean.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BA97354673D3289795AA33C7 /* SettingsControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsControls.swift; sourceTree = "<group>"; };
+		BE299D40B9F2B4D61F3D41AD /* OmnibarService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmnibarService.swift; sourceTree = "<group>"; };
+		C67C2A4D475488A80C44F21C /* TabSwitcherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabSwitcherView.swift; sourceTree = "<group>"; };
+		CFACE78AD721D215A84F3FCD /* LeanTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanTab.swift; sourceTree = "<group>"; };
+		E79752CAC905E311310040C7 /* OmnibarServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmnibarServiceTests.swift; sourceTree = "<group>"; };
+		ECBB6F58B56C5F78D6616416 /* TabStripScrollSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabStripScrollSupport.swift; sourceTree = "<group>"; };
+		F27EC5E6F10DEA6F39123642 /* DotMatrixLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotMatrixLoader.swift; sourceTree = "<group>"; };
+		F359A809C7FBA774892C62A2 /* PageScripts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageScripts.swift; sourceTree = "<group>"; };
+		FB880C0CDF8C1F10386A2F57 /* Lean.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Lean.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		12D0A6D3C98A1B631FF69C1E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AA93006FF8D0CD999AA120C4 /* Lean.app */,
+				6E77360D10ACD1A5D4909F84 /* LeanTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9412FC51AEFBF1C736151F97 = {
+			isa = PBXGroup;
+			children = (
+				F049B1382DD62FA72F0DB4B4 /* Lean */,
+				F55C852ED859D338489E5FA5 /* LeanTests */,
+				12D0A6D3C98A1B631FF69C1E /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		F049B1382DD62FA72F0DB4B4 /* Lean */ = {
+			isa = PBXGroup;
+			children = (
+				86BD95EC684E0650335C24A2 /* AddressResolver.swift */,
+				14191AAB2D796CC5DE1EA6CB /* ContentBlocker.swift */,
+				F27EC5E6F10DEA6F39123642 /* DotMatrixLoader.swift */,
+				169383803BA6823BA5839E0D /* FaviconService.swift */,
+				FB880C0CDF8C1F10386A2F57 /* Lean.entitlements */,
+				0E216B57DF202061DC88FE6D /* LeanApp.swift */,
+				0848E1405C94F6D577AC6C4F /* LeanCommands.swift */,
+				3CABED7395D472182B5B8279 /* LeanStore.swift */,
+				CFACE78AD721D215A84F3FCD /* LeanTab.swift */,
+				7D34204B30CD8161D2E590DF /* LeanTheme.swift */,
+				53149805E8E44A5ECCE884F3 /* LeanView.swift */,
+				BE299D40B9F2B4D61F3D41AD /* OmnibarService.swift */,
+				4C7FCB01A3F3CCDE9AA9530E /* OmnibarSuggestionRow.swift */,
+				6AC627B2D3E8E4EB789B7523 /* OmnibarView.swift */,
+				F359A809C7FBA774892C62A2 /* PageScripts.swift */,
+				BA97354673D3289795AA33C7 /* SettingsControls.swift */,
+				A848AF7624C91DF439D4069E /* SettingsView.swift */,
+				84A5B4BCED207122DB77E61C /* SettingsWindowManager.swift */,
+				9E570BC18AD372821AB350BC /* TabFaviconView.swift */,
+				ECBB6F58B56C5F78D6616416 /* TabStripScrollSupport.swift */,
+				C67C2A4D475488A80C44F21C /* TabSwitcherView.swift */,
+				55ACE65E20A203180C11BDDD /* TopBarView.swift */,
+			);
+			path = Lean;
+			sourceTree = "<group>";
+		};
+		F55C852ED859D338489E5FA5 /* LeanTests */ = {
+			isa = PBXGroup;
+			children = (
+				329359943D08761604195E40 /* AddressResolverTests.swift */,
+				7B6255463FA3D1604089AAF5 /* FontSettingsTests.swift */,
+				990C495395F1F1C48EE3ABDA /* LeanTabTitleTests.swift */,
+				E79752CAC905E311310040C7 /* OmnibarServiceTests.swift */,
+				5F223D3E0E5D21A9B6965446 /* PageLoadingTests.swift */,
+				8236FF60B8280FBD4BFA5233 /* SmoothScrollingTests.swift */,
+				45114A1E37748C7110643D1C /* TabDisplayModeTests.swift */,
+			);
+			path = LeanTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		74E57C195F39DDEA20C70A01 /* LeanTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 515AA73AED7EF770EAB7BD23 /* Build configuration list for PBXNativeTarget "LeanTests" */;
+			buildPhases = (
+				6B04689857053EA066E0A32C /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				90C4FC5660F3226BA48C6A11 /* PBXTargetDependency */,
+			);
+			name = LeanTests;
+			packageProductDependencies = (
+			);
+			productName = LeanTests;
+			productReference = 6E77360D10ACD1A5D4909F84 /* LeanTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		F6DA7C4D542CC683D02D9F4F /* Lean */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4ACABE7D381BFC89F648A737 /* Build configuration list for PBXNativeTarget "Lean" */;
+			buildPhases = (
+				87A678AF7AABA85C421987A2 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Lean;
+			packageProductDependencies = (
+			);
+			productName = Lean;
+			productReference = AA93006FF8D0CD999AA120C4 /* Lean.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AF61B94AE0F50A9E164C2C6B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					74E57C195F39DDEA20C70A01 = {
+						ProvisioningStyle = Automatic;
+					};
+					F6DA7C4D542CC683D02D9F4F = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = DCE4F1358D0EA2ADFA6708B0 /* Build configuration list for PBXProject "Lean" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 9412FC51AEFBF1C736151F97;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 12D0A6D3C98A1B631FF69C1E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				F6DA7C4D542CC683D02D9F4F /* Lean */,
+				74E57C195F39DDEA20C70A01 /* LeanTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		6B04689857053EA066E0A32C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6082FA83A361BE568DBBD304 /* AddressResolverTests.swift in Sources */,
+				B2BE76A97BB55360B3E12B92 /* FontSettingsTests.swift in Sources */,
+				33EFA190F234F3C2C2A3D380 /* LeanTabTitleTests.swift in Sources */,
+				F20F5A75FB1AE3B3F4EFF939 /* OmnibarServiceTests.swift in Sources */,
+				4D642F93D1BCE6BACD83B656 /* PageLoadingTests.swift in Sources */,
+				14A2E99A6C34753A725F173B /* SmoothScrollingTests.swift in Sources */,
+				850717383D672DE296316A1A /* TabDisplayModeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		87A678AF7AABA85C421987A2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				85AF75933CD5073D9F2E185F /* AddressResolver.swift in Sources */,
+				099C3F07574FA15E03AB213A /* ContentBlocker.swift in Sources */,
+				5A638900363577A489504B7F /* DotMatrixLoader.swift in Sources */,
+				2B6C54991EBAF1358B5B6F5F /* FaviconService.swift in Sources */,
+				B0F0B41EACFCFE4F5B932665 /* LeanApp.swift in Sources */,
+				F8F072CF63D139768651B686 /* LeanCommands.swift in Sources */,
+				5A95D7EC207A24098228BBF3 /* LeanStore.swift in Sources */,
+				BDA7E266340C8AF371134E07 /* LeanTab.swift in Sources */,
+				571263C8F841874C413F13EB /* LeanTheme.swift in Sources */,
+				EF81104AE976E2079F2656FE /* LeanView.swift in Sources */,
+				1D9FED4451F17326C14D6A43 /* OmnibarService.swift in Sources */,
+				CFA967BA5CF33A8F4C36B321 /* OmnibarSuggestionRow.swift in Sources */,
+				9F7CDF17FBB0540000928EA0 /* OmnibarView.swift in Sources */,
+				5833C030B039CAC18AB17D73 /* PageScripts.swift in Sources */,
+				3C148F2CAF286BDD2E6095F3 /* SettingsControls.swift in Sources */,
+				D8DA1C37849FCBD67C9EE9DF /* SettingsView.swift in Sources */,
+				78C6CF86E4E44D9D9BCE3E8E /* SettingsWindowManager.swift in Sources */,
+				69AC4FF3AD87A8C412AB8AA2 /* TabFaviconView.swift in Sources */,
+				E5BFC6064A14CB1E7A7C4D03 /* TabStripScrollSupport.swift in Sources */,
+				E50C5126DF34E590F29F4815 /* TabSwitcherView.swift in Sources */,
+				60D4BC2DA22051A477CFB208 /* TopBarView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		90C4FC5660F3226BA48C6A11 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F6DA7C4D542CC683D02D9F4F /* Lean */;
+			targetProxy = 11EDB3269723DC57B17E0DD0 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		13BADDF9DA6506CE4842BD8B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		1ACD8149E76E4E30D414116E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.dipxsy.lean.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lean.app/Contents/MacOS/Lean";
+			};
+			name = Release;
+		};
+		490455B92C879CBF1DCD88BC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Lean/Lean.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.dipxsy.lean;
+				PRODUCT_NAME = Lean;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		4CAC06AB71D5D594A7FFA7FA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.dipxsy.lean.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lean.app/Contents/MacOS/Lean";
+			};
+			name = Debug;
+		};
+		E07CFD9DE515063ACE0A0B08 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		FDE2779389661D05D307F990 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Lean/Lean.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.dipxsy.lean;
+				PRODUCT_NAME = Lean;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4ACABE7D381BFC89F648A737 /* Build configuration list for PBXNativeTarget "Lean" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FDE2779389661D05D307F990 /* Debug */,
+				490455B92C879CBF1DCD88BC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		515AA73AED7EF770EAB7BD23 /* Build configuration list for PBXNativeTarget "LeanTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4CAC06AB71D5D594A7FFA7FA /* Debug */,
+				1ACD8149E76E4E30D414116E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		DCE4F1358D0EA2ADFA6708B0 /* Build configuration list for PBXProject "Lean" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				13BADDF9DA6506CE4842BD8B /* Debug */,
+				E07CFD9DE515063ACE0A0B08 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AF61B94AE0F50A9E164C2C6B /* Project object */;
+}

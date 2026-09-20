@@ -28,6 +28,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     var onStateChange: (() -> Void)?
     var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
     private var progressObserver: NSKeyValueObservation?
+    private var navigationObservers: [NSKeyValueObservation] = []
 
     init(
         dataStore: WKWebsiteDataStore,
@@ -123,6 +124,22 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
                 }
             }
         }
+        navigationObservers = [
+            webView.observe(\.canGoBack, options: [.initial, .new]) { [weak self] webView, _ in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.canGoBack = webView.canGoBack
+                    self.onStateChange?()
+                }
+            },
+            webView.observe(\.canGoForward, options: [.initial, .new]) { [weak self] webView, _ in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.canGoForward = webView.canGoForward
+                    self.onStateChange?()
+                }
+            }
+        ]
 
         applyAdBlocking(adBlockingEnabled)
 
@@ -295,6 +312,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     func destroy() {
         progressObserver?.invalidate()
         progressObserver = nil
+        navigationObservers.forEach { $0.invalidate() }
+        navigationObservers.removeAll()
         isLoading = false
         onStateChange = nil
         onOpenNewTab = nil
@@ -380,8 +399,6 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             ?? webView.url?.host
             ?? "New Tab"
         url = webView.url
-        canGoBack = webView.canGoBack
-        canGoForward = webView.canGoForward
         onStateChange?()
     }
 }

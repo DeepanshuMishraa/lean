@@ -75,7 +75,12 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
     }
 }
 
-struct HistoryItem: Identifiable, Equatable, Hashable {
+private struct BrowserSession: Codable {
+    var urls: [String]
+    var selectedIndex: Int
+}
+
+struct HistoryItem: Identifiable, Equatable, Hashable, Codable {
     let id: UUID
     let url: URL
     let title: String
@@ -119,71 +124,71 @@ final class LeanStore: ObservableObject {
 
     @Published var searchEngine: SearchEngine {
         didSet {
-            UserDefaults.standard.set(searchEngine.rawValue, forKey: Self.searchEngineKey)
+            persist(searchEngine.rawValue, forKey: Self.searchEngineKey)
         }
     }
 
     @Published var adBlockingEnabled: Bool {
         didSet {
-            UserDefaults.standard.set(adBlockingEnabled, forKey: Self.adBlockingKey)
+            persist(adBlockingEnabled, forKey: Self.adBlockingKey)
             updateAllTabsAdBlocking()
         }
     }
 
     @Published var theme: AppTheme {
         didSet {
-            UserDefaults.standard.set(theme.rawValue, forKey: Self.themeKey)
+            persist(theme.rawValue, forKey: Self.themeKey)
             updateAllTabsTheme()
         }
     }
 
     @Published var scrollbarStyle: ScrollbarStyle {
         didSet {
-            UserDefaults.standard.set(scrollbarStyle.rawValue, forKey: Self.scrollbarKey)
+            persist(scrollbarStyle.rawValue, forKey: Self.scrollbarKey)
             updateAllTabsScrollbarStyle()
         }
     }
 
     @Published var tabDisplayMode: TabDisplayMode {
         didSet {
-            UserDefaults.standard.set(tabDisplayMode.rawValue, forKey: Self.tabDisplayModeKey)
+            persist(tabDisplayMode.rawValue, forKey: Self.tabDisplayModeKey)
         }
     }
 
     @Published var enableThumbnailsInTabSwitcher: Bool {
         didSet {
-            UserDefaults.standard.set(enableThumbnailsInTabSwitcher, forKey: Self.thumbnailsSwitcherKey)
+            persist(enableThumbnailsInTabSwitcher, forKey: Self.thumbnailsSwitcherKey)
         }
     }
 
     @Published var smoothScrollingEnabled: Bool {
         didSet {
-            UserDefaults.standard.set(smoothScrollingEnabled, forKey: Self.smoothScrollingKey)
+            persist(smoothScrollingEnabled, forKey: Self.smoothScrollingKey)
             updateAllTabsSmoothScrolling()
         }
     }
 
     @Published var showFullTitleOnActiveTab: Bool {
         didSet {
-            UserDefaults.standard.set(showFullTitleOnActiveTab, forKey: Self.showFullTitleKey)
+            persist(showFullTitleOnActiveTab, forKey: Self.showFullTitleKey)
         }
     }
 
     @Published var leanUIFont: LeanFont {
         didSet {
-            UserDefaults.standard.set(leanUIFont.rawValue, forKey: Self.leanUIFontKey)
+            persist(leanUIFont.rawValue, forKey: Self.leanUIFontKey)
         }
     }
 
     @Published var uiHeadingWeight: LeanFontWeight {
         didSet {
-            UserDefaults.standard.set(uiHeadingWeight.rawValue, forKey: Self.uiHeadingWeightKey)
+            persist(uiHeadingWeight.rawValue, forKey: Self.uiHeadingWeightKey)
         }
     }
 
     @Published var uiBodyWeight: LeanFontWeight {
         didSet {
-            UserDefaults.standard.set(uiBodyWeight.rawValue, forKey: Self.uiBodyWeightKey)
+            persist(uiBodyWeight.rawValue, forKey: Self.uiBodyWeightKey)
         }
     }
 
@@ -197,61 +202,69 @@ final class LeanStore: ObservableObject {
 
     @Published var webPageFont: LeanFont {
         didSet {
-            UserDefaults.standard.set(webPageFont.rawValue, forKey: Self.webPageFontKey)
+            persist(webPageFont.rawValue, forKey: Self.webPageFontKey)
             updateAllTabsFonts()
         }
     }
 
     @Published var enableZenMode: Bool {
         didSet {
-            UserDefaults.standard.set(enableZenMode, forKey: Self.zenModeKey)
+            persist(enableZenMode, forKey: Self.zenModeKey)
         }
     }
 
     @Published var enableWindowBorder: Bool {
         didSet {
-            UserDefaults.standard.set(enableWindowBorder, forKey: Self.windowBorderKey)
+            persist(enableWindowBorder, forKey: Self.windowBorderKey)
         }
     }
 
     @Published var windowBorderColor: Color {
         didSet {
-            UserDefaults.standard.set(windowBorderColor.toHex(), forKey: Self.windowBorderColorKey)
+            persist(windowBorderColor.toHex(), forKey: Self.windowBorderColorKey)
         }
     }
 
     @Published var windowBorderWidth: CGFloat {
         didSet {
-            UserDefaults.standard.set(windowBorderWidth, forKey: Self.windowBorderWidthKey)
+            persist(Double(windowBorderWidth), forKey: Self.windowBorderWidthKey)
         }
     }
 
     @Published var shownToolbarItems: [ToolbarItemType] {
         didSet {
-            UserDefaults.standard.set(shownToolbarItems.map(\.rawValue), forKey: Self.shownToolbarItemsKey)
+            persist(shownToolbarItems.map(\.rawValue), forKey: Self.shownToolbarItemsKey)
         }
     }
 
     @Published var hiddenToolbarItems: [ToolbarItemType] {
         didSet {
-            UserDefaults.standard.set(hiddenToolbarItems.map(\.rawValue), forKey: Self.hiddenToolbarItemsKey)
+            persist(hiddenToolbarItems.map(\.rawValue), forKey: Self.hiddenToolbarItemsKey)
         }
     }
 
     private let dataStore: WKWebsiteDataStore
+    private let database: AppDatabase?
     private var recentlyClosed: [URL] = []
     private var adBlockUpdateObserver: NSObjectProtocol?
 
-    init(dataStore: WKWebsiteDataStore? = nil) {
+    init(dataStore: WKWebsiteDataStore? = nil, database: AppDatabase? = nil) {
         self.dataStore = dataStore ?? WKWebsiteDataStore.default()
+        self.database = database ?? AppDatabase.openDefault()
 
-        let savedSearchEngine = UserDefaults.standard.string(forKey: Self.searchEngineKey) ?? SearchEngine.google.rawValue
+        let savedSearchEngine = databaseValue(self.database, String.self, forKey: Self.searchEngineKey)
+            ?? UserDefaults.standard.string(forKey: Self.searchEngineKey)
+            ?? SearchEngine.google.rawValue
         self.searchEngine = SearchEngine(rawValue: savedSearchEngine) ?? .google
 
-        let savedAdBlocking = UserDefaults.standard.object(forKey: Self.adBlockingKey) as? Bool ?? true
+        let savedAdBlocking = databaseValue(self.database, Bool.self, forKey: Self.adBlockingKey)
+            ?? UserDefaults.standard.object(forKey: Self.adBlockingKey) as? Bool
+            ?? true
         self.adBlockingEnabled = savedAdBlocking
 
-        if let savedHistory = UserDefaults.standard.array(forKey: Self.historyKey) as? [[String: Any]] {
+        if let savedHistory = databaseValue(self.database, [HistoryItem].self, forKey: Self.historyKey) {
+            self.historyItems = savedHistory
+        } else if let savedHistory = UserDefaults.standard.array(forKey: Self.historyKey) as? [[String: Any]] {
             self.historyItems = savedHistory.compactMap { item in
                 guard let rawURL = item["url"] as? String,
                       let url = URL(string: rawURL),
@@ -272,56 +285,86 @@ final class LeanStore: ObservableObject {
         }
 
         // Load saved theme (default to light or saved preference)
-        let savedTheme = UserDefaults.standard.string(forKey: Self.themeKey) ?? AppTheme.light.rawValue
+        let savedTheme = databaseValue(self.database, String.self, forKey: Self.themeKey)
+            ?? UserDefaults.standard.string(forKey: Self.themeKey)
+            ?? AppTheme.light.rawValue
         self.theme = AppTheme(rawValue: savedTheme) ?? .light
 
         // Load saved scrollbar style (default to normal)
-        let savedScrollbar = UserDefaults.standard.string(forKey: Self.scrollbarKey) ?? ScrollbarStyle.normal.rawValue
+        let savedScrollbar = databaseValue(self.database, String.self, forKey: Self.scrollbarKey)
+            ?? UserDefaults.standard.string(forKey: Self.scrollbarKey)
+            ?? ScrollbarStyle.normal.rawValue
         self.scrollbarStyle = ScrollbarStyle(rawValue: savedScrollbar) ?? .normal
 
         // Load saved tab display mode (default to textOnly)
-        let savedTabDisplay = UserDefaults.standard.string(forKey: Self.tabDisplayModeKey) ?? TabDisplayMode.textOnly.rawValue
+        let savedTabDisplay = databaseValue(self.database, String.self, forKey: Self.tabDisplayModeKey)
+            ?? UserDefaults.standard.string(forKey: Self.tabDisplayModeKey)
+            ?? TabDisplayMode.textOnly.rawValue
         self.tabDisplayMode = TabDisplayMode(rawValue: savedTabDisplay) ?? .textOnly
 
         // Load saved tab switcher thumbnail preference (default to true)
-        let savedThumbnails = UserDefaults.standard.object(forKey: Self.thumbnailsSwitcherKey) as? Bool ?? true
+        let savedThumbnails = databaseValue(self.database, Bool.self, forKey: Self.thumbnailsSwitcherKey)
+            ?? UserDefaults.standard.object(forKey: Self.thumbnailsSwitcherKey) as? Bool
+            ?? true
         self.enableThumbnailsInTabSwitcher = savedThumbnails
 
         // Load saved smooth scrolling preference (default to true)
-        let savedSmoothScrolling = UserDefaults.standard.object(forKey: Self.smoothScrollingKey) as? Bool ?? true
+        let savedSmoothScrolling = databaseValue(self.database, Bool.self, forKey: Self.smoothScrollingKey)
+            ?? UserDefaults.standard.object(forKey: Self.smoothScrollingKey) as? Bool
+            ?? true
         self.smoothScrollingEnabled = savedSmoothScrolling
 
         // Load saved show full title preference (default to true)
-        let savedShowFullTitle = UserDefaults.standard.object(forKey: Self.showFullTitleKey) as? Bool ?? true
+        let savedShowFullTitle = databaseValue(self.database, Bool.self, forKey: Self.showFullTitleKey)
+            ?? UserDefaults.standard.object(forKey: Self.showFullTitleKey) as? Bool
+            ?? true
         self.showFullTitleOnActiveTab = savedShowFullTitle
 
-        let savedLeanUIFont = UserDefaults.standard.string(forKey: Self.leanUIFontKey) ?? LeanFont.system.rawValue
+        let savedLeanUIFont = databaseValue(self.database, String.self, forKey: Self.leanUIFontKey)
+            ?? UserDefaults.standard.string(forKey: Self.leanUIFontKey)
+            ?? LeanFont.system.rawValue
         self.leanUIFont = LeanFont(rawValue: savedLeanUIFont) ?? .system
 
-        let savedHeadingWeight = UserDefaults.standard.object(forKey: Self.uiHeadingWeightKey) as? Int ?? LeanFontWeight.semibold.rawValue
+        let savedHeadingWeight = databaseValue(self.database, Int.self, forKey: Self.uiHeadingWeightKey)
+            ?? UserDefaults.standard.object(forKey: Self.uiHeadingWeightKey) as? Int
+            ?? LeanFontWeight.semibold.rawValue
         self.uiHeadingWeight = LeanFontWeight(rawValue: savedHeadingWeight) ?? .semibold
 
-        let savedBodyWeight = UserDefaults.standard.object(forKey: Self.uiBodyWeightKey) as? Int ?? LeanFontWeight.regular.rawValue
+        let savedBodyWeight = databaseValue(self.database, Int.self, forKey: Self.uiBodyWeightKey)
+            ?? UserDefaults.standard.object(forKey: Self.uiBodyWeightKey) as? Int
+            ?? LeanFontWeight.regular.rawValue
         self.uiBodyWeight = LeanFontWeight(rawValue: savedBodyWeight) ?? .regular
 
-        let savedWebPageFont = UserDefaults.standard.string(forKey: Self.webPageFontKey) ?? LeanFont.system.rawValue
+        let savedWebPageFont = databaseValue(self.database, String.self, forKey: Self.webPageFontKey)
+            ?? UserDefaults.standard.string(forKey: Self.webPageFontKey)
+            ?? LeanFont.system.rawValue
         self.webPageFont = LeanFont(rawValue: savedWebPageFont) ?? .system
 
-        let savedZen = UserDefaults.standard.object(forKey: Self.zenModeKey) as? Bool ?? false
+        let savedZen = databaseValue(self.database, Bool.self, forKey: Self.zenModeKey)
+            ?? UserDefaults.standard.object(forKey: Self.zenModeKey) as? Bool
+            ?? false
         self.enableZenMode = savedZen
 
-        let savedBorder = UserDefaults.standard.object(forKey: Self.windowBorderKey) as? Bool ?? false
+        let savedBorder = databaseValue(self.database, Bool.self, forKey: Self.windowBorderKey)
+            ?? UserDefaults.standard.object(forKey: Self.windowBorderKey) as? Bool
+            ?? false
         self.enableWindowBorder = savedBorder
 
-        let savedBorderHex = UserDefaults.standard.string(forKey: Self.windowBorderColorKey) ?? "#2C2D32"
+        let savedBorderHex = databaseValue(self.database, String.self, forKey: Self.windowBorderColorKey)
+            ?? UserDefaults.standard.string(forKey: Self.windowBorderColorKey)
+            ?? "#2C2D32"
         self.windowBorderColor = Color(hex: savedBorderHex)
 
-        let savedBorderWidth = UserDefaults.standard.object(forKey: Self.windowBorderWidthKey) as? CGFloat ?? 8.0
-        self.windowBorderWidth = savedBorderWidth
+        let savedBorderWidth = databaseValue(self.database, Double.self, forKey: Self.windowBorderWidthKey)
+            ?? UserDefaults.standard.object(forKey: Self.windowBorderWidthKey) as? Double
+            ?? 8.0
+        self.windowBorderWidth = CGFloat(savedBorderWidth)
 
         // Load saved toolbar items (default to all shown, none hidden)
-        let savedShown = UserDefaults.standard.stringArray(forKey: Self.shownToolbarItemsKey)
-        let savedHidden = UserDefaults.standard.stringArray(forKey: Self.hiddenToolbarItemsKey)
+        let savedShown = databaseValue(self.database, [String].self, forKey: Self.shownToolbarItemsKey)
+            ?? UserDefaults.standard.stringArray(forKey: Self.shownToolbarItemsKey)
+        let savedHidden = databaseValue(self.database, [String].self, forKey: Self.hiddenToolbarItemsKey)
+            ?? UserDefaults.standard.stringArray(forKey: Self.hiddenToolbarItemsKey)
         if let savedShown = savedShown {
             var shown = savedShown.compactMap { ToolbarItemType(rawValue: $0) }
             let hidden = (savedHidden ?? []).compactMap { ToolbarItemType(rawValue: $0) }
@@ -353,13 +396,25 @@ final class LeanStore: ObservableObject {
         ContentBlocker.refreshIfNeeded()
         loadCustomShortcuts()
 
-        let savedSession = UserDefaults.standard.stringArray(forKey: Self.sessionKey) ?? []
-        let sessionURLs = savedSession.compactMap(URL.init(string:))
+        let savedSession = databaseValue(self.database, BrowserSession.self, forKey: Self.sessionStateKey)
+        let legacySessionURLs = databaseValue(self.database, [String].self, forKey: Self.sessionKey)
+            ?? UserDefaults.standard.stringArray(forKey: Self.sessionKey)
+            ?? []
+        let sessionURLs = (savedSession?.urls ?? legacySessionURLs).compactMap(URL.init(string:))
+        let selectedIndex = min(savedSession?.selectedIndex ?? sessionURLs.count - 1, sessionURLs.count - 1)
+        let savedRecentlyClosed = databaseValue(self.database, [String].self, forKey: Self.recentlyClosedKey) ?? []
+        recentlyClosed = savedRecentlyClosed.compactMap(URL.init(string:))
+        if databaseValue(self.database, Bool.self, forKey: Self.migrationKey) != true {
+            migrateLegacyState(sessionURLs: legacySessionURLs)
+        }
+        if savedSession == nil {
+            persist(BrowserSession(urls: legacySessionURLs, selectedIndex: max(0, selectedIndex)), forKey: Self.sessionStateKey)
+        }
         if sessionURLs.isEmpty {
             newTab()
         } else {
             for (index, url) in sessionURLs.enumerated() {
-                newTab(url: url, select: index == sessionURLs.count - 1)
+                newTab(url: url, select: index == selectedIndex)
             }
         }
     }
@@ -565,14 +620,7 @@ final class LeanStore: ObservableObject {
 
     private func saveHistory() {
         deduplicateHistory()
-        let history: [[String: Any]] = historyItems.map {
-            [
-                "url": $0.url.absoluteString,
-                "title": $0.title,
-                "timestamp": $0.timestamp.timeIntervalSince1970
-            ]
-        }
-        UserDefaults.standard.set(history, forKey: Self.historyKey)
+        persist(historyItems, forKey: Self.historyKey)
     }
 
     func handleNewTabCommand() {
@@ -600,8 +648,11 @@ final class LeanStore: ObservableObject {
     }
 
     func saveSession() {
-        let urls = tabs.compactMap { $0.url?.absoluteString }
-        UserDefaults.standard.set(urls, forKey: Self.sessionKey)
+        let persistedTabs = tabs.filter { $0.url != nil }
+        let urls = persistedTabs.compactMap { $0.url?.absoluteString }
+        let selectedIndex = persistedTabs.firstIndex { $0.id == selectedID } ?? max(0, urls.count - 1)
+        persist(BrowserSession(urls: urls, selectedIndex: selectedIndex), forKey: Self.sessionStateKey)
+        persist(recentlyClosed.map(\.absoluteString), forKey: Self.recentlyClosedKey)
     }
 
     @discardableResult
@@ -653,7 +704,6 @@ final class LeanStore: ObservableObject {
         let wasSelected = selectedID == tab.id
         let closedTab = tabs.remove(at: index)
         closedTab.destroy()
-        saveSession()
 
         if tabs.isEmpty {
             newTab()
@@ -664,6 +714,7 @@ final class LeanStore: ObservableObject {
             inlineURLBarFrame = .zero
             inlineSuggestionsFrame = .zero
         }
+        saveSession()
     }
 
     func closeSelectedTab() {
@@ -713,6 +764,7 @@ final class LeanStore: ObservableObject {
         inlineSuggestionsFrame = .zero
         floatingPaletteFrame = .zero
         selectedID = id
+        saveSession()
         DispatchQueue.main.async { [weak self] in
             guard let self, let tab = self.selectedTab else { return }
             tab.webView.window?.makeFirstResponder(tab.webView)
@@ -725,6 +777,7 @@ final class LeanStore: ObservableObject {
               let index = tabs.firstIndex(where: { $0.id == selectedID }) else { return }
         let offset = reverse ? tabs.count - 1 : 1
         self.selectedID = tabs[(index + offset) % tabs.count].id
+        saveSession()
         DispatchQueue.main.async { [weak self] in
             guard let self, let tab = self.selectedTab else { return }
             tab.webView.window?.makeFirstResponder(tab.webView)
@@ -736,6 +789,7 @@ final class LeanStore: ObservableObject {
         let index = number == 9 ? tabs.count - 1 : number - 1
         guard tabs.indices.contains(index) else { return }
         selectedID = tabs[index].id
+        saveSession()
     }
 
     // MARK: - Ctrl+Tab Switcher Navigation
@@ -780,6 +834,7 @@ final class LeanStore: ObservableObject {
         let validTabs = switcherTabs
         if validTabs.indices.contains(switcherSelectedIndex) {
             selectedID = validTabs[switcherSelectedIndex].id
+            saveSession()
         }
     }
 
@@ -809,19 +864,54 @@ final class LeanStore: ObservableObject {
     }
 
     private func saveCustomShortcuts() {
-        if let data = try? JSONEncoder().encode(customShortcuts) {
-            UserDefaults.standard.set(data, forKey: Self.customShortcutsKey)
-        }
+        persist(customShortcuts, forKey: Self.customShortcutsKey)
     }
 
     private func loadCustomShortcuts() {
-        if let data = UserDefaults.standard.data(forKey: Self.customShortcutsKey),
-           let loaded = try? JSONDecoder().decode([String: CustomKeyCombo].self, from: data) {
+        if let loaded = databaseValue(database, [String: CustomKeyCombo].self, forKey: Self.customShortcutsKey) {
+            customShortcuts = loaded
+        } else if let data = UserDefaults.standard.data(forKey: Self.customShortcutsKey),
+                  let loaded = try? JSONDecoder().decode([String: CustomKeyCombo].self, from: data) {
             customShortcuts = loaded
         }
     }
 
+    private func migrateLegacyState(sessionURLs: [String]) {
+        persist(searchEngine.rawValue, forKey: Self.searchEngineKey)
+        persist(adBlockingEnabled, forKey: Self.adBlockingKey)
+        persist(theme.rawValue, forKey: Self.themeKey)
+        persist(scrollbarStyle.rawValue, forKey: Self.scrollbarKey)
+        persist(tabDisplayMode.rawValue, forKey: Self.tabDisplayModeKey)
+        persist(enableThumbnailsInTabSwitcher, forKey: Self.thumbnailsSwitcherKey)
+        persist(smoothScrollingEnabled, forKey: Self.smoothScrollingKey)
+        persist(showFullTitleOnActiveTab, forKey: Self.showFullTitleKey)
+        persist(leanUIFont.rawValue, forKey: Self.leanUIFontKey)
+        persist(uiHeadingWeight.rawValue, forKey: Self.uiHeadingWeightKey)
+        persist(uiBodyWeight.rawValue, forKey: Self.uiBodyWeightKey)
+        persist(webPageFont.rawValue, forKey: Self.webPageFontKey)
+        persist(enableZenMode, forKey: Self.zenModeKey)
+        persist(enableWindowBorder, forKey: Self.windowBorderKey)
+        persist(windowBorderColor.toHex(), forKey: Self.windowBorderColorKey)
+        persist(Double(windowBorderWidth), forKey: Self.windowBorderWidthKey)
+        persist(shownToolbarItems.map(\.rawValue), forKey: Self.shownToolbarItemsKey)
+        persist(hiddenToolbarItems.map(\.rawValue), forKey: Self.hiddenToolbarItemsKey)
+        persist(historyItems, forKey: Self.historyKey)
+        persist(customShortcuts, forKey: Self.customShortcutsKey)
+        persist(sessionURLs, forKey: Self.sessionKey)
+        persist(true, forKey: Self.migrationKey)
+    }
+
+    private func persist<T: Encodable>(_ value: T, forKey key: String) {
+        guard let database else { return }
+        if case .failure(let error) = database.set(value, forKey: key) {
+            NSLog("Could not persist %@: %@", key, String(describing: error))
+        }
+    }
+
+    private static let migrationKey = "sqliteMigration_v1"
     private static let sessionKey = "sessionURLs"
+    private static let sessionStateKey = "browserSession_v1"
+    private static let recentlyClosedKey = "recentlyClosedURLs"
     private static let historyKey = "visitedHistory"
     private static let searchEngineKey = "searchEngine"
     private static let adBlockingKey = "adBlockingEnabled"
@@ -842,4 +932,19 @@ final class LeanStore: ObservableObject {
     private static let shownToolbarItemsKey = "shownToolbarItems"
     private static let hiddenToolbarItemsKey = "hiddenToolbarItems"
     private static let customShortcutsKey = "customShortcuts_v1"
+}
+
+private func databaseValue<T: Decodable>(
+    _ database: AppDatabase?,
+    _ type: T.Type,
+    forKey key: String
+) -> T? {
+    guard let database else { return nil }
+    switch database.value(type, forKey: key) {
+    case .success(let value):
+        return value
+    case .failure(let error):
+        NSLog("Could not read %@: %@", key, String(describing: error))
+        return nil
+    }
 }

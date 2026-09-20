@@ -40,7 +40,7 @@ struct TopBarView: View {
                             isDark: store.adaptiveTheme.effectiveIsDark
                         ) {
                             withAnimation(.spring(response: 0.26, dampingFraction: 0.8)) {
-                                store.newTab()
+                                _ = store.newTab()
                             }
                         }
                     }
@@ -319,7 +319,8 @@ private struct TopBarTabItem: View {
                 tab: tab,
                 store: store,
                 autoFocus: store.isInlineURLEditing,
-                isFocusedBinding: $isFieldFocused
+                isFocusedBinding: $isFieldFocused,
+                onClose: onClose
             )
         } else {
             switch store.tabDisplayMode {
@@ -419,6 +420,7 @@ private struct InlineURLBar: View {
     @ObservedObject var store: LeanStore
     var autoFocus: Bool = false
     var isFocusedBinding: Binding<Bool>? = nil
+    let onClose: () -> Void
 
     @FocusState private var isFieldFocused: Bool
     @State private var text = ""
@@ -483,7 +485,7 @@ private struct InlineURLBar: View {
                 }
 
             if !text.isEmpty {
-                Button(action: { text = "" }) {
+                Button(action: onClose) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 10))
                         .foregroundColor(store.adaptiveTheme.secondaryText)

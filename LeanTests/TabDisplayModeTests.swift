@@ -3,6 +3,13 @@ import SwiftUI
 import Testing
 @testable import Lean
 
+private func temporaryDatabase() throws -> (AppDatabase, URL) {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return (try AppDatabase(url: directory.appendingPathComponent("Lean.sqlite3")), directory)
+}
+
 struct TabDisplayModeTests {
     @MainActor
     @Test("TabDisplayMode provides proper raw values and titles")
@@ -19,19 +26,22 @@ struct TabDisplayModeTests {
 
     @MainActor
     @Test("LeanStore persists tab display mode")
-    func leanStorePersistence() {
-        let store = LeanStore()
+    func leanStorePersistence() throws {
+        let (database, directory) = try temporaryDatabase()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LeanStore(database: database)
+
         store.tabDisplayMode = .hybrid
         #expect(store.tabDisplayMode == .hybrid)
-        #expect(UserDefaults.standard.string(forKey: "tabDisplayMode") == "hybrid")
+        #expect(try database.value(String.self, forKey: "tabDisplayMode").get() == "hybrid")
 
         store.tabDisplayMode = .iconOnly
         #expect(store.tabDisplayMode == .iconOnly)
-        #expect(UserDefaults.standard.string(forKey: "tabDisplayMode") == "iconOnly")
+        #expect(try database.value(String.self, forKey: "tabDisplayMode").get() == "iconOnly")
 
         store.tabDisplayMode = .textOnly
         #expect(store.tabDisplayMode == .textOnly)
-        #expect(UserDefaults.standard.string(forKey: "tabDisplayMode") == "textOnly")
+        #expect(try database.value(String.self, forKey: "tabDisplayMode").get() == "textOnly")
     }
 
     @MainActor
@@ -51,24 +61,27 @@ struct TabDisplayModeTests {
 
     @MainActor
     @Test("LeanStore persists window border settings")
-    func windowBorderPersistence() {
-        let store = LeanStore()
+    func windowBorderPersistence() throws {
+        let (database, directory) = try temporaryDatabase()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LeanStore(database: database)
+
         store.enableWindowBorder = true
         #expect(store.enableWindowBorder == true)
-        #expect(UserDefaults.standard.bool(forKey: "enableWindowBorder") == true)
+        #expect(try database.value(Bool.self, forKey: "enableWindowBorder").get() == true)
 
         store.windowBorderWidth = 12.0
         #expect(store.windowBorderWidth == 12.0)
-        #expect(UserDefaults.standard.double(forKey: "windowBorderWidth") == 12.0)
+        #expect(try database.value(Double.self, forKey: "windowBorderWidth").get() == 12.0)
 
         // Zen mode persistence and distinctness from window border
         store.enableZenMode = true
         #expect(store.enableZenMode == true)
-        #expect(UserDefaults.standard.bool(forKey: "enableZenMode") == true)
+        #expect(try database.value(Bool.self, forKey: "enableZenMode").get() == true)
 
         store.enableZenMode = false
         #expect(store.enableZenMode == false)
-        #expect(UserDefaults.standard.bool(forKey: "enableZenMode") == false)
+        #expect(try database.value(Bool.self, forKey: "enableZenMode").get() == false)
 
         // Predefined light and dark colors for window frame
         store.theme = .light

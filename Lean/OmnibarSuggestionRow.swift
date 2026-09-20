@@ -108,6 +108,8 @@ private struct BrandFaviconView: View {
     let isSelected: Bool
     let isDark: Bool
 
+    @State private var favicon: NSImage?
+
     private enum BrandType {
         case github, youtube, x, cloudflare, discord, claude, google, slack, apple, contact, search, generic
     }
@@ -131,6 +133,42 @@ private struct BrandFaviconView: View {
     }
 
     var body: some View {
+        Group {
+            if let favicon {
+                Image(nsImage: favicon)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(width: 20, height: 20)
+                    .clipShape(RoundedRectangle(cornerRadius: 4.5, style: .continuous))
+            } else {
+                brandFallback
+            }
+        }
+        .onAppear {
+            loadRealFavicon()
+        }
+        .onChange(of: match.targetURL) { _, _ in
+            favicon = FaviconService.shared.cachedFavicon(for: match.targetURL)
+            loadRealFavicon()
+        }
+    }
+
+    private func loadRealFavicon() {
+        if match.isSearch { return }
+        if let cached = FaviconService.shared.cachedFavicon(for: match.targetURL) {
+            favicon = cached
+            return
+        }
+        FaviconService.shared.loadFavicon(for: match.targetURL) { image in
+            if let image {
+                favicon = image
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var brandFallback: some View {
         switch brand {
         case .github:
             ZStack {

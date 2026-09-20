@@ -96,8 +96,7 @@ struct NormalTabItem: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            SiteIconView(url: tab.url, title: tab.title, isDark: isDark)
-                .frame(width: 16, height: 16)
+            TabFaviconView(tab: tab, isDark: isDark, size: 16)
 
             Text(tab.displayTitle(isSelected: true))
                 .font(uiFont.font(size: 13, weight: headingWeight.fontWeight))
@@ -167,7 +166,7 @@ struct TabThumbnailCard: View {
 
             // Bottom Title & Favicon Bar
             HStack(spacing: 8) {
-                SiteIconView(url: tab.url, title: tab.title, isDark: isDark)
+                TabFaviconView(tab: tab, isDark: isDark, size: 16)
 
                 Text(tab.displayTitle(isSelected: true))
                     .font(uiFont.font(size: 13, weight: headingWeight.fontWeight))
@@ -247,8 +246,44 @@ private struct SiteIconView: View {
     let url: URL?
     let title: String
     let isDark: Bool
+    var faviconOverride: NSImage? = nil
+
+    @State private var loadedFavicon: NSImage?
 
     var body: some View {
+        Group {
+            if let image = faviconOverride ?? loadedFavicon ?? FaviconService.shared.cachedFavicon(for: url) {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(width: 16, height: 16)
+                    .clipShape(RoundedRectangle(cornerRadius: 3.5, style: .continuous))
+            } else {
+                brandFallback
+            }
+        }
+        .onAppear {
+            loadRealFavicon()
+        }
+        .onChange(of: url) { _, _ in
+            loadedFavicon = FaviconService.shared.cachedFavicon(for: url)
+            loadRealFavicon()
+        }
+    }
+
+    private func loadRealFavicon() {
+        guard loadedFavicon == nil else { return }
+        if FaviconService.shared.cachedFavicon(for: url) != nil { return }
+        FaviconService.shared.loadFavicon(for: url) { image in
+            if let image {
+                loadedFavicon = image
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var brandFallback: some View {
         let host = url?.host?.lowercased() ?? ""
 
         if host.contains("youtube") {

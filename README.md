@@ -20,6 +20,53 @@ Its job is simple: open pages quickly and stay out of the way. Lean avoids perma
 - Configurable page scrollbars and native scrolling
 - WebKit content blocking
 
+## Known limitations
+
+> Status: Lean is a personal experiment, not a daily driver. It is
+> built to explore how quiet a browser can feel, and the gaps below
+> are the price of that scope. Most of them are fixable over time;
+> they are listed here so the current boundary is explicit.
+
+Lean is a thin wrapper around `WKWebView`, so anything WebKit or the
+missing browser chrome does not provide will not work. Verified by testing:
+
+- **"Continue with Google" / third-party OAuth buttons often fail.**
+  Logging into Google directly (Gmail, YouTube) works, but "Sign in with
+  Google" on other sites usually does not. These flows open a
+  `window.open` popup and pass the credential back via `postMessage`
+  before closing the popup with `window.close()`. Lean opens the popup
+  as a new tab but does not implement `webViewDidClose`, so the popup
+  cannot close itself and the handshake stalls. Google may also refuse
+  the flow outright for non-Safari browsers. Workaround: use the site's
+  direct email/password login, or finish that login in Safari.
+- **Popups that expect `window.close` never close.** Same missing
+  `webViewDidClose` as above; close the tab yourself.
+- **No JavaScript dialogs.** `alert` / `confirm` / `prompt` have no
+  handlers, so pages waiting on one will sit idle.
+- **No camera or microphone.** `requestMediaCapturePermission` is not
+  implemented, so Meet, Zoom, and other calling sites cannot access
+  devices.
+- **No HTTP Basic auth or client-certificate prompts.** There is no
+  `authenticationChallenge` handler, so enterprise SSO pages using these
+  fail silently.
+- **External and app links do nothing.** There is no navigation-action
+  policy for `mailto:`, `tel:`, or app schemes (`slack://`,
+  `zoommtg://`, `myapp://` OAuth callbacks), so they fail instead of
+  opening the target app.
+- **No passkeys, autofill, or Apple Pay.** Safari-only integrations
+  (iCloud Passwords autofill, Touch ID passkeys, `ApplePaySession`) are
+  unavailable in a third-party `WKWebView`.
+- **No web push notifications or extensions.** Password-manager and
+  blocker extensions cannot be installed; use copy-paste.
+- **Some downloads never start.** Only `Content-Disposition: attachment`
+  becomes a download; files served inline without it may render blank.
+- **DRM video is limited.** Widevine does not exist on WebKit, and
+  high-resolution Netflix/Prime/Spotify playback is Safari-only.
+- **If a bank or SSO page breaks, try disabling ad blocking** in
+  Settings before assuming anything else.
+- **No private windows, profiles, or print support.** DevTools
+  inspection is a debug-build feature only.
+
 ## Run
 
 Requires macOS 14+, Xcode, and [XcodeGen](https://github.com/yonaskolb/XcodeGen).

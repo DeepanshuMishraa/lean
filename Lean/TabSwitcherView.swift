@@ -128,7 +128,7 @@ struct NormalTabItem: View {
 }
 
 // Native macOS VisualEffectBlur for authentic Liquid Glass effect
-private struct VisualEffectBlur: NSViewRepresentable {
+struct VisualEffectBlur: NSViewRepresentable {
     let material: NSVisualEffectView.Material
     let blendingMode: NSVisualEffectView.BlendingMode
 

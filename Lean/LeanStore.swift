@@ -212,6 +212,7 @@ final class LeanStore: ObservableObject {
 
     private let dataStore: WKWebsiteDataStore
     private var recentlyClosed: [URL] = []
+    private var adBlockUpdateObserver: NSObjectProtocol?
 
     init(dataStore: WKWebsiteDataStore? = nil) {
         self.dataStore = dataStore ?? WKWebsiteDataStore.default()
@@ -305,6 +306,17 @@ final class LeanStore: ObservableObject {
 
         deduplicateHistory()
         saveHistory()
+
+        adBlockUpdateObserver = NotificationCenter.default.addObserver(
+            forName: ContentBlocker.didUpdateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.updateAllTabsAdBlocking()
+            }
+        }
+        ContentBlocker.refreshIfNeeded()
 
         let savedSession = UserDefaults.standard.stringArray(forKey: Self.sessionKey) ?? []
         let sessionURLs = savedSession.compactMap(URL.init(string:))
@@ -557,15 +569,21 @@ final class LeanStore: ObservableObject {
         UserDefaults.standard.set(urls, forKey: Self.sessionKey)
     }
 
-    func newTab(url: URL? = nil, select: Bool = true) {
+    @discardableResult
+    func newTab(
+        url: URL? = nil,
+        select: Bool = true,
+        configuration: WKWebViewConfiguration? = nil
+    ) -> LeanTab {
         let tab = LeanTab(
             dataStore: dataStore,
-            initialURL: url,
+            initialURL: configuration == nil ? url : nil,
             isDark: isDarkMode,
             scrollbarStyle: scrollbarStyle,
             smoothScrolling: smoothScrollingEnabled,
             pageFont: webPageFont,
-            adBlockingEnabled: adBlockingEnabled
+            adBlockingEnabled: adBlockingEnabled,
+            configuration: configuration
         )
         tab.onStateChange = { [weak self] in
             guard let self else { return }
@@ -575,7 +593,9 @@ final class LeanStore: ObservableObject {
             }
             self.saveSession()
         }
-        tab.onOpenNewTab = { [weak self] url in self?.newTab(url: url) }
+        tab.onOpenNewTab = { [weak self] url, configuration in
+            self?.newTab(url: nil, configuration: configuration).webView
+        }
         tabs.append(tab)
         if select {
             selectedID = tab.id
@@ -585,6 +605,7 @@ final class LeanStore: ObservableObject {
             }
         }
         saveSession()
+        return tab
     }
 
     func close(_ tab: LeanTab) {

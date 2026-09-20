@@ -38,8 +38,8 @@ enum AddressResolver {
         let value = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
 
-        let lower = value.lowercased()
-        if lower == "lean://settings" || lower == "settings" || lower == "about:settings" || lower == "chrome://settings" {
+        let lower = value.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        if lower == "lean://settings" || lower == "settings" || lower == "about:settings" || lower == "chrome://settings" || lower == "lean:settings" || lower.hasPrefix("lean://settings") {
             return URL(string: "lean://settings")
         }
 

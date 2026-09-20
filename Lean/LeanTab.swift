@@ -24,7 +24,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     var onStateChange: (() -> Void)?
-    var onOpenNewTab: ((URL) -> Void)?
+    var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
     private var progressObserver: NSKeyValueObservation?
 
     init(
@@ -34,13 +34,14 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         scrollbarStyle: ScrollbarStyle = .normal,
         smoothScrolling: Bool = true,
         pageFont: LeanFont = .system,
-        adBlockingEnabled: Bool = true
+        adBlockingEnabled: Bool = true,
+        configuration: WKWebViewConfiguration? = nil
     ) {
         self.scrollbarStyle = scrollbarStyle
         self.smoothScrollingEnabled = smoothScrolling
         self.pageFont = pageFont
         self.adBlockingEnabled = adBlockingEnabled
-        let configuration = WKWebViewConfiguration()
+        let configuration = configuration ?? WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore
         configuration.preferences.isElementFullscreenEnabled = true
 
@@ -127,12 +128,19 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     func applyAdBlocking(_ enabled: Bool) {
         adBlockingEnabled = enabled
         Task { [weak self] in
-            guard let self, let ruleList = await ContentBlocker.ruleList() else { return }
-            guard self.adBlockingEnabled == enabled else { return }
+            let ruleLists = await ContentBlocker.ruleLists()
+            guard let self, self.adBlockingEnabled == enabled else { return }
             if enabled {
-                self.webView.configuration.userContentController.add(ruleList)
+                for ruleList in ruleLists {
+                    // Remove-then-add keeps this idempotent: rebuildUserScripts()
+                    // preserves rule lists, so re-enabling must not stack duplicates.
+                    self.webView.configuration.userContentController.remove(ruleList)
+                    self.webView.configuration.userContentController.add(ruleList)
+                }
             } else {
-                self.webView.configuration.userContentController.remove(ruleList)
+                for ruleList in ruleLists {
+                    self.webView.configuration.userContentController.remove(ruleList)
+                }
             }
         }
     }
@@ -264,6 +272,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         isLoading = true
         onStateChange?()
         webView.reload()
+    }
+    func reloadFromOrigin() {
+        isLoading = true
+        onStateChange?()
+        webView.reloadFromOrigin()
     }
     func stop() {
         isLoading = false
@@ -455,10 +468,8 @@ extension LeanTab: WKUIDelegate {
         for navigationAction: WKNavigationAction,
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
-        if let url = navigationAction.request.url {
-            onOpenNewTab?(url)
-        }
-        return nil
+        guard let url = navigationAction.request.url else { return nil }
+        return onOpenNewTab?(url, configuration)
     }
 }
 

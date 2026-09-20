@@ -6,6 +6,7 @@ struct TopBarView: View {
     @State private var tabScrollMetrics = HorizontalScrollMetrics()
     @State private var tabContentWidth: CGFloat = 0
     @State private var tabViewportWidth: CGFloat = 0
+    @State private var isQuickSettingsPresented = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -183,14 +184,27 @@ struct TopBarView: View {
                             helpText: "Settings (⌘,)",
                             size: 24,
                             iconSize: 12,
-                            color: store.adaptiveTheme.secondaryText,
+                            color: isQuickSettingsPresented ? store.adaptiveTheme.primaryText : store.adaptiveTheme.secondaryText,
                             hoverColor: store.adaptiveTheme.primaryText,
                             disabledColor: store.adaptiveTheme.disabledIconText,
                             hoverBackground: store.adaptiveTheme.iconHoverBackground,
                             pressedBackground: store.adaptiveTheme.iconPressedBackground,
                             isDark: store.adaptiveTheme.effectiveIsDark
                         ) {
-                            store.openSettings()
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                                isQuickSettingsPresented.toggle()
+                            }
+                        }
+                        .overlay(alignment: .topTrailing) {
+                            if isQuickSettingsPresented {
+                                QuickSettingsPopover(store: store, isPresented: $isQuickSettingsPresented)
+                                    .offset(y: 32)
+                                    .transition(.asymmetric(
+                                        insertion: .scale(scale: 0.95, anchor: .topTrailing).combined(with: .opacity),
+                                        removal: .scale(scale: 0.97, anchor: .topTrailing).combined(with: .opacity)
+                                    ))
+                                    .zIndex(200)
+                            }
                         }
                     }
                 }
@@ -204,6 +218,20 @@ struct TopBarView: View {
                 ? AnyView(Color.clear)
                 : AnyView(store.themeColors.topBarBackground)
         )
+        .overlay {
+            if isQuickSettingsPresented {
+                Color.black.opacity(0.0001)
+                    .ignoresSafeArea()
+                    .frame(width: 4000, height: 4000)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+                            isQuickSettingsPresented = false
+                        }
+                    }
+                    .zIndex(150)
+            }
+        }
         .contentShape(Rectangle())
         .onTapGesture {
             if store.isInlineURLEditing {
@@ -236,9 +264,14 @@ private struct TopBarTabItem: View {
     let onClose: () -> Void
 
     @State private var isHovered = false
+    @State private var isFieldFocused = false
+
+    private var showURLBar: Bool {
+        isSelected && (isHovered || store.isInlineURLEditing || isFieldFocused)
+    }
 
     private var showCloseOnHover: Bool {
-        isHovered && !(isSelected && store.isInlineURLEditing)
+        isHovered && !showURLBar
     }
 
     var body: some View {
@@ -267,9 +300,13 @@ private struct TopBarTabItem: View {
             .contentShape(Rectangle())
             .help(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
             .onTapGesture {
-                if !(isSelected && store.isInlineURLEditing) {
+                if !isSelected {
                     withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
                         onSelect()
+                    }
+                } else if !store.isInlineURLEditing {
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                        store.isInlineURLEditing = true
                     }
                 }
             }
@@ -288,14 +325,19 @@ private struct TopBarTabItem: View {
                     Button("Forward") { tab.goForward() }
                 }
             }
-            .animation(.spring(response: 0.24, dampingFraction: 0.82), value: isSelected && store.isInlineURLEditing)
+            .animation(.spring(response: 0.24, dampingFraction: 0.82), value: showURLBar)
             .animation(.spring(response: 0.22, dampingFraction: 0.82), value: isSelected)
     }
 
     @ViewBuilder
     private var tabContent: some View {
-        if isSelected && store.isInlineURLEditing {
-            InlineURLBar(tab: tab, store: store)
+        if showURLBar {
+            InlineURLBar(
+                tab: tab,
+                store: store,
+                autoFocus: store.isInlineURLEditing,
+                isFocusedBinding: $isFieldFocused
+            )
         } else {
             switch store.tabDisplayMode {
             case .textOnly:
@@ -392,6 +434,9 @@ private struct TopBarTabItem: View {
 private struct InlineURLBar: View {
     @ObservedObject var tab: LeanTab
     @ObservedObject var store: LeanStore
+    var autoFocus: Bool = false
+    var isFocusedBinding: Binding<Bool>? = nil
+
     @FocusState private var isFieldFocused: Bool
     @State private var text = ""
     @State private var selectedIndex = 0
@@ -485,13 +530,15 @@ private struct InlineURLBar: View {
         }
         .onAppear {
             text = tab.url?.absoluteString ?? ""
-            isFieldFocused = true
-            tab.webView.evaluateJavaScript("window.getSelection()?.removeAllRanges()", completionHandler: nil)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                if let textEditor = NSApp.keyWindow?.firstResponder as? NSTextView {
-                    textEditor.setSelectedRange(NSRange(location: textEditor.string.count, length: 0))
-                } else if let textEditor = NSApp.keyWindow?.firstResponder as? NSText {
-                    textEditor.selectedRange = NSRange(location: textEditor.string.count, length: 0)
+            if autoFocus || store.isInlineURLEditing {
+                isFieldFocused = true
+                tab.webView.evaluateJavaScript("window.getSelection()?.removeAllRanges()", completionHandler: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    if let textEditor = NSApp.keyWindow?.firstResponder as? NSTextView {
+                        textEditor.setSelectedRange(NSRange(location: textEditor.string.count, length: 0))
+                    } else if let textEditor = NSApp.keyWindow?.firstResponder as? NSText {
+                        textEditor.selectedRange = NSRange(location: textEditor.string.count, length: 0)
+                    }
                 }
             }
         }
@@ -505,7 +552,9 @@ private struct InlineURLBar: View {
             }
         }
         .onChange(of: isFieldFocused) { _, focused in
+            isFocusedBinding?.wrappedValue = focused
             if focused {
+                store.isInlineURLEditing = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                     if let textEditor = NSApp.keyWindow?.firstResponder as? NSTextView {
                         textEditor.setSelectedRange(NSRange(location: textEditor.string.count, length: 0))
@@ -686,3 +735,224 @@ private struct InteractiveIconButton: View {
         .onHover { isHovered = isEnabled && $0 }
     }
 }
+
+// MARK: - Bespoke Quick Settings Popover
+struct QuickSettingsPopover: View {
+    @ObservedObject var store: LeanStore
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header: Green accent dot + Title
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(Color(red: 52/255, green: 199/255, blue: 89/255))
+                    .frame(width: 7, height: 7)
+                    .shadow(color: Color(red: 52/255, green: 199/255, blue: 89/255).opacity(0.6), radius: 4)
+
+                Text("Quick Settings")
+                    .font(store.leanUIFont.font(size: 11, weight: .semibold))
+                    .foregroundColor(store.adaptiveTheme.primaryText)
+                    .textCase(.uppercase)
+                    .tracking(0.8)
+
+                Spacer()
+
+                Button {
+                    withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+                        isPresented = false
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(store.adaptiveTheme.secondaryText)
+                        .frame(width: 18, height: 18)
+                        .background(
+                            store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05),
+                            in: Circle()
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 4)
+
+            // Theme Segmented Control
+            CustomSegmentedPicker(
+                options: [
+                    SegmentOption(id: AppTheme.light.rawValue, label: "Light", icon: "sun.max.fill"),
+                    SegmentOption(id: AppTheme.dark.rawValue, label: "Dark", icon: "moon.fill"),
+                    SegmentOption(id: AppTheme.system.rawValue, label: "System", icon: "circle.lefthalf.filled")
+                ],
+                selectedId: store.theme.rawValue,
+                isDark: store.isDarkMode,
+                uiFont: store.leanUIFont
+            ) { newId in
+                if let theme = AppTheme(rawValue: newId) {
+                    store.theme = theme
+                }
+            }
+
+            Rectangle()
+                .fill(store.themeColors.divider)
+                .frame(height: 0.75)
+
+            // Quick Toggles
+            VStack(spacing: 2) {
+                QuickToggleItem(
+                    icon: "slider.horizontal.3",
+                    title: "Zen mode",
+                    isOn: $store.enableZenMode,
+                    isDark: store.isDarkMode,
+                    uiFont: store.leanUIFont
+                )
+
+                QuickToggleItem(
+                    icon: "macwindow",
+                    title: "Window frame",
+                    isOn: $store.enableWindowBorder,
+                    isDark: store.isDarkMode,
+                    uiFont: store.leanUIFont
+                )
+
+                QuickToggleItem(
+                    icon: "shield.fill",
+                    title: "Ad & tracker filter",
+                    isOn: $store.adBlockingEnabled,
+                    isDark: store.isDarkMode,
+                    uiFont: store.leanUIFont,
+                    accentColor: Color(red: 52/255, green: 199/255, blue: 89/255)
+                )
+
+                QuickToggleItem(
+                    icon: "computermouse.fill",
+                    title: "Smooth scrolling",
+                    isOn: $store.smoothScrollingEnabled,
+                    isDark: store.isDarkMode,
+                    uiFont: store.leanUIFont
+                )
+            }
+
+            Rectangle()
+                .fill(store.themeColors.divider)
+                .frame(height: 0.75)
+
+            // Bottom link to All Settings
+            Button {
+                withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+                    isPresented = false
+                }
+                store.openSettings()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 11, weight: .medium))
+                    Text("All Settings...")
+                        .font(store.leanUIFont.font(size: 12, weight: .medium))
+                    Spacer()
+                    Text("⌘,")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundColor(store.adaptiveTheme.secondaryText)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(store.adaptiveTheme.secondaryText)
+                }
+                .foregroundColor(store.adaptiveTheme.primaryText)
+                .padding(.horizontal, 8)
+                .frame(height: 28)
+                .background(
+                    store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04),
+                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .frame(width: 250)
+        .background(
+            (store.isDarkMode
+                ? Color(red: 18/255, green: 18/255, blue: 21/255)
+                : Color(white: 0.995)
+            ).opacity(0.97)
+        )
+        .background(
+            VisualEffectBlur(material: .popover, blendingMode: .withinWindow)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(store.adaptiveTheme.dropdownStroke, lineWidth: 0.75)
+        )
+        .shadow(color: Color.black.opacity(store.isDarkMode ? 0.45 : 0.12), radius: 18, x: 0, y: 8)
+        .shadow(color: Color.black.opacity(store.isDarkMode ? 0.20 : 0.04), radius: 2, x: 0, y: 1)
+    }
+}
+
+// MARK: - Quick Toggle Item
+struct QuickToggleItem: View {
+    let icon: String
+    let title: String
+    @Binding var isOn: Bool
+    let isDark: Bool
+    let uiFont: LeanFont
+    var accentColor: Color? = nil
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button {
+            withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+                isOn.toggle()
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(
+                        isOn
+                            ? (accentColor ?? (isDark ? Color.white : Color.black))
+                            : (isDark ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
+                    )
+                    .frame(width: 16)
+
+                Text(title)
+                    .font(uiFont.font(size: 12, weight: .regular))
+                    .foregroundColor(isDark ? Color(white: 0.92) : Color(white: 0.14))
+
+                Spacer()
+
+                // Minimal micro switch
+                ZStack(alignment: isOn ? .trailing : .leading) {
+                    Capsule()
+                        .fill(
+                            isOn
+                                ? (accentColor ?? (isDark ? Color.white : Color(white: 0.10)))
+                                : (isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08))
+                        )
+                        .frame(width: 28, height: 16)
+
+                    Circle()
+                        .fill(
+                            isOn
+                                ? (isDark ? Color(white: 0.08) : Color.white)
+                                : (isDark ? Color.white.opacity(0.85) : Color.white)
+                        )
+                        .frame(width: 11, height: 11)
+                        .padding(2.5)
+                        .shadow(color: Color.black.opacity(0.18), radius: 1, y: 0.5)
+                }
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 28)
+            .background(
+                isHovered
+                    ? (isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03))
+                    : Color.clear,
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+}
+

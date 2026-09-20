@@ -48,6 +48,16 @@ final class OmnibarService {
             return results
         }
 
+        // Suggest Lean Settings if query matches settings / lean
+        if "settings".hasPrefix(lower) || "lean://settings".hasPrefix(lower) || lower == "lean" {
+            results.append(OmnibarSuggestion(
+                primaryText: "Settings",
+                secondaryText: "lean://settings",
+                isSearch: false,
+                targetURL: URL(string: "lean://settings")!
+            ))
+        }
+
         // 1. Check open tabs matching query
         for tab in openTabs {
             let tabTitleLower = tab.title.lowercased()

@@ -8,6 +8,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case tabs = "Tabs"
     case browsing = "Browsing"
     case privacy = "Privacy"
+    case shortcuts = "Shortcuts"
     case history = "History"
 
     var id: String { rawValue }
@@ -20,6 +21,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .tabs: return "square.stack.3d.forward.dottedline"
         case .browsing: return "globe"
         case .privacy: return "shield"
+        case .shortcuts: return "command"
         case .history: return "clock"
         }
     }
@@ -32,6 +34,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .tabs: return "Tab strip presentation and switcher previews"
         case .browsing: return "Scrollbar styling and scrolling mechanics"
         case .privacy: return "Search provider, content filtering, and local data"
+        case .shortcuts: return "Keyboard shortcuts, navigation hotkeys, and quick actions"
         case .history: return "Recently visited pages"
         }
     }
@@ -40,6 +43,9 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @ObservedObject var store: LeanStore
     @State private var selectedCategory: SettingsCategory = .general
+    @StateObject private var dropdownState = DropdownMenuState()
+    @Namespace private var sidebarAnimation
+    @Namespace private var compactAnimation
 
     var body: some View {
         GeometryReader { geometry in
@@ -87,6 +93,17 @@ struct SettingsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay {
+            if dropdownState.activeId != nil {
+                Color.black.opacity(0.0001)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        dropdownState.dismiss()
+                    }
+            }
+        }
+        .environmentObject(dropdownState)
         .preferredColorScheme(store.colorScheme)
     }
 
@@ -155,12 +172,17 @@ struct SettingsView: View {
                         }
                         .padding(.horizontal, 12)
                         .frame(height: 32)
-                        .background(
-                            isSelected
-                                ? (store.isDarkMode ? Color.white.opacity(0.09) : Color.black.opacity(0.06))
-                                : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        )
+                        .background {
+                            if isSelected {
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(store.isDarkMode ? Color.white.opacity(0.09) : Color.black.opacity(0.06))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                            .stroke(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04), lineWidth: 0.5)
+                                    )
+                                    .matchedGeometryEffect(id: "activeSidebarCategory", in: sidebarAnimation)
+                            }
+                        }
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -203,12 +225,17 @@ struct SettingsView: View {
                         )
                         .padding(.horizontal, 12)
                         .frame(height: 30)
-                        .background(
-                            isSelected
-                                ? (store.isDarkMode ? Color.white.opacity(0.12) : Color.black.opacity(0.07))
-                                : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        )
+                        .background {
+                            if isSelected {
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(store.isDarkMode ? Color.white.opacity(0.12) : Color.black.opacity(0.07))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                            .stroke(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05), lineWidth: 0.5)
+                                    )
+                                    .matchedGeometryEffect(id: "activeCompactCategory", in: compactAnimation)
+                            }
+                        }
                     }
                     .buttonStyle(.plain)
                 }
@@ -249,6 +276,8 @@ struct SettingsView: View {
             BrowsingSection(store: store)
         case .privacy:
             PrivacySection(store: store)
+        case .shortcuts:
+            ShortcutsSection(store: store)
         case .history:
             HistorySection(store: store)
         }
@@ -962,7 +991,8 @@ private struct AppearanceSection: View {
                         subtitle: "Typeface applied to tabs, omnibar, and browser controls",
                         selection: $store.leanUIFont,
                         uiFont: store.leanUIFont,
-                        isDark: store.isDarkMode
+                        isDark: store.isDarkMode,
+                        pickerId: "fontPicker_leanUI"
                     )
 
                     SettingsRowDivider(isDark: store.isDarkMode)
@@ -972,7 +1002,8 @@ private struct AppearanceSection: View {
                         subtitle: "Typeface override applied to readable webpage text",
                         selection: $store.webPageFont,
                         uiFont: store.leanUIFont,
-                        isDark: store.isDarkMode
+                        isDark: store.isDarkMode,
+                        pickerId: "fontPicker_webPages"
                     )
                 }
             }
@@ -1082,6 +1113,8 @@ private struct BrowsingSection: View {
 private struct PrivacySection: View {
     @ObservedObject var store: LeanStore
     @State private var historyCleared = false
+    @State private var isUpdatingFilters = false
+    @State private var filterStatus: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -1090,39 +1123,63 @@ private struct PrivacySection: View {
                 SettingsHeaderLabel("Search & Protection", uiFont: store.leanUIFont, isDark: store.isDarkMode)
 
                 SettingsGroup(isDark: store.isDarkMode) {
-                    // Search Engine
+                    SearchEnginePickerRow(
+                        selection: $store.searchEngine,
+                        uiFont: store.leanUIFont,
+                        isDark: store.isDarkMode
+                    )
+
+                    SettingsRowDivider(isDark: store.isDarkMode)
+
+                    CustomToggleRow(
+                        title: "Tracker & ad filtering",
+                        subtitle: "Built-in blocking powered by uBlock Origin filter lists (EasyList, EasyPrivacy, uBlock filters).",
+                        isOn: $store.adBlockingEnabled,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
+
+                    SettingsRowDivider(isDark: store.isDarkMode)
+
                     HStack(alignment: .center, spacing: 16) {
                         VStack(alignment: .leading, spacing: 2.5) {
-                            Text("Default search engine")
+                            Text("Filter lists")
                                 .font(store.leanUIFont.font(size: 13, weight: .medium))
                                 .foregroundColor(primaryText)
-                            Text("Queries entered into the omnibar are directed to this engine")
+                            Text(filterListsSubtitle)
                                 .font(store.leanUIFont.font(size: 11.5))
                                 .foregroundColor(secondaryText)
                         }
 
                         Spacer(minLength: 16)
 
-                        Picker("Default search engine", selection: $store.searchEngine) {
-                            ForEach(SearchEngine.allCases) { engine in
-                                Text(engine.name).tag(engine)
+                        if isUpdatingFilters {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Button {
+                                Task { await updateFilterLists() }
+                            } label: {
+                                Text("Update now")
+                                    .font(store.leanUIFont.font(size: 11.5, weight: .medium))
+                                    .foregroundColor(primaryText)
+                                    .padding(.horizontal, 12)
+                                    .frame(height: 28)
+                                    .background(
+                                        store.isDarkMode ? Color.white.opacity(0.10) : Color.black.opacity(0.06),
+                                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .stroke(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06), lineWidth: 0.5)
+                                    )
                             }
+                            .buttonStyle(.plain)
+                            .disabled(isUpdatingFilters)
                         }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-
-                    SettingsRowDivider(isDark: store.isDarkMode)
-
-                    CustomToggleRow(
-                        title: "Tracker & ad filtering",
-                        subtitle: "Block common ad networks, trackers, and invasive banners.",
-                        isOn: $store.adBlockingEnabled,
-                        isDark: store.isDarkMode,
-                        uiFont: store.leanUIFont
-                    )
                 }
             }
 
@@ -1190,11 +1247,369 @@ private struct PrivacySection: View {
         }
     }
 
+    private var filterListsSubtitle: String {
+        if let filterStatus {
+            return filterStatus
+        }
+        let count = ContentBlocker.cachedRuleCount
+        if let updated = ContentBlocker.lastUpdatedDate {
+            let formatter = RelativeDateTimeFormatter()
+            formatter.unitsStyle = .short
+            let ago = formatter.localizedString(for: updated, relativeTo: Date())
+            if count > 0 {
+                return "\(count.formatted()) rules · updated \(ago)"
+            }
+            return "Updated \(ago)"
+        }
+        if count > 0 {
+            return "\(count.formatted()) rules · never updated on this Mac"
+        }
+        return "Lists download automatically and refresh weekly"
+    }
+
+    private func updateFilterLists() async {
+        isUpdatingFilters = true
+        defer { isUpdatingFilters = false }
+        if let result = await ContentBlocker.refreshNow() {
+            filterStatus = "\(result.ruleCount.formatted()) rules · just updated"
+        } else {
+            filterStatus = "Update failed — kept existing lists"
+        }
+    }
+
     private var primaryText: Color {
         store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12)
     }
 
     private var secondaryText: Color {
         store.isDarkMode ? Color(white: 0.50) : Color(white: 0.48)
+    }
+}
+
+// MARK: - Keymaps / Shortcuts Section
+private struct KeymapItem: Identifiable {
+    let id = UUID()
+    let title: String
+    let description: String
+    let keys: [String]
+    let group: KeymapGroup
+    let action: ((LeanStore) -> Void)?
+
+    enum KeymapGroup: String, CaseIterable, Identifiable {
+        case all = "All"
+        case tabs = "Tabs"
+        case navigation = "Navigation"
+        case omnibar = "Address & Search"
+        case view = "View"
+
+        var id: String { rawValue }
+    }
+}
+
+private struct ShortcutsSection: View {
+    @ObservedObject var store: LeanStore
+    @State private var searchQuery = ""
+    @State private var selectedGroup: KeymapItem.KeymapGroup = .all
+    @State private var triggeredKeymapId: UUID? = nil
+
+    private let keymaps: [KeymapItem] = [
+        // Tabs
+        KeymapItem(title: "New Tab", description: "Open a fresh tab or Omnibar", keys: ["⌘", "T"], group: .tabs) { store in
+            store.handleNewTabCommand()
+        },
+        KeymapItem(title: "Close Tab", description: "Close the currently active tab", keys: ["⌘", "W"], group: .tabs) { store in
+            store.closeSelectedTab()
+        },
+        KeymapItem(title: "Reopen Tab", description: "Restore the most recently closed tab", keys: ["⇧", "⌘", "T"], group: .tabs) { store in
+            store.reopenClosedTab()
+        },
+        KeymapItem(title: "Next Tab", description: "Cycle forward through open tabs", keys: ["⌃", "Tab"], group: .tabs) { store in
+            store.selectNextTab()
+        },
+        KeymapItem(title: "Previous Tab", description: "Cycle backward through open tabs", keys: ["⌃", "⇧", "Tab"], group: .tabs) { store in
+            store.selectNextTab(reverse: true)
+        },
+        KeymapItem(title: "Go to Tab 1–8", description: "Jump directly to tab by position", keys: ["⌘", "1–8"], group: .tabs, action: nil),
+        KeymapItem(title: "Go to Last Tab", description: "Jump to the very last open tab", keys: ["⌘", "9"], group: .tabs) { store in
+            store.selectTab(number: 9)
+        },
+
+        // Navigation
+        KeymapItem(title: "Back", description: "Navigate to previous page in session history", keys: ["⌘", "["], group: .navigation) { store in
+            store.selectedTab?.goBack()
+        },
+        KeymapItem(title: "Forward", description: "Navigate forward in session history", keys: ["⌘", "]"], group: .navigation) { store in
+            store.selectedTab?.goForward()
+        },
+        KeymapItem(title: "Reload Page", description: "Reload the current page", keys: ["⌘", "R"], group: .navigation) { store in
+            store.selectedTab?.reload()
+        },
+        KeymapItem(title: "Hard Reload", description: "Bypass cache and reload page", keys: ["⇧", "⌘", "R"], group: .navigation) { store in
+            store.selectedTab?.reloadFromOrigin()
+        },
+        KeymapItem(title: "Stop Loading", description: "Halt loading current web document", keys: ["Esc"], group: .navigation) { store in
+            store.selectedTab?.stop()
+        },
+
+        // Address & Search
+        KeymapItem(title: "Focus Address Bar", description: "Activate inline address field or Omnibar", keys: ["⌘", "L"], group: .omnibar) { store in
+            NotificationCenter.default.post(name: .focusAddress, object: nil)
+        },
+        KeymapItem(title: "Find on Page", description: "Reveal interactive in-page text search bar", keys: ["⌘", "F"], group: .omnibar) { store in
+            NotificationCenter.default.post(name: .showFind, object: nil)
+        },
+        KeymapItem(title: "Dismiss / Unfocus", description: "Close dropdowns, Omnibar, or inline editing", keys: ["Esc"], group: .omnibar) { store in
+            store.dismissInlineURLEditing()
+            store.dismissFloatingOmnibar()
+        },
+
+        // View
+        KeymapItem(title: "Toggle Light/Dark", description: "Switch between light and dark theme mode", keys: ["⇧", "⌘", "D"], group: .view) { store in
+            store.toggleTheme()
+        },
+        KeymapItem(title: "Toggle Zen Mode", description: "Hide interface elements for pure immersion", keys: ["⇧", "⌘", "Z"], group: .view) { store in
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                store.enableZenMode.toggle()
+            }
+        },
+        KeymapItem(title: "Toggle Window Frame", description: "Show or hide subtle framed border", keys: ["⇧", "⌘", "B"], group: .view) { store in
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                store.enableWindowBorder.toggle()
+            }
+        },
+        KeymapItem(title: "Zoom In", description: "Enlarge web page contents", keys: ["⌘", "+"], group: .view) { store in
+            store.selectedTab?.zoomIn()
+        },
+        KeymapItem(title: "Zoom Out", description: "Reduce web page contents", keys: ["⌘", "−"], group: .view) { store in
+            store.selectedTab?.zoomOut()
+        },
+        KeymapItem(title: "Actual Size", description: "Reset page zoom to 100%", keys: ["⌘", "0"], group: .view) { store in
+            store.selectedTab?.resetZoom()
+        },
+        KeymapItem(title: "Preferences", description: "Open Lean Browser settings window", keys: ["⌘", ","], group: .view) { store in
+            store.openSettings()
+        }
+    ]
+
+    private var filteredKeymaps: [KeymapItem] {
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return keymaps.filter { item in
+            let matchesGroup = selectedGroup == .all || item.group == selectedGroup
+            guard matchesGroup else { return false }
+            if trimmed.isEmpty { return true }
+            let matchesTitle = item.title.lowercased().contains(trimmed)
+            let matchesDesc = item.description.lowercased().contains(trimmed)
+            let matchesKey = item.keys.joined(separator: " ").lowercased().contains(trimmed)
+            return matchesTitle || matchesDesc || matchesKey
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 20) {
+            // Search & Filter Header
+            VStack(spacing: 12) {
+                // Search Input Field
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.35))
+
+                    TextField("Search shortcuts or keys...", text: $searchQuery)
+                        .textFieldStyle(.plain)
+                        .font(store.leanUIFont.font(size: 12.5))
+                        .foregroundColor(primaryText)
+
+                    if !searchQuery.isEmpty {
+                        Button {
+                            searchQuery = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(secondaryText)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 32)
+                .background(
+                    store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06), lineWidth: 0.5)
+                )
+
+                // Category Filter Pills
+                HStack(spacing: 5) {
+                    ForEach(KeymapItem.KeymapGroup.allCases) { group in
+                        let isSelected = group == selectedGroup
+                        Button {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
+                                selectedGroup = group
+                            }
+                        } label: {
+                            Text(group.rawValue)
+                                .font(store.leanUIFont.font(size: 11, weight: isSelected ? .semibold : .regular))
+                                .foregroundColor(
+                                    isSelected
+                                        ? primaryText
+                                        : (store.isDarkMode ? Color.white.opacity(0.50) : Color.black.opacity(0.45))
+                                )
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(
+                                    isSelected
+                                        ? (store.isDarkMode ? Color.white.opacity(0.12) : Color.black.opacity(0.08))
+                                        : Color.clear,
+                                    in: Capsule()
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+                }
+            }
+
+            // Keymaps Card
+            SettingsGroup(isDark: store.isDarkMode) {
+                VStack(spacing: 0) {
+                    ForEach(Array(filteredKeymaps.enumerated()), id: \.element.id) { index, item in
+                        HStack(spacing: 12) {
+                            // Action Title & Description
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.title)
+                                    .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                                    .foregroundColor(primaryText)
+
+                                Text(item.description)
+                                    .font(store.leanUIFont.font(size: 11))
+                                    .foregroundColor(secondaryText)
+                            }
+
+                            Spacer(minLength: 16)
+
+                            // Interactive Test Trigger Indicator
+                            if let action = item.action {
+                                let wasTriggered = triggeredKeymapId == item.id
+                                Button {
+                                    action(store)
+                                    withAnimation(.spring(response: 0.18, dampingFraction: 0.75)) {
+                                        triggeredKeymapId = item.id
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                                        if triggeredKeymapId == item.id {
+                                            withAnimation(.easeOut(duration: 0.2)) {
+                                                triggeredKeymapId = nil
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        if wasTriggered {
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 9.5, weight: .bold))
+                                                .foregroundColor(Color(red: 48/255, green: 209/255, blue: 88/255))
+                                        }
+                                        Text(wasTriggered ? "Triggered" : "Test")
+                                            .font(store.leanUIFont.font(size: 10, weight: .medium))
+                                            .foregroundColor(
+                                                wasTriggered
+                                                    ? Color(red: 48/255, green: 209/255, blue: 88/255)
+                                                    : (store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.35))
+                                            )
+                                    }
+                                    .padding(.horizontal, 7)
+                                    .frame(height: 22)
+                                    .background(
+                                        wasTriggered
+                                            ? Color(red: 48/255, green: 209/255, blue: 88/255).opacity(0.12)
+                                            : (store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.04)),
+                                        in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .help("Click to trigger this action")
+                            }
+
+                            // Keycap Badges
+                            HStack(spacing: 3) {
+                                ForEach(Array(item.keys.enumerated()), id: \.offset) { _, key in
+                                    KeycapBadge(key: key, isDark: store.isDarkMode, font: store.leanUIFont)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+
+                        if index < filteredKeymaps.count - 1 {
+                            Divider()
+                                .background(dividerColor)
+                                .padding(.horizontal, 16)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var primaryText: Color {
+        store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12)
+    }
+
+    private var secondaryText: Color {
+        store.isDarkMode ? Color(white: 0.50) : Color(white: 0.48)
+    }
+
+    private var dividerColor: Color {
+        store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.05)
+    }
+}
+
+// MARK: - Keycap Badge
+private struct KeycapBadge: View {
+    let key: String
+    let isDark: Bool
+    let font: LeanFont
+
+    private var keyFont: Font {
+        let size: CGFloat = key.count > 1 ? 10.5 : 12.0
+        return font.font(size: size, weight: .medium)
+    }
+
+    private var textColor: Color {
+        isDark ? Color(white: 0.88) : Color(white: 0.16)
+    }
+
+    private var badgeBackground: Color {
+        isDark ? Color.white.opacity(0.09) : Color.black.opacity(0.06)
+    }
+
+    private var badgeBorder: Color {
+        isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.07)
+    }
+
+    private var shadowColor: Color {
+        isDark ? Color.black.opacity(0.25) : Color.black.opacity(0.04)
+    }
+
+    private var hPadding: CGFloat {
+        key.count > 1 ? 6 : 5
+    }
+
+    var body: some View {
+        Text(key)
+            .font(keyFont)
+            .foregroundColor(textColor)
+            .padding(.horizontal, hPadding)
+            .frame(minWidth: 20)
+            .frame(height: 21)
+            .background(badgeBackground, in: RoundedRectangle(cornerRadius: 4.5, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+                    .stroke(badgeBorder, lineWidth: 0.5)
+            )
+            .shadow(color: shadowColor, radius: 1, x: 0, y: 1)
     }
 }

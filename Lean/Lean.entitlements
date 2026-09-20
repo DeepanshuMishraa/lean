@@ -22,5 +22,11 @@
     <true/>
     <key>com.apple.security.files.downloads.read-write</key>
     <true/>
+    <!-- Ad-hoc signed (no Team ID): dyld derives each binary's team from its
+    cdhash, so the app and embedded Sparkle can never match teams under the
+    hardened runtime's library validation. Disable it or every Release build
+    aborts at launch with "different Team IDs". Safe: distribution is ad-hoc. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
 </dict>
 </plist>

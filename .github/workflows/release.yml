@@ -54,7 +54,7 @@ jobs:
   build-macos:
     name: macOS ${{ matrix.arch }}
     needs: version
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -67,7 +67,13 @@ jobs:
 
       - name: Select Xcode
         run: |
-          sudo xcode-select -s /Applications/Xcode.app || true
+          # Project uses objectVersion 77 (Xcode 16+); always pick the
+          # newest Xcode on the runner instead of the default symlink,
+          # which may point at an older version that cannot open it.
+          ls -d /Applications/Xcode*.app
+          XCODE_NEWEST="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          echo "Selecting $XCODE_NEWEST"
+          sudo xcode-select -s "$XCODE_NEWEST"
           xcodebuild -version
 
       - name: Install XcodeGen
@@ -133,7 +139,7 @@ jobs:
   appcast:
     name: Sparkle appcast
     needs: [version, build-macos]
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

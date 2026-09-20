@@ -4,21 +4,12 @@ Lean is a small native macOS browser built with SwiftUI, AppKit, and WebKit.
 
 Its job is simple: open pages quickly and stay out of the way. Lean avoids permanent chrome, bundled services, and features that add more weight than value. Native macOS and WebKit behavior wins over custom machinery whenever possible.
 
-## Principles
-
-- Keep the interface quiet and compact
-- Prefer native platform behavior
-- Make every setting optional and immediate
-- Add features only when they improve browsing without bloating the app
-
-## Features
-
-- Horizontal tabs with keyboard switching and previews
-- Omnibar search, URL entry, history, and open-tab matching
-- Light, dark, and system themes
-- Separate Lean UI and webpage fonts
-- Configurable page scrollbars and native scrolling
-- WebKit content blocking
+Why build another browser? Every mainstream option drags in a bundled
+Chromium engine with its hundred-megabyte updates and background
+services, or the full weight of someone else's product scope. Lean is a
+personal experiment in the opposite direction: the WebKit already on
+your Mac, wrapped in just enough native UI to browse. No bundled
+engine, no daemons, no accounts — a clean, minimal window onto the web.
 
 ## Known limitations
 
@@ -66,6 +57,29 @@ missing browser chrome does not provide will not work. Verified by testing:
   Settings before assuming anything else.
 - **No private windows, profiles, or print support.** DevTools
   inspection is a debug-build feature only.
+
+### Opening a release build
+
+Release builds are ad-hoc signed, not notarized, so Gatekeeper blocks
+the first launch. Right-click the app → Open → Open, or run
+`xattr -d com.apple.quarantine Lean.app`. Only a paid Developer ID
+certificate plus notarization removes this step.
+
+## Principles
+
+- Keep the interface quiet and compact
+- Prefer native platform behavior
+- Make every setting optional and immediate
+- Add features only when they improve browsing without bloating the app
+
+## Features
+
+- Horizontal tabs with keyboard switching and previews
+- Omnibar search, URL entry, history, and open-tab matching
+- Light, dark, and system themes
+- Separate Lean UI and webpage fonts
+- Configurable page scrollbars and native scrolling
+- WebKit content blocking
 
 ## Run
 

@@ -53,7 +53,8 @@ struct TabSwitcherView: View {
                     tab: tab,
                     isSelected: index == store.switcherSelectedIndex,
                     isDark: store.isDarkMode,
-                    uiFont: store.leanUIFont
+                    uiFont: store.leanUIFont,
+                    headingWeight: store.uiHeadingWeight
                 )
                 .onTapGesture {
                     store.switcherSelectedIndex = index
@@ -73,7 +74,8 @@ struct TabSwitcherView: View {
                     tab: tab,
                     isSelected: index == store.switcherSelectedIndex,
                     isDark: store.isDarkMode,
-                    uiFont: store.leanUIFont
+                    uiFont: store.leanUIFont,
+                    headingWeight: store.uiHeadingWeight
                 )
                 .onTapGesture {
                     store.switcherSelectedIndex = index
@@ -90,6 +92,7 @@ struct NormalTabItem: View {
     let isSelected: Bool
     let isDark: Bool
     let uiFont: LeanFont
+    var headingWeight: LeanFontWeight = .medium
 
     var body: some View {
         HStack(spacing: 8) {
@@ -97,7 +100,7 @@ struct NormalTabItem: View {
                 .frame(width: 16, height: 16)
 
             Text(tab.displayTitle(isSelected: true))
-                .font(uiFont.font(size: 13, weight: isSelected ? .semibold : .medium))
+                .font(uiFont.font(size: 13, weight: headingWeight.fontWeight))
                 .foregroundColor(
                     isSelected
                         ? (isDark ? .white : .black)
@@ -152,6 +155,7 @@ struct TabThumbnailCard: View {
     let isSelected: Bool
     let isDark: Bool
     let uiFont: LeanFont
+    var headingWeight: LeanFontWeight = .medium
 
     var body: some View {
         VStack(spacing: 0) {
@@ -166,7 +170,7 @@ struct TabThumbnailCard: View {
                 SiteIconView(url: tab.url, title: tab.title, isDark: isDark)
 
                 Text(tab.displayTitle(isSelected: true))
-                    .font(uiFont.font(size: 13, weight: isSelected ? .semibold : .medium))
+                    .font(uiFont.font(size: 13, weight: headingWeight.fontWeight))
                     .foregroundColor(isDark ? .white : .black)
                     .lineLimit(1)
 

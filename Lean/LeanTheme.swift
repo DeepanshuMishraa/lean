@@ -18,11 +18,80 @@ enum LeanFont: String, CaseIterable, Identifiable {
         return .custom(rawValue, size: size).weight(weight)
     }
 
+    func font(size: CGFloat, fontWeight: LeanFontWeight) -> Font {
+        font(size: size, weight: fontWeight.fontWeight)
+    }
+
     var cssFamily: String {
         switch self {
         case .system: return "-apple-system, BlinkMacSystemFont, sans-serif"
         default: return "'\(rawValue)', -apple-system, BlinkMacSystemFont, sans-serif"
         }
+    }
+}
+
+enum LeanFontWeight: Int, CaseIterable, Identifiable, Comparable, Codable {
+    case ultraLight = 100
+    case thin = 200
+    case light = 300
+    case regular = 400
+    case medium = 500
+    case semibold = 600
+    case bold = 700
+    case heavy = 800
+    case black = 900
+
+    var id: Int { rawValue }
+
+    static func < (lhs: LeanFontWeight, rhs: LeanFontWeight) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+
+    var name: String {
+        switch self {
+        case .ultraLight: return "Ultralight"
+        case .thin: return "Thin"
+        case .light: return "Light"
+        case .regular: return "Regular"
+        case .medium: return "Medium"
+        case .semibold: return "Semibold"
+        case .bold: return "Bold"
+        case .heavy: return "Heavy"
+        case .black: return "Black"
+        }
+    }
+
+    var fontWeight: Font.Weight {
+        switch self {
+        case .ultraLight: return .ultraLight
+        case .thin: return .thin
+        case .light: return .light
+        case .regular: return .regular
+        case .medium: return .medium
+        case .semibold: return .semibold
+        case .bold: return .bold
+        case .heavy: return .heavy
+        case .black: return .black
+        }
+    }
+
+    var nsFontWeight: NSFont.Weight {
+        switch self {
+        case .ultraLight: return .ultraLight
+        case .thin: return .thin
+        case .light: return .light
+        case .regular: return .regular
+        case .medium: return .medium
+        case .semibold: return .semibold
+        case .bold: return .bold
+        case .heavy: return .heavy
+        case .black: return .black
+        }
+    }
+
+    init(closestTo value: Double) {
+        let all = Self.allCases
+        self = all.min(by: { abs(Double($0.rawValue) - value) < abs(Double($1.rawValue) - value) }) ?? .regular
     }
 }
 

@@ -178,6 +178,30 @@ struct LeanView: View {
             .zIndex(150)
         }
 
+        // Bespoke Quick Settings Overlay
+        if store.isQuickSettingsPresented {
+            ZStack(alignment: .topTrailing) {
+                Color.black.opacity(0.0001)
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                            store.isQuickSettingsPresented = false
+                        }
+                    }
+
+                QuickSettingsPopover(store: store)
+                    .padding(.top, (store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : 4))
+                    .padding(.trailing, (store.enableWindowBorder ? store.windowBorderWidth : 0) + 12)
+            }
+            .transition(.asymmetric(
+                insertion: .scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity),
+                removal: .scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity)
+            ))
+            .animation(.spring(response: 0.22, dampingFraction: 0.82), value: store.isQuickSettingsPresented)
+            .zIndex(190)
+        }
+
         // Ctrl+Tab Thumbnail Switcher Overlay
         if store.isTabSwitcherVisible {
             TabSwitcherView(store: store)
@@ -258,7 +282,7 @@ struct LeanView: View {
         guard !hasSetupKeyMonitor else { return }
         hasSetupKeyMonitor = true
 
-        // Monitor mouse clicks when inline URL bar or floating omnibar is open:
+        // Monitor mouse clicks when quick settings, inline URL bar, or floating omnibar is open:
         // Only clicking outside the active region collapses / closes it!
         NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { event in
             guard let window = event.window ?? NSApp.keyWindow else { return event }
@@ -267,6 +291,19 @@ struct LeanView: View {
             let windowHeight = window.contentView?.frame.height ?? window.frame.height
             let clickLocation = event.locationInWindow
             let swiftUIPoint = CGPoint(x: clickLocation.x, y: windowHeight - clickLocation.y)
+
+            // When Quick Settings popover is open, dismiss when clicking outside its bounds (and the gear button)
+            if store.isQuickSettingsPresented {
+                let popoverFrame = store.quickSettingsPopoverFrame
+                let buttonFrame = store.settingsButtonFrame
+                let isInsidePopover = popoverFrame.width > 0 && popoverFrame.contains(swiftUIPoint)
+                let isInsideButton = buttonFrame.width > 0 && buttonFrame.contains(swiftUIPoint)
+                if !isInsidePopover && !isInsideButton {
+                    withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+                        store.isQuickSettingsPresented = false
+                    }
+                }
+            }
 
             // When inline URL bar is being edited, dismiss when clicking outside its bounds (and dropdown)
             if store.isInlineURLEditing {
@@ -301,40 +338,16 @@ struct LeanView: View {
             }
         }
 
-        // Monitor keyDown for Cmd+W, Cmd+T, Cmd+L, Ctrl+Tab, Ctrl+Shift+Tab, Escape
+        // Monitor keyDown for registered custom shortcuts and Escape
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let flags = event.modifierFlags.intersection([.command, .shift, .control, .option])
-            let isCommand = event.modifierFlags.contains(.command) &&
-                !event.modifierFlags.contains(.shift) &&
-                !event.modifierFlags.contains(.control) &&
-                !event.modifierFlags.contains(.option)
-
-            // Intercept Cmd+W to close current tab instead of the entire window / application
-            if isCommand && (event.keyCode == 13 || event.charactersIgnoringModifiers?.lowercased() == "w") {
-                store.closeSelectedTab()
-                return nil // Prevent event from closing the window!
-            }
-
-            // Intercept Cmd+T for floating omnibar / new tab command (keyCode 17 = 'T')
-            if isCommand && (event.keyCode == 17 || event.charactersIgnoringModifiers?.lowercased() == "t") {
-                store.handleNewTabCommand()
-                return nil
-            }
-
-            // Intercept Cmd+L to focus inline address bar or new tab address (keyCode 37 = 'L')
-            if isCommand && (event.keyCode == 37 || event.charactersIgnoringModifiers?.lowercased() == "l") {
-                if store.selectedTab?.url != nil {
-                    withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
-                        store.isInlineURLEditing = true
-                    }
-                } else {
-                    NotificationCenter.default.post(name: .focusAddress, object: nil)
-                }
-                return nil
-            }
-
-            // Intercept Escape (keyCode 53) to close inline url bar, floating omnibar, new tab omnibar, or tab switcher
+            // Intercept Escape (keyCode 53) to close quick settings, inline url bar, floating omnibar, new tab omnibar, or tab switcher
             if event.keyCode == 53 {
+                if store.isQuickSettingsPresented {
+                    withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+                        store.isQuickSettingsPresented = false
+                    }
+                    return nil
+                }
                 if store.isInlineURLEditing {
                     store.dismissInlineURLEditing()
                     return nil
@@ -353,15 +366,16 @@ struct LeanView: View {
                 }
             }
 
-            // Intercept Ctrl+Tab or Ctrl+Shift+Tab
-            if event.keyCode == 48 && flags.contains(.control) {
-                let isShift = flags.contains(.shift)
-                if store.enableThumbnailsInTabSwitcher {
-                    store.startTabSwitcher(reverse: isShift)
-                } else {
-                    store.selectNextTab(reverse: isShift)
+            // Check custom shortcuts
+            for action in ShortcutAction.allCases {
+                if action == .dismiss || action == .stopLoading {
+                    continue // Handled above or conditionally
                 }
-                return nil
+                let combo = store.shortcut(for: action)
+                if combo.matches(event: event) {
+                    action.performAction(in: store)
+                    return nil
+                }
             }
 
             return event

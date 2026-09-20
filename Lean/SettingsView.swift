@@ -93,18 +93,11 @@ struct SettingsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay {
-            if dropdownState.activeId != nil {
-                Color.black.opacity(0.0001)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        dropdownState.dismiss()
-                    }
-            }
-        }
         .environmentObject(dropdownState)
         .preferredColorScheme(store.colorScheme)
+        .onChange(of: selectedCategory) { _, _ in
+            dropdownState.dismiss()
+        }
     }
 
     // MARK: - Color Tokens
@@ -134,7 +127,7 @@ struct SettingsView: View {
             // Settings Title
             HStack(spacing: 10) {
                 Text("Settings")
-                    .font(store.leanUIFont.font(size: 16, weight: .semibold))
+                    .font(store.headingFont(size: 16))
                     .foregroundColor(primaryText)
                     .tracking(-0.2)
             }
@@ -161,7 +154,7 @@ struct SettingsView: View {
                                 .frame(width: 18)
 
                             Text(category.rawValue)
-                                .font(store.leanUIFont.font(size: 13, weight: isSelected ? .medium : .regular))
+                                .font(store.headingFont(size: 13))
                                 .foregroundColor(
                                     isSelected
                                         ? primaryText
@@ -194,7 +187,7 @@ struct SettingsView: View {
 
             // Footer version
             Text("Lean Browser")
-                .font(store.leanUIFont.font(size: 10.5, weight: .medium))
+                .font(store.bodyFont(size: 10.5))
                 .foregroundColor(store.isDarkMode ? Color.white.opacity(0.25) : Color.black.opacity(0.30))
                 .padding(.horizontal, 16)
                 .padding(.bottom, 20)
@@ -216,7 +209,7 @@ struct SettingsView: View {
                             Image(systemName: category.icon)
                                 .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
                             Text(category.rawValue)
-                                .font(store.leanUIFont.font(size: 12, weight: isSelected ? .semibold : .medium))
+                                .font(store.headingFont(size: 12))
                         }
                         .foregroundColor(
                             isSelected
@@ -249,12 +242,12 @@ struct SettingsView: View {
     private var categoryHeader: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(selectedCategory.rawValue)
-                .font(store.leanUIFont.font(size: 20, weight: .semibold))
+                .font(store.headingFont(size: 20))
                 .foregroundColor(primaryText)
                 .tracking(-0.3)
 
             Text(selectedCategory.subtitle)
-                .font(store.leanUIFont.font(size: 12))
+                .font(store.bodyFont(size: 12))
                 .foregroundColor(secondaryText)
         }
         .padding(.bottom, 4)
@@ -958,6 +951,7 @@ private struct ToolbarInteractiveChip: View {
 // MARK: - 3. Appearance Section
 private struct AppearanceSection: View {
     @ObservedObject var store: LeanStore
+    @EnvironmentObject private var dropdownState: DropdownMenuState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -983,7 +977,13 @@ private struct AppearanceSection: View {
 
             // Typography
             VStack(alignment: .leading, spacing: 8) {
-                SettingsHeaderLabel("Typography", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                SettingsHeaderLabel(
+                    "Typography",
+                    uiFont: store.leanUIFont,
+                    isDark: store.isDarkMode,
+                    headingWeight: store.uiHeadingWeight,
+                    bodyWeight: store.uiBodyWeight
+                )
 
                 SettingsGroup(isDark: store.isDarkMode) {
                     FontPickerRow(
@@ -992,7 +992,35 @@ private struct AppearanceSection: View {
                         selection: $store.leanUIFont,
                         uiFont: store.leanUIFont,
                         isDark: store.isDarkMode,
-                        pickerId: "fontPicker_leanUI"
+                        pickerId: "fontPicker_leanUI",
+                        headingWeight: store.uiHeadingWeight,
+                        bodyWeight: store.uiBodyWeight
+                    )
+
+                    SettingsRowDivider(isDark: store.isDarkMode)
+
+                    FontWeightSliderRow(
+                        title: "Heading weight",
+                        subtitle: "\(store.uiHeadingWeight.name) (\(store.uiHeadingWeight.rawValue)) · Thickness of titles, tabs, and headers",
+                        value: $store.uiHeadingWeight,
+                        label: "H",
+                        uiFont: store.leanUIFont,
+                        isDark: store.isDarkMode,
+                        headingWeight: store.uiHeadingWeight,
+                        bodyWeight: store.uiBodyWeight
+                    )
+
+                    SettingsRowDivider(isDark: store.isDarkMode)
+
+                    FontWeightSliderRow(
+                        title: "Body text weight",
+                        subtitle: "\(store.uiBodyWeight.name) (\(store.uiBodyWeight.rawValue)) · Thickness of omnibar, subtitles, and descriptions",
+                        value: $store.uiBodyWeight,
+                        label: "B",
+                        uiFont: store.leanUIFont,
+                        isDark: store.isDarkMode,
+                        headingWeight: store.uiHeadingWeight,
+                        bodyWeight: store.uiBodyWeight
                     )
 
                     SettingsRowDivider(isDark: store.isDarkMode)
@@ -1003,10 +1031,43 @@ private struct AppearanceSection: View {
                         selection: $store.webPageFont,
                         uiFont: store.leanUIFont,
                         isDark: store.isDarkMode,
-                        pickerId: "fontPicker_webPages"
+                        pickerId: "fontPicker_webPages",
+                        headingWeight: store.uiHeadingWeight,
+                        bodyWeight: store.uiBodyWeight
                     )
                 }
+                .zIndex(dropdownState.activeId?.starts(with: "fontPicker_") == true ? 100 : 1)
+
+                // Typography Live Preview Card
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Typography Preview")
+                            .font(store.headingFont(size: 13.5))
+                            .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+
+                        Spacer()
+
+                        Text("\(store.leanUIFont.rawValue) · H:\(store.uiHeadingWeight.rawValue) B:\(store.uiBodyWeight.rawValue)")
+                            .font(.system(size: 11, weight: .regular, design: .monospaced))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
+                    }
+
+                    Text("The quick brown fox jumps over the lazy dog — browser controls, tabs, and navigation text reflect these font weights in real time.")
+                        .font(store.bodyFont(size: 12))
+                        .foregroundColor(store.isDarkMode ? Color.white.opacity(0.60) : Color.black.opacity(0.55))
+                        .lineSpacing(2)
+                }
+                .padding(14)
+                .background(
+                    store.isDarkMode ? Color.white.opacity(0.025) : Color.black.opacity(0.015),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.04), lineWidth: 0.75)
+                )
             }
+            .zIndex(dropdownState.activeId?.starts(with: "fontPicker_") == true ? 100 : 1)
         }
     }
 }
@@ -1112,6 +1173,7 @@ private struct BrowsingSection: View {
 // MARK: - 6. Privacy & Data Section
 private struct PrivacySection: View {
     @ObservedObject var store: LeanStore
+    @EnvironmentObject private var dropdownState: DropdownMenuState
     @State private var historyCleared = false
     @State private var isUpdatingFilters = false
     @State private var filterStatus: String? = nil
@@ -1181,7 +1243,9 @@ private struct PrivacySection: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                 }
+                .zIndex(dropdownState.activeId == "searchEnginePicker" ? 100 : 1)
             }
+            .zIndex(dropdownState.activeId == "searchEnginePicker" ? 100 : 1)
 
             // Data Management
             VStack(alignment: .leading, spacing: 8) {
@@ -1287,120 +1351,57 @@ private struct PrivacySection: View {
 }
 
 // MARK: - Keymaps / Shortcuts Section
-private struct KeymapItem: Identifiable {
-    let id = UUID()
-    let title: String
-    let description: String
-    let keys: [String]
-    let group: KeymapGroup
-    let action: ((LeanStore) -> Void)?
-
-    enum KeymapGroup: String, CaseIterable, Identifiable {
-        case all = "All"
-        case tabs = "Tabs"
-        case navigation = "Navigation"
-        case omnibar = "Address & Search"
-        case view = "View"
-
-        var id: String { rawValue }
-    }
-}
-
 private struct ShortcutsSection: View {
     @ObservedObject var store: LeanStore
     @State private var searchQuery = ""
-    @State private var selectedGroup: KeymapItem.KeymapGroup = .all
-    @State private var triggeredKeymapId: UUID? = nil
+    @State private var selectedGroup: ShortcutAction.Group = .all
+    @State private var triggeredActionId: String? = nil
+    @State private var recordingAction: ShortcutAction? = nil
+    @State private var recordMonitor: Any? = nil
 
-    private let keymaps: [KeymapItem] = [
-        // Tabs
-        KeymapItem(title: "New Tab", description: "Open a fresh tab or Omnibar", keys: ["⌘", "T"], group: .tabs) { store in
-            store.handleNewTabCommand()
-        },
-        KeymapItem(title: "Close Tab", description: "Close the currently active tab", keys: ["⌘", "W"], group: .tabs) { store in
-            store.closeSelectedTab()
-        },
-        KeymapItem(title: "Reopen Tab", description: "Restore the most recently closed tab", keys: ["⇧", "⌘", "T"], group: .tabs) { store in
-            store.reopenClosedTab()
-        },
-        KeymapItem(title: "Next Tab", description: "Cycle forward through open tabs", keys: ["⌃", "Tab"], group: .tabs) { store in
-            store.selectNextTab()
-        },
-        KeymapItem(title: "Previous Tab", description: "Cycle backward through open tabs", keys: ["⌃", "⇧", "Tab"], group: .tabs) { store in
-            store.selectNextTab(reverse: true)
-        },
-        KeymapItem(title: "Go to Tab 1–8", description: "Jump directly to tab by position", keys: ["⌘", "1–8"], group: .tabs, action: nil),
-        KeymapItem(title: "Go to Last Tab", description: "Jump to the very last open tab", keys: ["⌘", "9"], group: .tabs) { store in
-            store.selectTab(number: 9)
-        },
-
-        // Navigation
-        KeymapItem(title: "Back", description: "Navigate to previous page in session history", keys: ["⌘", "["], group: .navigation) { store in
-            store.selectedTab?.goBack()
-        },
-        KeymapItem(title: "Forward", description: "Navigate forward in session history", keys: ["⌘", "]"], group: .navigation) { store in
-            store.selectedTab?.goForward()
-        },
-        KeymapItem(title: "Reload Page", description: "Reload the current page", keys: ["⌘", "R"], group: .navigation) { store in
-            store.selectedTab?.reload()
-        },
-        KeymapItem(title: "Hard Reload", description: "Bypass cache and reload page", keys: ["⇧", "⌘", "R"], group: .navigation) { store in
-            store.selectedTab?.reloadFromOrigin()
-        },
-        KeymapItem(title: "Stop Loading", description: "Halt loading current web document", keys: ["Esc"], group: .navigation) { store in
-            store.selectedTab?.stop()
-        },
-
-        // Address & Search
-        KeymapItem(title: "Focus Address Bar", description: "Activate inline address field or Omnibar", keys: ["⌘", "L"], group: .omnibar) { store in
-            NotificationCenter.default.post(name: .focusAddress, object: nil)
-        },
-        KeymapItem(title: "Find on Page", description: "Reveal interactive in-page text search bar", keys: ["⌘", "F"], group: .omnibar) { store in
-            NotificationCenter.default.post(name: .showFind, object: nil)
-        },
-        KeymapItem(title: "Dismiss / Unfocus", description: "Close dropdowns, Omnibar, or inline editing", keys: ["Esc"], group: .omnibar) { store in
-            store.dismissInlineURLEditing()
-            store.dismissFloatingOmnibar()
-        },
-
-        // View
-        KeymapItem(title: "Toggle Light/Dark", description: "Switch between light and dark theme mode", keys: ["⇧", "⌘", "D"], group: .view) { store in
-            store.toggleTheme()
-        },
-        KeymapItem(title: "Toggle Zen Mode", description: "Hide interface elements for pure immersion", keys: ["⇧", "⌘", "Z"], group: .view) { store in
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                store.enableZenMode.toggle()
-            }
-        },
-        KeymapItem(title: "Toggle Window Frame", description: "Show or hide subtle framed border", keys: ["⇧", "⌘", "B"], group: .view) { store in
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                store.enableWindowBorder.toggle()
-            }
-        },
-        KeymapItem(title: "Zoom In", description: "Enlarge web page contents", keys: ["⌘", "+"], group: .view) { store in
-            store.selectedTab?.zoomIn()
-        },
-        KeymapItem(title: "Zoom Out", description: "Reduce web page contents", keys: ["⌘", "−"], group: .view) { store in
-            store.selectedTab?.zoomOut()
-        },
-        KeymapItem(title: "Actual Size", description: "Reset page zoom to 100%", keys: ["⌘", "0"], group: .view) { store in
-            store.selectedTab?.resetZoom()
-        },
-        KeymapItem(title: "Preferences", description: "Open Lean Browser settings window", keys: ["⌘", ","], group: .view) { store in
-            store.openSettings()
-        }
-    ]
-
-    private var filteredKeymaps: [KeymapItem] {
+    private var filteredActions: [ShortcutAction] {
         let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return keymaps.filter { item in
-            let matchesGroup = selectedGroup == .all || item.group == selectedGroup
+        return ShortcutAction.allCases.filter { action in
+            let matchesGroup = selectedGroup == .all || action.group == selectedGroup
             guard matchesGroup else { return false }
             if trimmed.isEmpty { return true }
-            let matchesTitle = item.title.lowercased().contains(trimmed)
-            let matchesDesc = item.description.lowercased().contains(trimmed)
-            let matchesKey = item.keys.joined(separator: " ").lowercased().contains(trimmed)
+            let combo = store.shortcut(for: action)
+            let matchesTitle = action.title.lowercased().contains(trimmed)
+            let matchesDesc = action.description.lowercased().contains(trimmed)
+            let matchesKey = combo.displayKeys.joined(separator: " ").lowercased().contains(trimmed)
             return matchesTitle || matchesDesc || matchesKey
+        }
+    }
+
+    private func startRecording(_ action: ShortcutAction) {
+        stopRecording()
+        recordingAction = action
+        recordMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard let recording = recordingAction else { return event }
+
+            // Check for cancel with plain Escape
+            if event.keyCode == 53 && event.modifierFlags.intersection([.command, .shift, .control, .option]).isEmpty {
+                stopRecording()
+                return nil
+            }
+
+            if let combo = CustomKeyCombo.from(event: event) {
+                store.setShortcut(combo, for: recording)
+                stopRecording()
+                return nil
+            }
+
+            return nil
+        }
+    }
+
+    private func stopRecording() {
+        if let monitor = recordMonitor {
+            NSEvent.removeMonitor(monitor)
+            recordMonitor = nil
+        }
+        withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+            recordingAction = nil
         }
     }
 
@@ -1441,9 +1442,9 @@ private struct ShortcutsSection: View {
                         .stroke(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06), lineWidth: 0.5)
                 )
 
-                // Category Filter Pills
+                // Category Filter Pills & Reset All
                 HStack(spacing: 5) {
-                    ForEach(KeymapItem.KeymapGroup.allCases) { group in
+                    ForEach(ShortcutAction.Group.allCases) { group in
                         let isSelected = group == selectedGroup
                         Button {
                             withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
@@ -1468,22 +1469,66 @@ private struct ShortcutsSection: View {
                         }
                         .buttonStyle(.plain)
                     }
+
                     Spacer()
+
+                    if !store.customShortcuts.isEmpty {
+                        Button {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                                store.resetAllShortcuts()
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 10, weight: .semibold))
+                                Text("Reset All")
+                                    .font(store.leanUIFont.font(size: 11, weight: .medium))
+                            }
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.6) : Color.black.opacity(0.55))
+                            .padding(.horizontal, 8)
+                            .frame(height: 24)
+                            .background(
+                                store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04),
+                                in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .help("Restore all shortcuts to factory defaults")
+                    }
                 }
             }
 
             // Keymaps Card
             SettingsGroup(isDark: store.isDarkMode) {
                 VStack(spacing: 0) {
-                    ForEach(Array(filteredKeymaps.enumerated()), id: \.element.id) { index, item in
+                    ForEach(Array(filteredActions.enumerated()), id: \.element.id) { index, action in
+                        let combo = store.shortcut(for: action)
+                        let isRecording = recordingAction == action
+                        let isCustom = store.isCustomized(action)
+                        let wasTriggered = triggeredActionId == action.rawValue
+
                         HStack(spacing: 12) {
                             // Action Title & Description
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.title)
-                                    .font(store.leanUIFont.font(size: 12.5, weight: .medium))
-                                    .foregroundColor(primaryText)
+                                HStack(spacing: 6) {
+                                    Text(action.title)
+                                        .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                                        .foregroundColor(primaryText)
 
-                                Text(item.description)
+                                    if isCustom {
+                                        Text("Modified")
+                                            .font(store.leanUIFont.font(size: 9.5, weight: .medium))
+                                            .foregroundColor(Color(red: 52/255, green: 199/255, blue: 89/255))
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1.5)
+                                            .background(
+                                                Color(red: 52/255, green: 199/255, blue: 89/255).opacity(0.12),
+                                                in: RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                                            )
+                                    }
+                                }
+
+                                Text(action.description)
                                     .font(store.leanUIFont.font(size: 11))
                                     .foregroundColor(secondaryText)
                             }
@@ -1491,59 +1536,117 @@ private struct ShortcutsSection: View {
                             Spacer(minLength: 16)
 
                             // Interactive Test Trigger Indicator
-                            if let action = item.action {
-                                let wasTriggered = triggeredKeymapId == item.id
-                                Button {
-                                    action(store)
-                                    withAnimation(.spring(response: 0.18, dampingFraction: 0.75)) {
-                                        triggeredKeymapId = item.id
-                                    }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                                        if triggeredKeymapId == item.id {
-                                            withAnimation(.easeOut(duration: 0.2)) {
-                                                triggeredKeymapId = nil
-                                            }
+                            Button {
+                                action.performAction(in: store)
+                                withAnimation(.spring(response: 0.18, dampingFraction: 0.75)) {
+                                    triggeredActionId = action.rawValue
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                                    if triggeredActionId == action.rawValue {
+                                        withAnimation(.easeOut(duration: 0.2)) {
+                                            triggeredActionId = nil
                                         }
                                     }
-                                } label: {
-                                    HStack(spacing: 4) {
-                                        if wasTriggered {
-                                            Image(systemName: "checkmark")
-                                                .font(.system(size: 9.5, weight: .bold))
-                                                .foregroundColor(Color(red: 48/255, green: 209/255, blue: 88/255))
-                                        }
-                                        Text(wasTriggered ? "Triggered" : "Test")
-                                            .font(store.leanUIFont.font(size: 10, weight: .medium))
-                                            .foregroundColor(
-                                                wasTriggered
-                                                    ? Color(red: 48/255, green: 209/255, blue: 88/255)
-                                                    : (store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.35))
-                                            )
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    if wasTriggered {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 9.5, weight: .bold))
+                                            .foregroundColor(Color(red: 48/255, green: 209/255, blue: 88/255))
                                     }
-                                    .padding(.horizontal, 7)
-                                    .frame(height: 22)
+                                    Text(wasTriggered ? "Triggered" : "Test")
+                                        .font(store.leanUIFont.font(size: 10, weight: .medium))
+                                        .foregroundColor(
+                                            wasTriggered
+                                                ? Color(red: 48/255, green: 209/255, blue: 88/255)
+                                                : (store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.35))
+                                        )
+                                }
+                                .padding(.horizontal, 7)
+                                .frame(height: 22)
+                                .background(
+                                    wasTriggered
+                                        ? Color(red: 48/255, green: 209/255, blue: 88/255).opacity(0.12)
+                                        : (store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.04)),
+                                    in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .help("Click to test-trigger this action")
+
+                            // Keycap Badges / Shortcut Recorder
+                            Button {
+                                if isRecording {
+                                    stopRecording()
+                                } else {
+                                    startRecording(action)
+                                }
+                            } label: {
+                                if isRecording {
+                                    HStack(spacing: 5) {
+                                        Circle()
+                                            .fill(Color(red: 52/255, green: 199/255, blue: 89/255))
+                                            .frame(width: 5, height: 5)
+                                        Text("Press keys... (Esc to cancel)")
+                                            .font(store.leanUIFont.font(size: 10.5, weight: .medium))
+                                            .foregroundColor(store.adaptiveTheme.primaryText)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .frame(height: 23)
                                     .background(
-                                        wasTriggered
-                                            ? Color(red: 48/255, green: 209/255, blue: 88/255).opacity(0.12)
-                                            : (store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.04)),
+                                        Color(red: 52/255, green: 199/255, blue: 89/255).opacity(0.12),
                                         in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                                     )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                            .stroke(Color(red: 52/255, green: 199/255, blue: 89/255).opacity(0.45), lineWidth: 1)
+                                    )
+                                } else {
+                                    HStack(spacing: 3) {
+                                        ForEach(Array(combo.displayKeys.enumerated()), id: \.offset) { _, key in
+                                            KeycapBadge(key: key, isDark: store.isDarkMode, font: store.leanUIFont)
+                                        }
+                                    }
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        store.isDarkMode ? Color.white.opacity(0.03) : Color.black.opacity(0.02),
+                                        in: RoundedRectangle(cornerRadius: 5.5, style: .continuous)
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 5.5, style: .continuous)
+                                            .stroke(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04), lineWidth: 0.5)
+                                    )
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .help(isRecording ? "Press new key combination or Escape to cancel" : "Click to customize this keyboard shortcut")
+
+                            // Reset single shortcut button if modified
+                            if isCustom {
+                                Button {
+                                    withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+                                        store.resetShortcut(for: action)
+                                    }
+                                } label: {
+                                    Image(systemName: "arrow.counterclockwise")
+                                        .font(.system(size: 9.5, weight: .semibold))
+                                        .foregroundColor(store.isDarkMode ? Color.white.opacity(0.45) : Color.black.opacity(0.40))
+                                        .frame(width: 20, height: 20)
+                                        .background(
+                                            store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.04),
+                                            in: Circle()
+                                        )
                                 }
                                 .buttonStyle(.plain)
-                                .help("Click to trigger this action")
-                            }
-
-                            // Keycap Badges
-                            HStack(spacing: 3) {
-                                ForEach(Array(item.keys.enumerated()), id: \.offset) { _, key in
-                                    KeycapBadge(key: key, isDark: store.isDarkMode, font: store.leanUIFont)
-                                }
+                                .help("Reset this shortcut to default")
                             }
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
 
-                        if index < filteredKeymaps.count - 1 {
+                        if index < filteredActions.count - 1 {
                             Divider()
                                 .background(dividerColor)
                                 .padding(.horizontal, 16)
@@ -1551,6 +1654,9 @@ private struct ShortcutsSection: View {
                     }
                 }
             }
+        }
+        .onDisappear {
+            stopRecording()
         }
     }
 

@@ -53,25 +53,39 @@ enum ContentBlocker {
     private static let maxStoredLists = 8
 
     private static var cachedRuleLists: [WKContentRuleList] = []
+    private static var loadTask: Task<[WKContentRuleList], Never>?
     private static var refreshTask: Task<Void, Never>?
 
-    /// Compiled rule lists, from disk cache or the offline fallback.
+    /// Compiled rule lists, from WebKit's store or the offline fallback.
     /// Call `refreshIfNeeded()` separately (e.g. at launch) to update lists.
     static func ruleLists() async -> [WKContentRuleList] {
         if !cachedRuleLists.isEmpty {
             return cachedRuleLists
         }
-        let texts = loadCachedFilterTexts()
-        if !texts.isEmpty {
-            let compiled = await compile(texts: Array(texts.values))
-            if !compiled.isEmpty {
-                cachedRuleLists = compiled
-                return compiled
-            }
+        if let loadTask {
+            return await loadTask.value
         }
-        let fallback = await compile(texts: [fallbackFilterText])
-        cachedRuleLists = fallback
-        return fallback
+
+        let task = Task {
+            let stored = await loadStoredRuleLists()
+            if !stored.isEmpty {
+                return stored
+            }
+
+            let texts = loadCachedFilterTexts()
+            if !texts.isEmpty {
+                let compiled = await compile(texts: Array(texts.values))
+                if !compiled.isEmpty {
+                    return compiled
+                }
+            }
+            return await compile(texts: [fallbackFilterText])
+        }
+        loadTask = task
+        let lists = await task.value
+        loadTask = nil
+        cachedRuleLists = lists
+        return lists
     }
 
     /// Backwards-compatible single-list accessor (first chunk).
@@ -126,22 +140,20 @@ enum ContentBlocker {
         }
         guard !merged.isEmpty else { return nil }
 
-        let combined = filterSources.compactMap { merged[$0.id] }.joined(separator: "\n")
-        guard !combined.isEmpty else { return nil }
-
-        let conversion = AdBlockFilterConverter.convert(combined)
-        guard !conversion.rules.isEmpty else { return nil }
+        let texts = filterSources.compactMap { merged[$0.id] }
+        let encoded = await encode(texts: texts)
+        guard !encoded.json.isEmpty else { return nil }
 
         persistFilterTexts(merged)
-        let compiled = await compile(rules: conversion.rules)
+        let compiled = await compile(encoded: encoded.json)
         guard !compiled.isEmpty else { return nil }
 
         cachedRuleLists = compiled
         lastUpdatedDate = Date()
-        cachedRuleCount = conversion.keptCount
+        cachedRuleCount = encoded.keptCount
         NotificationCenter.default.post(name: didUpdateNotification, object: nil)
         return RefreshResult(
-            ruleCount: conversion.keptCount,
+            ruleCount: encoded.keptCount,
             listCount: compiled.count,
             updatedSources: fresh.count
         )
@@ -223,21 +235,48 @@ enum ContentBlocker {
 
     // MARK: - Compilation
 
-    private static func compile(texts: [String]) async -> [WKContentRuleList] {
-        let combined = texts.joined(separator: "\n")
-        guard !combined.isEmpty else { return [] }
-        let conversion = AdBlockFilterConverter.convert(combined)
-        guard !conversion.rules.isEmpty else { return [] }
-        return await compile(rules: conversion.rules)
+    private struct EncodedRules: Sendable {
+        var json: [String]
+        var keptCount: Int
     }
 
-    private static func compile(rules: [[String: Any]]) async -> [WKContentRuleList] {
+    private static func loadStoredRuleLists() async -> [WKContentRuleList] {
         guard let store = WKContentRuleListStore.default() else { return [] }
-        let chunks = AdBlockFilterConverter.chunk(rules)
+        var lists: [WKContentRuleList] = []
+        for index in 0..<maxStoredLists {
+            guard let list = try? await store.contentRuleList(
+                forIdentifier: "\(listIdentifierPrefix).\(index)"
+            ) else { break }
+            lists.append(list)
+        }
+        return lists
+    }
+
+    private static func encode(texts: [String]) async -> EncodedRules {
+        let listLimit = maxStoredLists
+        return await Task.detached(priority: .utility) {
+            let combined = texts.joined(separator: "\n")
+            guard !combined.isEmpty else { return EncodedRules(json: [], keptCount: 0) }
+            let conversion = AdBlockFilterConverter.convert(combined)
+            let json = AdBlockFilterConverter.chunk(conversion.rules)
+                .prefix(listLimit)
+                .compactMap { chunk -> String? in
+                    guard let data = try? JSONSerialization.data(withJSONObject: chunk) else { return nil }
+                    return String(data: data, encoding: .utf8)
+                }
+            return EncodedRules(json: json, keptCount: conversion.keptCount)
+        }.value
+    }
+
+    private static func compile(texts: [String]) async -> [WKContentRuleList] {
+        let encoded = await encode(texts: texts)
+        return await compile(encoded: encoded.json)
+    }
+
+    private static func compile(encoded: [String]) async -> [WKContentRuleList] {
+        guard let store = WKContentRuleListStore.default() else { return [] }
         var compiled: [WKContentRuleList] = []
-        for (index, chunk) in chunks.prefix(maxStoredLists).enumerated() {
-            guard let data = try? JSONSerialization.data(withJSONObject: chunk, options: []),
-                  let json = String(data: data, encoding: .utf8) else { continue }
+        for (index, json) in encoded.enumerated() {
             let identifier = "\(listIdentifierPrefix).\(index)"
             if let list = try? await compile(identifier: identifier, json: json, store: store) {
                 compiled.append(list)

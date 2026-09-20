@@ -41,25 +41,36 @@ struct SettingsHeaderLabel: View {
     let subtitle: String?
     let uiFont: LeanFont
     let isDark: Bool
+    var headingWeight: LeanFontWeight = .semibold
+    var bodyWeight: LeanFontWeight = .regular
 
-    init(_ title: String, subtitle: String? = nil, uiFont: LeanFont, isDark: Bool) {
+    init(
+        _ title: String,
+        subtitle: String? = nil,
+        uiFont: LeanFont,
+        isDark: Bool,
+        headingWeight: LeanFontWeight = .semibold,
+        bodyWeight: LeanFontWeight = .regular
+    ) {
         self.title = title
         self.subtitle = subtitle
         self.uiFont = uiFont
         self.isDark = isDark
+        self.headingWeight = headingWeight
+        self.bodyWeight = bodyWeight
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .font(uiFont.font(size: 11, weight: .semibold))
+                .font(uiFont.font(size: 11, weight: headingWeight.fontWeight))
                 .foregroundColor(isDark ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
                 .textCase(.uppercase)
                 .tracking(0.8)
 
             if let subtitle = subtitle {
                 Text(subtitle)
-                    .font(uiFont.font(size: 12))
+                    .font(uiFont.font(size: 12, weight: bodyWeight.fontWeight))
                     .foregroundColor(isDark ? Color.white.opacity(0.50) : Color.black.opacity(0.50))
             }
         }
@@ -67,71 +78,28 @@ struct SettingsHeaderLabel: View {
     }
 }
 
-// MARK: - Dropdown Menu State & Event Coordinator
+// MARK: - Dropdown Menu State
 @MainActor
 final class DropdownMenuState: ObservableObject {
-    @Published var activeId: String? = nil {
-        didSet {
-            if activeId != nil {
-                startMonitoring()
-            } else {
-                stopMonitoring()
-            }
-        }
-    }
-
-    private var eventMonitor: Any?
-
-    private func startMonitoring() {
-        stopMonitoring()
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown, .scrollWheel]) { [weak self] event in
-            guard let self = self, self.activeId != nil else { return event }
-
-            if event.type == .keyDown && event.keyCode == 53 { // Escape key
-                self.dismiss()
-                return nil
-            }
-
-            if event.type == .scrollWheel && (abs(event.scrollingDeltaX) > 1.5 || abs(event.scrollingDeltaY) > 1.5) {
-                self.dismiss()
-                return event
-            }
-
-            return event
-        }
-    }
-
-    private func stopMonitoring() {
-        if let monitor = eventMonitor {
-            NSEvent.removeMonitor(monitor)
-            eventMonitor = nil
-        }
-    }
-
-    deinit {
-        if let monitor = eventMonitor {
-            NSEvent.removeMonitor(monitor)
-        }
-    }
+    @Published var activeId: String?
 
     func toggle(_ id: String) {
-        withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-            if activeId == id {
-                activeId = nil
-            } else {
-                activeId = id
-            }
-        }
+        activeId = activeId == id ? nil : id
     }
 
     func dismiss() {
-        withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
-            activeId = nil
-        }
+        activeId = nil
     }
 
     func isActive(_ id: String) -> Bool {
         activeId == id
+    }
+
+    func presentationBinding(for id: String) -> Binding<Bool> {
+        Binding(
+            get: { self.activeId == id },
+            set: { self.activeId = $0 ? id : nil }
+        )
     }
 }
 
@@ -291,18 +259,17 @@ struct CustomDropdownCard<Content: View>: View {
         .padding(4)
         .frame(width: width)
         .background(
-            (isDark
-                ? Color(red: 22/255, green: 22/255, blue: 25/255)
-                : Color(white: 0.995)
-            ).opacity(0.97)
-        )
-        .background(
-            VisualEffectBlur(material: .popover, blendingMode: .withinWindow)
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(
+                    isDark
+                        ? Color(red: 24/255, green: 24/255, blue: 27/255)
+                        : Color.white
+                )
         )
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .stroke(isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08), lineWidth: 0.75)
+                .stroke(isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.08), lineWidth: 0.75)
         )
         .shadow(
             color: Color.black.opacity(isDark ? 0.45 : 0.12),
@@ -366,6 +333,7 @@ struct CustomDropdownItemRow<Leading: View>: View {
                 }
             }
             .padding(.horizontal, 9)
+            .frame(maxWidth: .infinity)
             .frame(height: 29)
             .background(
                 rowBackground,
@@ -374,6 +342,7 @@ struct CustomDropdownItemRow<Leading: View>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .onHover { isHovered = $0 }
     }
 }
@@ -416,31 +385,21 @@ struct SearchEnginePickerRow: View {
             ) {
                 dropdownState.toggle(pickerId)
             }
-            .overlay(alignment: .topTrailing) {
-                if isPresented {
-                    CustomDropdownCard(isDark: isDark, width: 205) {
-                        ForEach(SearchEngine.allCases) { engine in
-                            let isChosen = selection == engine
-                            CustomDropdownItemRow(
-                                title: engine.name,
-                                font: uiFont.font(size: 12.5, weight: isChosen ? .semibold : .regular),
-                                isSelected: isChosen,
-                                isDark: isDark,
-                                leading: SearchEngineBadgeView(engine: engine, isDark: isDark, size: 15)
-                            ) {
-                                withAnimation(.spring(response: 0.20, dampingFraction: 0.8)) {
-                                    selection = engine
-                                }
-                                dropdownState.dismiss()
-                            }
+            .popover(isPresented: dropdownState.presentationBinding(for: pickerId), arrowEdge: .bottom) {
+                CustomDropdownCard(isDark: isDark, width: 205) {
+                    ForEach(SearchEngine.allCases) { engine in
+                        let isChosen = selection == engine
+                        CustomDropdownItemRow(
+                            title: engine.name,
+                            font: uiFont.font(size: 12.5, weight: isChosen ? .semibold : .regular),
+                            isSelected: isChosen,
+                            isDark: isDark,
+                            leading: SearchEngineBadgeView(engine: engine, isDark: isDark, size: 15)
+                        ) {
+                            selection = engine
+                            dropdownState.dismiss()
                         }
                     }
-                    .offset(y: 33)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity),
-                        removal: .scale(scale: 0.97, anchor: .topTrailing).combined(with: .opacity)
-                    ))
-                    .zIndex(200)
                 }
             }
         }
@@ -465,6 +424,8 @@ struct FontPickerRow: View {
     let uiFont: LeanFont
     let isDark: Bool
     let pickerId: String
+    var headingWeight: LeanFontWeight = .medium
+    var bodyWeight: LeanFontWeight = .regular
 
     @EnvironmentObject private var dropdownState: DropdownMenuState
 
@@ -480,7 +441,9 @@ struct FontPickerRow: View {
         selection: Binding<LeanFont>,
         uiFont: LeanFont,
         isDark: Bool,
-        pickerId: String = UUID().uuidString
+        pickerId: String = UUID().uuidString,
+        headingWeight: LeanFontWeight = .medium,
+        bodyWeight: LeanFontWeight = .regular
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -488,18 +451,20 @@ struct FontPickerRow: View {
         self.uiFont = uiFont
         self.isDark = isDark
         self.pickerId = pickerId
+        self.headingWeight = headingWeight
+        self.bodyWeight = bodyWeight
     }
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 2.5) {
                 Text(title)
-                    .font(uiFont.font(size: 13, weight: .medium))
+                    .font(uiFont.font(size: 13, weight: headingWeight.fontWeight))
                     .foregroundColor(isDark ? Color(white: 0.94) : Color(white: 0.12))
 
                 if let subtitle = subtitle {
                     Text(subtitle)
-                        .font(uiFont.font(size: 11.5))
+                        .font(uiFont.font(size: 11.5, weight: bodyWeight.fontWeight))
                         .foregroundColor(isDark ? Color(white: 0.50) : Color(white: 0.48))
                 }
             }
@@ -515,31 +480,21 @@ struct FontPickerRow: View {
             ) {
                 dropdownState.toggle(pickerId)
             }
-            .overlay(alignment: .topTrailing) {
-                if isPresented {
-                    CustomDropdownCard(isDark: isDark, width: 215) {
-                        ForEach(LeanFont.allCases) { fontChoice in
-                            let isChosen = selection == fontChoice
-                            CustomDropdownItemRow(
-                                title: fontChoice.rawValue,
-                                font: fontChoice.font(size: 13, weight: isChosen ? .semibold : .regular),
-                                isSelected: isChosen,
-                                isDark: isDark,
-                                leading: nil as EmptyView?
-                            ) {
-                                withAnimation(.spring(response: 0.20, dampingFraction: 0.8)) {
-                                    selection = fontChoice
-                                }
-                                dropdownState.dismiss()
-                            }
+            .popover(isPresented: dropdownState.presentationBinding(for: pickerId), arrowEdge: .bottom) {
+                CustomDropdownCard(isDark: isDark, width: 215) {
+                    ForEach(LeanFont.allCases) { fontChoice in
+                        let isChosen = selection == fontChoice
+                        CustomDropdownItemRow(
+                            title: fontChoice.rawValue,
+                            font: fontChoice.font(size: 13, weight: isChosen ? .semibold : .regular),
+                            isSelected: isChosen,
+                            isDark: isDark,
+                            leading: nil as EmptyView?
+                        ) {
+                            selection = fontChoice
+                            dropdownState.dismiss()
                         }
                     }
-                    .offset(y: 33)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity),
-                        removal: .scale(scale: 0.97, anchor: .topTrailing).combined(with: .opacity)
-                    ))
-                    .zIndex(200)
                 }
             }
         }
@@ -667,6 +622,8 @@ struct CustomToggleRow: View {
     @Binding var isOn: Bool
     let isDark: Bool
     let uiFont: LeanFont
+    var headingWeight: LeanFontWeight = .medium
+    var bodyWeight: LeanFontWeight = .regular
 
     @State private var isHovered = false
 
@@ -675,25 +632,29 @@ struct CustomToggleRow: View {
         subtitle: String? = nil,
         isOn: Binding<Bool>,
         isDark: Bool,
-        uiFont: LeanFont
+        uiFont: LeanFont,
+        headingWeight: LeanFontWeight = .medium,
+        bodyWeight: LeanFontWeight = .regular
     ) {
         self.title = title
         self.subtitle = subtitle
         self._isOn = isOn
         self.isDark = isDark
         self.uiFont = uiFont
+        self.headingWeight = headingWeight
+        self.bodyWeight = bodyWeight
     }
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 2.5) {
                 Text(title)
-                    .font(uiFont.font(size: 13, weight: .medium))
+                    .font(uiFont.font(size: 13, weight: headingWeight.fontWeight))
                     .foregroundColor(isDark ? Color(white: 0.94) : Color(white: 0.12))
 
                 if let subtitle = subtitle {
                     Text(subtitle)
-                        .font(uiFont.font(size: 11.5))
+                        .font(uiFont.font(size: 11.5, weight: bodyWeight.fontWeight))
                         .foregroundColor(isDark ? Color(white: 0.50) : Color(white: 0.48))
                         .lineSpacing(1.5)
                 }
@@ -846,5 +807,182 @@ struct FrameWidthPickerRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+}
+
+// MARK: - Bespoke Font Weight Slider (Scrubbable Track Control)
+/// Minimal scrubbable slider control with track fill, thumb handle, property label, and numeric readout.
+struct FontWeightSlider: View {
+    @Binding var weight: LeanFontWeight
+    let label: String
+    let isDark: Bool
+    let uiFont: LeanFont
+    var width: CGFloat = 215
+    var height: CGFloat = 30
+
+    @State private var isDragging: Bool = false
+    @State private var isHovered: Bool = false
+
+    private let minWeight: Double = 100
+    private let maxWeight: Double = 900
+
+    private var progress: CGFloat {
+        CGFloat((Double(weight.rawValue) - minWeight) / (maxWeight - minWeight))
+    }
+
+    private var emptyTrackColor: Color {
+        isDark ? Color(red: 63/255, green: 63/255, blue: 70/255) : Color(white: 0.88)
+    }
+
+    private var filledTrackColor: Color {
+        isDark ? Color(red: 79/255, green: 79/255, blue: 84/255) : Color(white: 0.76)
+    }
+
+    private var thumbColor: Color {
+        if isDragging {
+            return isDark ? Color(white: 0.95) : Color(white: 0.15)
+        } else if isHovered {
+            return isDark ? Color(white: 0.82) : Color(white: 0.30)
+        } else {
+            return isDark ? Color(red: 143/255, green: 143/255, blue: 146/255) : Color(white: 0.52)
+        }
+    }
+
+    private var labelColor: Color {
+        isDark ? Color.white.opacity(0.60) : Color.black.opacity(0.50)
+    }
+
+    private var valueColor: Color {
+        isDark ? Color.white.opacity(0.92) : Color.black.opacity(0.88)
+    }
+
+    private func updateWeight(at x: CGFloat, totalWidth: CGFloat) {
+        let minThumbX: CGFloat = 16
+        let maxThumbX: CGFloat = totalWidth - 16
+        let clampedX = max(minThumbX, min(x, maxThumbX))
+        let fraction = (clampedX - minThumbX) / max(maxThumbX - minThumbX, 1)
+        let targetValue = minWeight + Double(fraction) * (maxWeight - minWeight)
+        let closest = LeanFontWeight(closestTo: targetValue)
+        if weight != closest {
+            weight = closest
+        }
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let totalW = geo.size.width
+            let totalH = geo.size.height
+            let minThumbX: CGFloat = 16
+            let maxThumbX: CGFloat = totalW - 16
+            let thumbX = minThumbX + progress * (maxThumbX - minThumbX)
+            let thumbW: CGFloat = 3.5
+            let thumbH: CGFloat = 18
+
+            ZStack(alignment: .leading) {
+                // Empty Track Background
+                RoundedRectangle(cornerRadius: 7.5, style: .continuous)
+                    .fill(emptyTrackColor)
+
+                // Filled Track (Left to Thumb)
+                Rectangle()
+                    .fill(filledTrackColor)
+                    .frame(width: max(thumbX + thumbW / 2, 0))
+
+                // Vertical Thumb Bar
+                RoundedRectangle(cornerRadius: 1.75, style: .continuous)
+                    .fill(thumbColor)
+                    .frame(width: thumbW, height: thumbH)
+                    .shadow(color: Color.black.opacity(isDark ? 0.30 : 0.10), radius: isDragging ? 2.5 : 1, y: 0.5)
+                    .position(x: thumbX, y: totalH / 2)
+
+                // Left Label & Right Numeric Value Readout
+                HStack {
+                    Text(label)
+                        .font(uiFont.font(size: 11.5, weight: .medium))
+                        .foregroundColor(labelColor)
+                        .padding(.leading, 11)
+
+                    Spacer()
+
+                    Text("\(weight.rawValue)")
+                        .font(uiFont.font(size: 11.5, weight: .medium))
+                        .foregroundColor(valueColor)
+                        .padding(.trailing, 11)
+                }
+                .allowsHitTesting(false)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 7.5, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 7.5, style: .continuous)
+                    .stroke(
+                        isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06),
+                        lineWidth: 0.75
+                    )
+            )
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        isDragging = true
+                        updateWeight(at: gesture.location.x, totalWidth: totalW)
+                    }
+                    .onEnded { gesture in
+                        updateWeight(at: gesture.location.x, totalWidth: totalW)
+                        isDragging = false
+                    }
+            )
+            .help("\(weight.name) (\(weight.rawValue))")
+        }
+        .frame(width: width, height: height)
+    }
+}
+
+// MARK: - Font Weight Slider Row
+struct FontWeightSliderRow: View {
+    let title: String
+    let subtitle: String?
+    @Binding var value: LeanFontWeight
+    let label: String
+    let uiFont: LeanFont
+    let isDark: Bool
+    var headingWeight: LeanFontWeight = .medium
+    var bodyWeight: LeanFontWeight = .regular
+
+    @State private var isRowHovered = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2.5) {
+                Text(title)
+                    .font(uiFont.font(size: 13, weight: headingWeight.fontWeight))
+                    .foregroundColor(isDark ? Color(white: 0.94) : Color(white: 0.12))
+
+                if let subtitle = subtitle {
+                    Text(subtitle)
+                        .font(uiFont.font(size: 11.5, weight: bodyWeight.fontWeight))
+                        .foregroundColor(isDark ? Color(white: 0.50) : Color(white: 0.48))
+                }
+            }
+
+            Spacer(minLength: 16)
+
+            FontWeightSlider(
+                weight: $value,
+                label: label,
+                isDark: isDark,
+                uiFont: uiFont,
+                width: 215
+            )
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .background(
+            isRowHovered
+                ? (isDark ? Color.white.opacity(0.02) : Color.black.opacity(0.015))
+                : Color.clear
+        )
+        .onHover { isRowHovered = $0 }
     }
 }

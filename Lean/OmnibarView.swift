@@ -107,14 +107,14 @@ struct OmnibarView: View {
             ZStack(alignment: .leading) {
                 if query.isEmpty {
                     Text("Search or Enter URL...")
-                        .font(store.leanUIFont.font(size: 14))
+                        .font(store.bodyFont(size: 14))
                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
                         .allowsHitTesting(false)
                 }
 
                 TextField("", text: $query)
                     .textFieldStyle(.plain)
-                    .font(store.leanUIFont.font(size: 14))
+                    .font(store.bodyFont(size: 14))
                     .foregroundColor(store.isDarkMode ? Color.white : Color.black)
                     .focused($isFieldFocused)
                     .onSubmit {

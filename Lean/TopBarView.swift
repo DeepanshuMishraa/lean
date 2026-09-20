@@ -6,7 +6,6 @@ struct TopBarView: View {
     @State private var tabScrollMetrics = HorizontalScrollMetrics()
     @State private var tabContentWidth: CGFloat = 0
     @State private var tabViewportWidth: CGFloat = 0
-    @State private var isQuickSettingsPresented = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -184,7 +183,7 @@ struct TopBarView: View {
                             helpText: "Settings (⌘,)",
                             size: 24,
                             iconSize: 12,
-                            color: isQuickSettingsPresented ? store.adaptiveTheme.primaryText : store.adaptiveTheme.secondaryText,
+                            color: store.isQuickSettingsPresented ? store.adaptiveTheme.primaryText : store.adaptiveTheme.secondaryText,
                             hoverColor: store.adaptiveTheme.primaryText,
                             disabledColor: store.adaptiveTheme.disabledIconText,
                             hoverBackground: store.adaptiveTheme.iconHoverBackground,
@@ -192,19 +191,17 @@ struct TopBarView: View {
                             isDark: store.adaptiveTheme.effectiveIsDark
                         ) {
                             withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                                isQuickSettingsPresented.toggle()
+                                store.isQuickSettingsPresented.toggle()
                             }
                         }
-                        .overlay(alignment: .topTrailing) {
-                            if isQuickSettingsPresented {
-                                QuickSettingsPopover(store: store, isPresented: $isQuickSettingsPresented)
-                                    .offset(y: 32)
-                                    .transition(.asymmetric(
-                                        insertion: .scale(scale: 0.95, anchor: .topTrailing).combined(with: .opacity),
-                                        removal: .scale(scale: 0.97, anchor: .topTrailing).combined(with: .opacity)
-                                    ))
-                                    .zIndex(200)
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear
+                                    .preference(key: SettingsButtonFrameKey.self, value: proxy.frame(in: .global))
                             }
+                        )
+                        .onPreferenceChange(SettingsButtonFrameKey.self) { frame in
+                            store.settingsButtonFrame = frame
                         }
                     }
                 }
@@ -218,20 +215,6 @@ struct TopBarView: View {
                 ? AnyView(Color.clear)
                 : AnyView(store.themeColors.topBarBackground)
         )
-        .overlay {
-            if isQuickSettingsPresented {
-                Color.black.opacity(0.0001)
-                    .ignoresSafeArea()
-                    .frame(width: 4000, height: 4000)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
-                            isQuickSettingsPresented = false
-                        }
-                    }
-                    .zIndex(150)
-            }
-        }
         .contentShape(Rectangle())
         .onTapGesture {
             if store.isInlineURLEditing {
@@ -356,7 +339,7 @@ private struct TopBarTabItem: View {
     private var textOnlyContent: some View {
         HStack(spacing: 6) {
             Text(tab.displayTitle(isSelected: isSelected, showFullTitle: store.showFullTitleOnActiveTab))
-                .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                .font(store.headingFont(size: 12.5))
                 .foregroundColor(
                     isSelected
                         ? store.adaptiveTheme.activeTabText
@@ -396,7 +379,7 @@ private struct TopBarTabItem: View {
             TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
 
             Text(tab.displayTitle(isSelected: isSelected, showFullTitle: store.showFullTitleOnActiveTab))
-                .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                .font(store.headingFont(size: 12.5))
                 .foregroundColor(
                     isSelected
                         ? store.adaptiveTheme.activeTabText
@@ -474,7 +457,7 @@ private struct InlineURLBar: View {
 
             TextField("Search or enter URL...", text: $text)
                 .textFieldStyle(.plain)
-                .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                .font(store.headingFont(size: 12.5))
                 .foregroundColor(store.adaptiveTheme.primaryText)
                 .focused($isFieldFocused)
                 .onSubmit {
@@ -654,14 +637,14 @@ private struct InlineSuggestionRow: View {
                 .frame(width: 14)
 
             Text(match.primaryText)
-                .font(store.leanUIFont.font(size: 12, weight: .regular))
+                .font(store.headingFont(size: 12))
                 .foregroundColor(store.adaptiveTheme.primaryText)
                 .lineLimit(1)
 
             Spacer()
 
             Text(match.secondaryText)
-                .font(store.leanUIFont.font(size: 11, weight: .regular))
+                .font(store.bodyFont(size: 11))
                 .foregroundColor(store.adaptiveTheme.secondaryText)
                 .lineLimit(1)
         }
@@ -736,67 +719,21 @@ private struct InteractiveIconButton: View {
     }
 }
 
+// MARK: - PreferenceKey for Settings Button Frame
+private struct SettingsButtonFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
 // MARK: - Bespoke Quick Settings Popover
 struct QuickSettingsPopover: View {
     @ObservedObject var store: LeanStore
-    @Binding var isPresented: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Header: Green accent dot + Title
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(Color(red: 52/255, green: 199/255, blue: 89/255))
-                    .frame(width: 7, height: 7)
-                    .shadow(color: Color(red: 52/255, green: 199/255, blue: 89/255).opacity(0.6), radius: 4)
-
-                Text("Quick Settings")
-                    .font(store.leanUIFont.font(size: 11, weight: .semibold))
-                    .foregroundColor(store.adaptiveTheme.primaryText)
-                    .textCase(.uppercase)
-                    .tracking(0.8)
-
-                Spacer()
-
-                Button {
-                    withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
-                        isPresented = false
-                    }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(store.adaptiveTheme.secondaryText)
-                        .frame(width: 18, height: 18)
-                        .background(
-                            store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05),
-                            in: Circle()
-                        )
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 4)
-
-            // Theme Segmented Control
-            CustomSegmentedPicker(
-                options: [
-                    SegmentOption(id: AppTheme.light.rawValue, label: "Light", icon: "sun.max.fill"),
-                    SegmentOption(id: AppTheme.dark.rawValue, label: "Dark", icon: "moon.fill"),
-                    SegmentOption(id: AppTheme.system.rawValue, label: "System", icon: "circle.lefthalf.filled")
-                ],
-                selectedId: store.theme.rawValue,
-                isDark: store.isDarkMode,
-                uiFont: store.leanUIFont
-            ) { newId in
-                if let theme = AppTheme(rawValue: newId) {
-                    store.theme = theme
-                }
-            }
-
-            Rectangle()
-                .fill(store.themeColors.divider)
-                .frame(height: 0.75)
-
-            // Quick Toggles
+        VStack(alignment: .leading, spacing: 6) {
+            // Quick Toggles starting directly from Zen mode
             VStack(spacing: 2) {
                 QuickToggleItem(
                     icon: "slider.horizontal.3",
@@ -835,11 +772,12 @@ struct QuickSettingsPopover: View {
             Rectangle()
                 .fill(store.themeColors.divider)
                 .frame(height: 0.75)
+                .padding(.vertical, 2)
 
             // Bottom link to All Settings
             Button {
                 withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
-                    isPresented = false
+                    store.isQuickSettingsPresented = false
                 }
                 store.openSettings()
             } label: {
@@ -847,7 +785,7 @@ struct QuickSettingsPopover: View {
                     Image(systemName: "gearshape")
                         .font(.system(size: 11, weight: .medium))
                     Text("All Settings...")
-                        .font(store.leanUIFont.font(size: 12, weight: .medium))
+                        .font(store.headingFont(size: 12))
                     Spacer()
                     Text("⌘,")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
@@ -866,8 +804,8 @@ struct QuickSettingsPopover: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(12)
-        .frame(width: 250)
+        .padding(8)
+        .frame(width: 228)
         .background(
             (store.isDarkMode
                 ? Color(red: 18/255, green: 18/255, blue: 21/255)
@@ -877,13 +815,24 @@ struct QuickSettingsPopover: View {
         .background(
             VisualEffectBlur(material: .popover, blendingMode: .withinWindow)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .stroke(store.adaptiveTheme.dropdownStroke, lineWidth: 0.75)
         )
         .shadow(color: Color.black.opacity(store.isDarkMode ? 0.45 : 0.12), radius: 18, x: 0, y: 8)
         .shadow(color: Color.black.opacity(store.isDarkMode ? 0.20 : 0.04), radius: 2, x: 0, y: 1)
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear {
+                        store.quickSettingsPopoverFrame = proxy.frame(in: .global)
+                    }
+                    .onChange(of: proxy.frame(in: .global)) { _, newFrame in
+                        store.quickSettingsPopoverFrame = newFrame
+                    }
+            }
+        )
     }
 }
 

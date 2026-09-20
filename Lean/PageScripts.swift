@@ -54,14 +54,26 @@ enum PageScripts {
     })();
     """
 
-    static func font(_ font: LeanFont) -> String {
-        if font == .system {
+    static func font(_ font: LeanFont, headingWeight: Int = 0, bodyWeight: Int = 0) -> String {
+        var rules: [String] = []
+
+        if font != .system {
+            rules.append("html body, html body *:not(svg):not(svg *) { font-family: \(font.cssFamily) !important; }")
+        }
+
+        if headingWeight > 0 {
+            rules.append("h1, h2, h3, h4, h5, h6, [role=\"heading\"], .heading, .title { font-weight: \(headingWeight) !important; }")
+        }
+
+        if bodyWeight > 0 {
+            rules.append("body, p, li, span, a, label, input, textarea, blockquote, dd, dt { font-weight: \(bodyWeight) !important; }")
+        }
+
+        if rules.isEmpty {
             return "document.getElementById('lean-custom-font-style')?.remove();"
         }
 
-        let css = """
-        html body, html body *:not(svg):not(svg *) { font-family: \(font.cssFamily) !important; }
-        """.replacingOccurrences(of: "\n", with: " ")
+        let css = rules.joined(separator: " ").replacingOccurrences(of: "\n", with: " ")
 
         return """
         (function() {

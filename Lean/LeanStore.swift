@@ -105,6 +105,14 @@ final class LeanStore: ObservableObject {
     @Published var isTabSwitcherVisible = false
     @Published var switcherSelectedIndex = 0
     @Published var historyItems: [HistoryItem] = []
+    @Published var isQuickSettingsPresented = false
+    @Published var quickSettingsPopoverFrame: CGRect = .zero
+    @Published var settingsButtonFrame: CGRect = .zero
+    @Published var customShortcuts: [String: CustomKeyCombo] = [:] {
+        didSet {
+            saveCustomShortcuts()
+        }
+    }
     var visitedHistory: [(url: URL, title: String)] {
         historyItems.map { ($0.url, $0.title) }
     }
@@ -165,6 +173,26 @@ final class LeanStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(leanUIFont.rawValue, forKey: Self.leanUIFontKey)
         }
+    }
+
+    @Published var uiHeadingWeight: LeanFontWeight {
+        didSet {
+            UserDefaults.standard.set(uiHeadingWeight.rawValue, forKey: Self.uiHeadingWeightKey)
+        }
+    }
+
+    @Published var uiBodyWeight: LeanFontWeight {
+        didSet {
+            UserDefaults.standard.set(uiBodyWeight.rawValue, forKey: Self.uiBodyWeightKey)
+        }
+    }
+
+    func headingFont(size: CGFloat) -> Font {
+        leanUIFont.font(size: size, weight: uiHeadingWeight.fontWeight)
+    }
+
+    func bodyFont(size: CGFloat) -> Font {
+        leanUIFont.font(size: size, weight: uiBodyWeight.fontWeight)
     }
 
     @Published var webPageFont: LeanFont {
@@ -270,6 +298,12 @@ final class LeanStore: ObservableObject {
         let savedLeanUIFont = UserDefaults.standard.string(forKey: Self.leanUIFontKey) ?? LeanFont.system.rawValue
         self.leanUIFont = LeanFont(rawValue: savedLeanUIFont) ?? .system
 
+        let savedHeadingWeight = UserDefaults.standard.object(forKey: Self.uiHeadingWeightKey) as? Int ?? LeanFontWeight.semibold.rawValue
+        self.uiHeadingWeight = LeanFontWeight(rawValue: savedHeadingWeight) ?? .semibold
+
+        let savedBodyWeight = UserDefaults.standard.object(forKey: Self.uiBodyWeightKey) as? Int ?? LeanFontWeight.regular.rawValue
+        self.uiBodyWeight = LeanFontWeight(rawValue: savedBodyWeight) ?? .regular
+
         let savedWebPageFont = UserDefaults.standard.string(forKey: Self.webPageFontKey) ?? LeanFont.system.rawValue
         self.webPageFont = LeanFont(rawValue: savedWebPageFont) ?? .system
 
@@ -317,6 +351,7 @@ final class LeanStore: ObservableObject {
             }
         }
         ContentBlocker.refreshIfNeeded()
+        loadCustomShortcuts()
 
         let savedSession = UserDefaults.standard.stringArray(forKey: Self.sessionKey) ?? []
         let sessionURLs = savedSession.compactMap(URL.init(string:))
@@ -752,6 +787,40 @@ final class LeanStore: ObservableObject {
         isTabSwitcherVisible = false
     }
 
+    // MARK: - Custom Shortcuts
+    func shortcut(for action: ShortcutAction) -> CustomKeyCombo {
+        customShortcuts[action.rawValue] ?? action.defaultShortcut
+    }
+
+    func setShortcut(_ combo: CustomKeyCombo, for action: ShortcutAction) {
+        customShortcuts[action.rawValue] = combo
+    }
+
+    func resetShortcut(for action: ShortcutAction) {
+        customShortcuts.removeValue(forKey: action.rawValue)
+    }
+
+    func resetAllShortcuts() {
+        customShortcuts.removeAll()
+    }
+
+    func isCustomized(_ action: ShortcutAction) -> Bool {
+        customShortcuts[action.rawValue] != nil
+    }
+
+    private func saveCustomShortcuts() {
+        if let data = try? JSONEncoder().encode(customShortcuts) {
+            UserDefaults.standard.set(data, forKey: Self.customShortcutsKey)
+        }
+    }
+
+    private func loadCustomShortcuts() {
+        if let data = UserDefaults.standard.data(forKey: Self.customShortcutsKey),
+           let loaded = try? JSONDecoder().decode([String: CustomKeyCombo].self, from: data) {
+            customShortcuts = loaded
+        }
+    }
+
     private static let sessionKey = "sessionURLs"
     private static let historyKey = "visitedHistory"
     private static let searchEngineKey = "searchEngine"
@@ -763,6 +832,8 @@ final class LeanStore: ObservableObject {
     private static let smoothScrollingKey = "smoothScrollingEnabled"
     private static let showFullTitleKey = "showFullTitleOnActiveTab"
     private static let leanUIFontKey = "leanUIFont"
+    private static let uiHeadingWeightKey = "uiHeadingWeight"
+    private static let uiBodyWeightKey = "uiBodyWeight"
     private static let webPageFontKey = "webPageFont"
     private static let zenModeKey = "enableZenMode"
     private static let windowBorderKey = "enableWindowBorder"
@@ -770,4 +841,5 @@ final class LeanStore: ObservableObject {
     private static let windowBorderWidthKey = "windowBorderWidth"
     private static let shownToolbarItemsKey = "shownToolbarItems"
     private static let hiddenToolbarItemsKey = "hiddenToolbarItems"
+    private static let customShortcutsKey = "customShortcuts_v1"
 }

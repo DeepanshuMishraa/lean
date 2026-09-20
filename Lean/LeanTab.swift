@@ -16,6 +16,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private(set) var scrollbarStyle: ScrollbarStyle
     private(set) var smoothScrollingEnabled: Bool
     private(set) var pageFont: LeanFont
+    private(set) var pageHeadingWeight: Int
+    private(set) var pageBodyWeight: Int
     private(set) var adBlockingEnabled: Bool
 
     var isSettingsPage: Bool {
@@ -34,12 +36,16 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         scrollbarStyle: ScrollbarStyle = .normal,
         smoothScrolling: Bool = true,
         pageFont: LeanFont = .system,
+        pageHeadingWeight: Int = 0,
+        pageBodyWeight: Int = 0,
         adBlockingEnabled: Bool = true,
         configuration: WKWebViewConfiguration? = nil
     ) {
         self.scrollbarStyle = scrollbarStyle
         self.smoothScrollingEnabled = smoothScrolling
         self.pageFont = pageFont
+        self.pageHeadingWeight = pageHeadingWeight
+        self.pageBodyWeight = pageBodyWeight
         self.adBlockingEnabled = adBlockingEnabled
         let configuration = configuration ?? WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore
@@ -54,7 +60,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         configuration.userContentController.addUserScript(scrollbarScript)
 
         let fontScript = WKUserScript(
-            source: PageScripts.font(pageFont),
+            source: PageScripts.font(pageFont, headingWeight: pageHeadingWeight, bodyWeight: pageBodyWeight),
             injectionTime: .atDocumentStart,
             forMainFrameOnly: false
         )
@@ -161,7 +167,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.addUserScript(scrollbarScript)
 
         let fontScript = WKUserScript(
-            source: PageScripts.font(pageFont),
+            source: PageScripts.font(pageFont, headingWeight: pageHeadingWeight, bodyWeight: pageBodyWeight),
             injectionTime: .atDocumentStart,
             forMainFrameOnly: false
         )
@@ -198,10 +204,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.evaluateJavaScript(script) { _, _ in }
     }
 
-    func applyPageFont(_ font: LeanFont) {
+    func applyPageFont(_ font: LeanFont, headingWeight: Int = 0, bodyWeight: Int = 0) {
         pageFont = font
+        pageHeadingWeight = headingWeight
+        pageBodyWeight = bodyWeight
         rebuildUserScripts()
-        webView.evaluateJavaScript(PageScripts.font(font)) { _, _ in }
+        webView.evaluateJavaScript(PageScripts.font(font, headingWeight: headingWeight, bodyWeight: bodyWeight)) { _, _ in }
     }
 
 

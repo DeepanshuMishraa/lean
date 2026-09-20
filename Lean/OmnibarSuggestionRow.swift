@@ -18,7 +18,7 @@ struct SuggestionRow: View {
                     .frame(width: 22, height: 22)
 
                 Text(match.isSearch ? "Search \(match.searchEngine?.name ?? match.secondaryText) for \"\(match.primaryText)\"" : match.primaryText)
-                    .font(store.leanUIFont.font(size: 13.5, weight: .medium))
+                    .font(store.headingFont(size: 13.5))
                     .foregroundColor(titleColor)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -29,7 +29,7 @@ struct SuggestionRow: View {
                     switchToTabBadge
                 } else if !match.secondaryText.isEmpty && !match.isSearch {
                     Text(match.secondaryText)
-                        .font(store.leanUIFont.font(size: 12.5))
+                        .font(store.bodyFont(size: 12.5))
                         .foregroundColor(secondaryTextColor)
                         .lineLimit(1)
                 }
@@ -74,7 +74,7 @@ struct SuggestionRow: View {
     private var switchToTabBadge: some View {
         HStack(spacing: 6) {
             Text("Switch to Tab")
-                .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                .font(store.headingFont(size: 12.5))
                 .foregroundColor(
                     isSelected
                         ? (store.isDarkMode ? Color.white : Color.black)

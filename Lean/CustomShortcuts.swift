@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 // MARK: - Shortcut Action Identifier
-public enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
+enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
     // Tabs
     case newTab = "newTab"
     case closeTab = "closeTab"
@@ -32,9 +32,9 @@ public enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
     case actualSize = "actualSize"
     case openSettings = "openSettings"
 
-    public var id: String { rawValue }
+    var id: String { rawValue }
 
-    public var title: String {
+    var title: String {
         switch self {
         case .newTab: return "New Tab"
         case .closeTab: return "Close Tab"
@@ -60,7 +60,7 @@ public enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    public var description: String {
+    var description: String {
         switch self {
         case .newTab: return "Open a fresh tab or Omnibar"
         case .closeTab: return "Close the currently active tab"
@@ -86,17 +86,17 @@ public enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    public enum Group: String, CaseIterable, Identifiable {
+    enum Group: String, CaseIterable, Identifiable {
         case all = "All"
         case tabs = "Tabs"
         case navigation = "Navigation"
         case omnibar = "Address & Search"
         case view = "View"
 
-        public var id: String { rawValue }
+        var id: String { rawValue }
     }
 
-    public var group: Group {
+    var group: Group {
         switch self {
         case .newTab, .closeTab, .reopenTab, .nextTab, .previousTab, .goToLastTab:
             return .tabs
@@ -109,7 +109,7 @@ public enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    public var defaultShortcut: CustomKeyCombo {
+    var defaultShortcut: CustomKeyCombo {
         switch self {
         case .newTab: return CustomKeyCombo(key: "t", modifiers: ["command"])
         case .closeTab: return CustomKeyCombo(key: "w", modifiers: ["command"])
@@ -136,7 +136,7 @@ public enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
     }
 
     @MainActor
-    public func performAction(in store: LeanStore) {
+    func performAction(in store: LeanStore) {
         switch self {
         case .newTab:
             store.handleNewTabCommand()
@@ -145,9 +145,17 @@ public enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .reopenTab:
             store.reopenClosedTab()
         case .nextTab:
-            store.selectNextTab()
+            if store.enableThumbnailsInTabSwitcher {
+                store.startTabSwitcher(reverse: false)
+            } else {
+                store.selectNextTab()
+            }
         case .previousTab:
-            store.selectNextTab(reverse: true)
+            if store.enableThumbnailsInTabSwitcher {
+                store.startTabSwitcher(reverse: true)
+            } else {
+                store.selectNextTab(reverse: true)
+            }
         case .goToLastTab:
             store.selectTab(number: 9)
         case .goBack:
@@ -196,16 +204,16 @@ public enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
 }
 
 // MARK: - Key Combo Representation
-public struct CustomKeyCombo: Codable, Equatable {
-    public var key: String // "t", "w", "tab", "escape", etc.
-    public var modifiers: [String] // "command", "shift", "option", "control"
+struct CustomKeyCombo: Codable, Equatable {
+    var key: String // "t", "w", "tab", "escape", etc.
+    var modifiers: [String] // "command", "shift", "option", "control"
 
-    public init(key: String, modifiers: [String] = []) {
+    init(key: String, modifiers: [String] = []) {
         self.key = key.lowercased()
         self.modifiers = modifiers
     }
 
-    public var displayKeys: [String] {
+    var displayKeys: [String] {
         var keys: [String] = []
         if modifiers.contains("control") { keys.append("⌃") }
         if modifiers.contains("option") { keys.append("⌥") }
@@ -226,7 +234,7 @@ public struct CustomKeyCombo: Codable, Equatable {
         return keys
     }
 
-    public func matches(event: NSEvent) -> Bool {
+    func matches(event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
         let expectedCommand = modifiers.contains("command")
         let expectedShift = modifiers.contains("shift")
@@ -263,7 +271,7 @@ public struct CustomKeyCombo: Codable, Equatable {
         }
     }
 
-    public static func from(event: NSEvent) -> CustomKeyCombo? {
+    static func from(event: NSEvent) -> CustomKeyCombo? {
         let keyCode = event.keyCode
         // Ignore modifier-only key presses
         if [54, 55, 56, 57, 58, 59, 60, 61, 62].contains(keyCode) {

@@ -54,7 +54,9 @@ jobs:
   build-macos:
     name: macOS ${{ matrix.arch }}
     needs: version
-    runs-on: macos-15
+    # Needs the newest Xcode: Lean.xcodeproj is objectVersion 77 and
+    # icons/lean.icon is the Xcode 27 Icon Composer format.
+    runs-on: macos-26
     timeout-minutes: 60
     strategy:
       fail-fast: false

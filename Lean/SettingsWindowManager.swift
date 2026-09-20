@@ -6,9 +6,9 @@ final class SettingsWindowManager: NSObject, NSWindowDelegate {
     static let shared = SettingsWindowManager()
     private var window: NSWindow?
 
-    func show(store: LeanStore) {
+    func show(store: LeanStore, category: SettingsCategory = .general) {
         close()
-        store.openSettings()
+        store.openSettings(category: category)
     }
 
     func close() {

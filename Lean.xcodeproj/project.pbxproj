@@ -22,6 +22,7 @@
 		5A95D7EC207A24098228BBF3 /* LeanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CABED7395D472182B5B8279 /* LeanStore.swift */; };
 		6082FA83A361BE568DBBD304 /* AddressResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 329359943D08761604195E40 /* AddressResolverTests.swift */; };
 		60D4BC2DA22051A477CFB208 /* TopBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55ACE65E20A203180C11BDDD /* TopBarView.swift */; };
+		67450D98E0FF73EAC1CF3B35 /* SettingsPopoverHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B53E2D1FDEBA2B433144566B /* SettingsPopoverHistoryTests.swift */; };
 		69AC4FF3AD87A8C412AB8AA2 /* TabFaviconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E570BC18AD372821AB350BC /* TabFaviconView.swift */; };
 		70FD8F5BEAB6A6AA09E92CDF /* DropdownMenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF6FE4814030CDFDD5C840C3 /* DropdownMenuTests.swift */; };
 		78C6CF86E4E44D9D9BCE3E8E /* SettingsWindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84A5B4BCED207122DB77E61C /* SettingsWindowManager.swift */; };
@@ -80,6 +81,7 @@
 		9E570BC18AD372821AB350BC /* TabFaviconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabFaviconView.swift; sourceTree = "<group>"; };
 		A848AF7624C91DF439D4069E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AA93006FF8D0CD999AA120C4 /* Lean.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lean.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B53E2D1FDEBA2B433144566B /* SettingsPopoverHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPopoverHistoryTests.swift; sourceTree = "<group>"; };
 		BA97354673D3289795AA33C7 /* SettingsControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsControls.swift; sourceTree = "<group>"; };
 		BE299D40B9F2B4D61F3D41AD /* OmnibarService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmnibarService.swift; sourceTree = "<group>"; };
 		C5A52B464DE485174355D358 /* AdBlockFilterConverterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdBlockFilterConverterTests.swift; sourceTree = "<group>"; };
@@ -158,6 +160,7 @@
 				5E07226B7BD97E945B43B227 /* NavigationControlsTests.swift */,
 				E79752CAC905E311310040C7 /* OmnibarServiceTests.swift */,
 				5F223D3E0E5D21A9B6965446 /* PageLoadingTests.swift */,
+				B53E2D1FDEBA2B433144566B /* SettingsPopoverHistoryTests.swift */,
 				8236FF60B8280FBD4BFA5233 /* SmoothScrollingTests.swift */,
 				45114A1E37748C7110643D1C /* TabDisplayModeTests.swift */,
 			);
@@ -253,6 +256,7 @@
 				DB4831CB6B88926C41A5D902 /* NavigationControlsTests.swift in Sources */,
 				F20F5A75FB1AE3B3F4EFF939 /* OmnibarServiceTests.swift in Sources */,
 				4D642F93D1BCE6BACD83B656 /* PageLoadingTests.swift in Sources */,
+				67450D98E0FF73EAC1CF3B35 /* SettingsPopoverHistoryTests.swift in Sources */,
 				14A2E99A6C34753A725F173B /* SmoothScrollingTests.swift in Sources */,
 				850717383D672DE296316A1A /* TabDisplayModeTests.swift in Sources */,
 			);

@@ -110,8 +110,10 @@ final class LeanStore: ObservableObject {
     @Published var isTabSwitcherVisible = false
     @Published var switcherSelectedIndex = 0
     @Published var historyItems: [HistoryItem] = []
+    @Published var selectedSettingsCategory: SettingsCategory = .general
     @Published var isQuickSettingsPresented = false
     @Published var quickSettingsPopoverFrame: CGRect = .zero
+    @Published var quickSettingsSubmenuFrame: CGRect = .zero
     @Published var settingsButtonFrame: CGRect = .zero
     @Published var customShortcuts: [String: CustomKeyCombo] = [:] {
         didSet {
@@ -462,7 +464,8 @@ final class LeanStore: ObservableObject {
         theme = isDarkMode ? .light : .dark
     }
 
-    func openSettings() {
+    func openSettings(category: SettingsCategory = .general) {
+        selectedSettingsCategory = category
         SettingsWindowManager.shared.close()
 
         if let existingSettingsTab = tabs.first(where: { $0.isSettingsPage }) {

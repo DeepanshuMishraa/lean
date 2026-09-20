@@ -295,10 +295,12 @@ struct LeanView: View {
             // When Quick Settings popover is open, dismiss when clicking outside its bounds (and the gear button)
             if store.isQuickSettingsPresented {
                 let popoverFrame = store.quickSettingsPopoverFrame
+                let submenuFrame = store.quickSettingsSubmenuFrame
                 let buttonFrame = store.settingsButtonFrame
                 let isInsidePopover = popoverFrame.width > 0 && popoverFrame.contains(swiftUIPoint)
+                let isInsideSubmenu = submenuFrame.width > 0 && submenuFrame.contains(swiftUIPoint)
                 let isInsideButton = buttonFrame.width > 0 && buttonFrame.contains(swiftUIPoint)
-                if !isInsidePopover && !isInsideButton {
+                if !isInsidePopover && !isInsideSubmenu && !isInsideButton {
                     withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
                         store.isQuickSettingsPresented = false
                     }

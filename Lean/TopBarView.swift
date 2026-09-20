@@ -729,11 +729,145 @@ private struct SettingsButtonFrameKey: PreferenceKey {
     }
 }
 
+// MARK: - History Row Y Preference Key
+private struct HistoryRowYPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 142
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > 0 {
+            value = next
+        }
+    }
+}
+
 // MARK: - Bespoke Quick Settings Popover
 struct QuickSettingsPopover: View {
     @ObservedObject var store: LeanStore
 
+    @State private var isHistoryHovered = false
+    @State private var isSubmenuHovered = false
+    @State private var isSubmenuVisible = false
+    @State private var isAllSettingsHovered = false
+    @State private var historyRowY: CGFloat = 142
+    @State private var closeWorkItem: DispatchWorkItem? = nil
+
+    private func onHistoryHoverChanged(_ hovering: Bool) {
+        isHistoryHovered = hovering
+        if hovering {
+            closeWorkItem?.cancel()
+            closeWorkItem = nil
+            if !isSubmenuVisible {
+                withAnimation(.spring(response: 0.18, dampingFraction: 0.85)) {
+                    isSubmenuVisible = true
+                }
+            }
+        } else {
+            scheduleCloseIfNeeded()
+        }
+    }
+
+    private func onSubmenuHoverChanged(_ hovering: Bool) {
+        isSubmenuHovered = hovering
+        if hovering {
+            closeWorkItem?.cancel()
+            closeWorkItem = nil
+        } else {
+            scheduleCloseIfNeeded()
+        }
+    }
+
+    private func scheduleCloseIfNeeded() {
+        closeWorkItem?.cancel()
+        let workItem = DispatchWorkItem {
+            if !isHistoryHovered && !isSubmenuHovered {
+                withAnimation(.spring(response: 0.18, dampingFraction: 0.85)) {
+                    isSubmenuVisible = false
+                }
+            }
+        }
+        closeWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: workItem)
+    }
+
+    private func handleNonHistoryHovered(_ hovering: Bool) {
+        if hovering {
+            closeWorkItem?.cancel()
+            closeWorkItem = nil
+            isHistoryHovered = false
+            if isSubmenuVisible {
+                withAnimation(.spring(response: 0.18, dampingFraction: 0.85)) {
+                    isSubmenuVisible = false
+                }
+            }
+        }
+    }
+
     var body: some View {
+        mainPopoverCard
+            .overlay(alignment: .topLeading) {
+                if isSubmenuVisible {
+                    HStack(spacing: 0) {
+                        QuickSettingsHistorySubmenu(
+                            store: store,
+                            onHoverChanged: onSubmenuHoverChanged,
+                            onOpenHistoryTab: {
+                                withAnimation(.spring(response: 0.18, dampingFraction: 0.85)) {
+                                    store.isQuickSettingsPresented = false
+                                }
+                                store.openSettings(category: .history)
+                            }
+                        )
+
+                        // Seamless invisible hover bridge between submenu and main popover
+                        Color.clear
+                            .frame(width: 8)
+                            .contentShape(Rectangle())
+                            .onHover { hovering in
+                                if hovering {
+                                    closeWorkItem?.cancel()
+                                    closeWorkItem = nil
+                                } else {
+                                    scheduleCloseIfNeeded()
+                                }
+                            }
+                    }
+                    .fixedSize()
+                    .offset(x: -248, y: max(0, historyRowY - 6))
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity),
+                        removal: .scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity)
+                    ))
+                }
+            }
+            .coordinateSpace(name: "QuickSettingsCard")
+            .onPreferenceChange(HistoryRowYPreferenceKey.self) { y in
+                if y > 0 {
+                    historyRowY = y
+                }
+            }
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear {
+                            store.quickSettingsPopoverFrame = proxy.frame(in: .global)
+                        }
+                        .onChange(of: proxy.frame(in: .global)) { _, newFrame in
+                            store.quickSettingsPopoverFrame = newFrame
+                        }
+                }
+            )
+            .onDisappear {
+                closeWorkItem?.cancel()
+                closeWorkItem = nil
+                isSubmenuVisible = false
+                isHistoryHovered = false
+                isSubmenuHovered = false
+                store.quickSettingsPopoverFrame = .zero
+                store.quickSettingsSubmenuFrame = .zero
+            }
+    }
+
+    private var mainPopoverCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             // Quick Toggles starting directly from Zen mode
             VStack(spacing: 2) {
@@ -742,7 +876,8 @@ struct QuickSettingsPopover: View {
                     title: "Zen mode",
                     isOn: $store.enableZenMode,
                     isDark: store.isDarkMode,
-                    uiFont: store.leanUIFont
+                    uiFont: store.leanUIFont,
+                    onHoverChanged: handleNonHistoryHovered
                 )
 
                 QuickToggleItem(
@@ -750,7 +885,8 @@ struct QuickSettingsPopover: View {
                     title: "Window frame",
                     isOn: $store.enableWindowBorder,
                     isDark: store.isDarkMode,
-                    uiFont: store.leanUIFont
+                    uiFont: store.leanUIFont,
+                    onHoverChanged: handleNonHistoryHovered
                 )
 
                 QuickToggleItem(
@@ -759,7 +895,8 @@ struct QuickSettingsPopover: View {
                     isOn: $store.adBlockingEnabled,
                     isDark: store.isDarkMode,
                     uiFont: store.leanUIFont,
-                    accentColor: Color(red: 52/255, green: 199/255, blue: 89/255)
+                    accentColor: Color(red: 52/255, green: 199/255, blue: 89/255),
+                    onHoverChanged: handleNonHistoryHovered
                 )
 
                 QuickToggleItem(
@@ -767,7 +904,8 @@ struct QuickSettingsPopover: View {
                     title: "Smooth scrolling",
                     isOn: $store.smoothScrollingEnabled,
                     isDark: store.isDarkMode,
-                    uiFont: store.leanUIFont
+                    uiFont: store.leanUIFont,
+                    onHoverChanged: handleNonHistoryHovered
                 )
             }
 
@@ -776,38 +914,211 @@ struct QuickSettingsPopover: View {
                 .frame(height: 0.75)
                 .padding(.vertical, 2)
 
-            // Bottom link to All Settings
-            Button {
-                withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
-                    store.isQuickSettingsPresented = false
+            // History Settings and All Settings
+            VStack(spacing: 2) {
+                QuickSettingsHistoryRow(
+                    isDark: store.isDarkMode,
+                    uiFont: store.leanUIFont,
+                    isSubmenuOpen: isSubmenuVisible,
+                    onHoverChanged: onHistoryHoverChanged,
+                    onSelect: {
+                        withAnimation(.spring(response: 0.18, dampingFraction: 0.85)) {
+                            store.isQuickSettingsPresented = false
+                        }
+                        store.openSettings(category: .history)
+                    }
+                )
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear
+                            .preference(key: HistoryRowYPreferenceKey.self, value: proxy.frame(in: .named("QuickSettingsCard")).minY)
+                    }
+                )
+
+                // Bottom link to All Settings
+                Button {
+                    withAnimation(.spring(response: 0.18, dampingFraction: 0.85)) {
+                        store.isQuickSettingsPresented = false
+                    }
+                    store.openSettings()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 11, weight: .medium))
+                        Text("All Settings...")
+                            .font(store.headingFont(size: 12))
+                        Spacer()
+                        Text("⌘,")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundColor(store.adaptiveTheme.secondaryText)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundColor(store.adaptiveTheme.secondaryText)
+                    }
+                    .foregroundColor(store.adaptiveTheme.primaryText)
+                    .padding(.horizontal, 8)
+                    .frame(height: 28)
+                    .background(
+                        isAllSettingsHovered
+                            ? (store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                            : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    )
+                    .contentShape(Rectangle())
                 }
-                store.openSettings()
-            } label: {
+                .buttonStyle(.plain)
+                .onHover { hovering in
+                    isAllSettingsHovered = hovering
+                    handleNonHistoryHovered(hovering)
+                }
+            }
+        }
+        .padding(8)
+        .frame(width: 228)
+        .background(
+            (store.isDarkMode
+                ? Color(red: 18/255, green: 18/255, blue: 21/255)
+                : Color(white: 0.995)
+            ).opacity(0.97)
+        )
+        .background(
+            VisualEffectBlur(material: .popover, blendingMode: .withinWindow)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(store.adaptiveTheme.dropdownStroke, lineWidth: 0.75)
+        )
+        .shadow(color: Color.black.opacity(store.isDarkMode ? 0.45 : 0.12), radius: 18, x: 0, y: 8)
+        .shadow(color: Color.black.opacity(store.isDarkMode ? 0.20 : 0.04), radius: 2, x: 0, y: 1)
+    }
+}
+
+// MARK: - Quick Settings History Row
+struct QuickSettingsHistoryRow: View {
+    let isDark: Bool
+    let uiFont: LeanFont
+    let isSubmenuOpen: Bool
+    let onHoverChanged: (Bool) -> Void
+    let onSelect: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 8) {
+                Image(systemName: "clock")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(isDark ? Color.white.opacity(0.70) : Color.black.opacity(0.60))
+                    .frame(width: 16)
+
+                Text("History")
+                    .font(uiFont.font(size: 12, weight: .regular))
+                    .foregroundColor(isDark ? Color(white: 0.92) : Color(white: 0.14))
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(isDark ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 28)
+            .background(
+                (isHovered || isSubmenuOpen)
+                    ? (isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                    : Color.clear,
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
+            onHoverChanged(hovering)
+        }
+    }
+}
+
+// MARK: - Bespoke Quick Settings History Submenu
+struct QuickSettingsHistorySubmenu: View {
+    @ObservedObject var store: LeanStore
+    let onHoverChanged: (Bool) -> Void
+    let onOpenHistoryTab: () -> Void
+
+    @State private var isViewAllHovered = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            let recentItems = Array(store.historyItems.prefix(6))
+
+            if recentItems.isEmpty {
                 HStack(spacing: 8) {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 11, weight: .medium))
-                    Text("All Settings...")
-                        .font(store.headingFont(size: 12))
-                    Spacer()
-                    Text("⌘,")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    Image(systemName: "clock")
+                        .font(.system(size: 11))
                         .foregroundColor(store.adaptiveTheme.secondaryText)
+                        .frame(width: 14)
+                    Text("No Recent History")
+                        .font(store.leanUIFont.font(size: 11.5))
+                        .foregroundColor(store.adaptiveTheme.secondaryText)
+                    Spacer()
+                }
+                .padding(.horizontal, 8)
+                .frame(height: 28)
+            } else {
+                ForEach(recentItems) { item in
+                    QuickSettingsHistorySubmenuItem(
+                        item: item,
+                        store: store,
+                        onSelect: {
+                            let inNewTab = NSEvent.modifierFlags.contains(.command)
+                            store.openHistoryItem(item, inNewTab: inNewTab)
+                            withAnimation(.spring(response: 0.18, dampingFraction: 0.85)) {
+                                store.isQuickSettingsPresented = false
+                            }
+                        }
+                    )
+                }
+            }
+
+            Rectangle()
+                .fill(store.themeColors.divider)
+                .frame(height: 0.75)
+                .padding(.vertical, 3)
+
+            // Option to view all which opens the history tab in the settings
+            Button(action: onOpenHistoryTab) {
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(store.adaptiveTheme.secondaryText)
+                        .frame(width: 14)
+
+                    Text("View All History...")
+                        .font(store.headingFont(size: 11.5))
+                        .foregroundColor(store.adaptiveTheme.primaryText)
+
+                    Spacer()
+
                     Image(systemName: "chevron.right")
                         .font(.system(size: 8, weight: .semibold))
                         .foregroundColor(store.adaptiveTheme.secondaryText)
                 }
-                .foregroundColor(store.adaptiveTheme.primaryText)
                 .padding(.horizontal, 8)
-                .frame(height: 28)
+                .frame(height: 26)
                 .background(
-                    store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04),
+                    isViewAllHovered
+                        ? (store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                        : Color.clear,
                     in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                 )
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .onHover { isViewAllHovered = $0 }
         }
-        .padding(8)
-        .frame(width: 228)
+        .padding(6)
+        .frame(width: 240)
         .background(
             (store.isDarkMode
                 ? Color(red: 18/255, green: 18/255, blue: 21/255)
@@ -828,13 +1139,68 @@ struct QuickSettingsPopover: View {
             GeometryReader { proxy in
                 Color.clear
                     .onAppear {
-                        store.quickSettingsPopoverFrame = proxy.frame(in: .global)
+                        store.quickSettingsSubmenuFrame = proxy.frame(in: .global)
                     }
                     .onChange(of: proxy.frame(in: .global)) { _, newFrame in
-                        store.quickSettingsPopoverFrame = newFrame
+                        store.quickSettingsSubmenuFrame = newFrame
                     }
             }
         )
+        .onDisappear {
+            store.quickSettingsSubmenuFrame = .zero
+        }
+        .onHover { hovering in
+            onHoverChanged(hovering)
+        }
+    }
+}
+
+// MARK: - Bespoke Quick Settings History Submenu Item
+private struct QuickSettingsHistorySubmenuItem: View {
+    let item: HistoryItem
+    @ObservedObject var store: LeanStore
+    let onSelect: () -> Void
+
+    @State private var isHovered = false
+
+    private var displayTitle: String {
+        let trimmed = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            return trimmed
+        }
+        if let host = item.url.host, !host.isEmpty {
+            return host.replacingOccurrences(of: "www.", with: "")
+        }
+        return item.url.absoluteString
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 8) {
+                SiteFaviconView(url: item.url, isDark: store.isDarkMode, size: 13)
+                    .frame(width: 14, height: 14)
+
+                Text(displayTitle)
+                    .font(store.leanUIFont.font(size: 11.5, weight: .regular))
+                    .foregroundColor(store.adaptiveTheme.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 4)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 26)
+            .background(
+                isHovered
+                    ? (store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                    : Color.clear,
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("\(item.title)\n\(item.url.absoluteString)")
+        .onHover { isHovered = $0 }
     }
 }
 
@@ -846,6 +1212,7 @@ struct QuickToggleItem: View {
     let isDark: Bool
     let uiFont: LeanFont
     var accentColor: Color? = nil
+    var onHoverChanged: ((Bool) -> Void)? = nil
 
     @State private var isHovered = false
 
@@ -903,7 +1270,10 @@ struct QuickToggleItem: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
+        .onHover { hovering in
+            isHovered = hovering
+            onHoverChanged?(hovering)
+        }
     }
 }
 

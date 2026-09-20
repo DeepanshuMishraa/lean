@@ -95,7 +95,16 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environmentObject(dropdownState)
         .preferredColorScheme(store.colorScheme)
-        .onChange(of: selectedCategory) { _, _ in
+        .onAppear {
+            selectedCategory = store.selectedSettingsCategory
+        }
+        .onChange(of: store.selectedSettingsCategory) { _, newCat in
+            if selectedCategory != newCat {
+                selectedCategory = newCat
+            }
+        }
+        .onChange(of: selectedCategory) { _, newCat in
+            store.selectedSettingsCategory = newCat
             dropdownState.dismiss()
         }
     }

@@ -136,6 +136,8 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 15
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -188,3 +190,15 @@ jobs:
             --repo "${{ github.repository }}" \
             --clobber \
             appcast-arm64.xml appcast-x86_64.xml
+
+      - name: Publish release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 scripts/extract_release_notes.py CHANGELOG.md "$VERSION" > release-notes.md
+          gh release edit "$TAG" \
+            --repo "${{ github.repository }}" \
+            --notes-file release-notes.md

@@ -9,6 +9,9 @@ import Sparkle
 /// ad-hoc signed, unnotarized app.
 @MainActor
 final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
+    /// Release channel shown in the UI. The app is pre-1.0.
+    static let releaseChannel = "Alpha"
+
     private var controller: SPUStandardUpdaterController!
 
     override init() {
@@ -39,18 +42,16 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
         }
     }
 
+    var marketingVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
+    }
+
+    var buildVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"
+    }
+
     var currentVersion: String {
-        let bundle = Bundle.main
-        let short = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String
-        switch (short, build) {
-        case let (short?, build?):
-            return "\(short) (\(build))"
-        case let (short?, nil):
-            return short
-        default:
-            return "Unknown"
-        }
+        "\(marketingVersion) (\(buildVersion))"
     }
 
     // MARK: - SPUUpdaterDelegate

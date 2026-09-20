@@ -200,7 +200,7 @@ struct SettingsView: View {
             Spacer()
 
             // Footer version
-            Text("Lean Browser")
+            Text("Lean \(updater.marketingVersion) \(AppUpdater.releaseChannel)")
                 .font(store.bodyFont(size: 10.5))
                 .foregroundColor(store.isDarkMode ? Color.white.opacity(0.25) : Color.black.opacity(0.30))
                 .padding(.horizontal, 16)
@@ -716,10 +716,10 @@ private struct GeneralSection: View {
 
                 HStack(alignment: .center, spacing: 16) {
                     VStack(alignment: .leading, spacing: 2.5) {
-                        Text("Lean \(updater.currentVersion)")
+                        Text("Lean \(updater.marketingVersion) \(AppUpdater.releaseChannel)")
                             .font(store.leanUIFont.font(size: 13, weight: .medium))
                             .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
-                        Text("Signed updates from GitHub releases.")
+                        Text("Build \(updater.buildVersion) · Signed updates from GitHub releases.")
                             .font(store.leanUIFont.font(size: 11.5))
                             .foregroundColor(store.isDarkMode ? Color(white: 0.50) : Color(white: 0.48))
                     }

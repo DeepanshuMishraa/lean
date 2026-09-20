@@ -41,6 +41,7 @@
 		E5BFC6064A14CB1E7A7C4D03 /* TabStripScrollSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECBB6F58B56C5F78D6616416 /* TabStripScrollSupport.swift */; };
 		EF81104AE976E2079F2656FE /* LeanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53149805E8E44A5ECCE884F3 /* LeanView.swift */; };
 		F20F5A75FB1AE3B3F4EFF939 /* OmnibarServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79752CAC905E311310040C7 /* OmnibarServiceTests.swift */; };
+		F8412E715FD178DE5C1E643C /* lean.icon in Resources */ = {isa = PBXBuildFile; fileRef = 28482E243F19BC7282F14B6F /* lean.icon */; };
 		F8F072CF63D139768651B686 /* LeanCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0848E1405C94F6D577AC6C4F /* LeanCommands.swift */; };
 		FA99936939846790D9973977 /* AppDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EDDD317B7AF50A826865F77 /* AppDatabase.swift */; };
 /* End PBXBuildFile section */
@@ -62,6 +63,7 @@
 		14191AAB2D796CC5DE1EA6CB /* ContentBlocker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentBlocker.swift; sourceTree = "<group>"; };
 		169383803BA6823BA5839E0D /* FaviconService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconService.swift; sourceTree = "<group>"; };
 		1EDDD317B7AF50A826865F77 /* AppDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabase.swift; sourceTree = "<group>"; };
+		28482E243F19BC7282F14B6F /* lean.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = lean.icon; sourceTree = "<group>"; };
 		329359943D08761604195E40 /* AddressResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressResolverTests.swift; sourceTree = "<group>"; };
 		3CABED7395D472182B5B8279 /* LeanStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanStore.swift; sourceTree = "<group>"; };
 		45114A1E37748C7110643D1C /* TabDisplayModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabDisplayModeTests.swift; sourceTree = "<group>"; };
@@ -107,9 +109,18 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		66E481CBDE2F6770005B7A2E /* icons */ = {
+			isa = PBXGroup;
+			children = (
+				28482E243F19BC7282F14B6F /* lean.icon */,
+			);
+			path = icons;
+			sourceTree = "<group>";
+		};
 		9412FC51AEFBF1C736151F97 = {
 			isa = PBXGroup;
 			children = (
+				66E481CBDE2F6770005B7A2E /* icons */,
 				F049B1382DD62FA72F0DB4B4 /* Lean */,
 				F55C852ED859D338489E5FA5 /* LeanTests */,
 				12D0A6D3C98A1B631FF69C1E /* Products */,
@@ -193,6 +204,7 @@
 			buildConfigurationList = 4ACABE7D381BFC89F648A737 /* Build configuration list for PBXNativeTarget "Lean" */;
 			buildPhases = (
 				87A678AF7AABA85C421987A2 /* Sources */,
+				FF19CBF7DAD4E0584B0F2E0B /* Resources */,
 			);
 			buildRules = (
 			);
@@ -241,6 +253,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		FF19CBF7DAD4E0584B0F2E0B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F8412E715FD178DE5C1E643C /* lean.icon in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		6B04689857053EA066E0A32C /* Sources */ = {
@@ -390,7 +413,7 @@
 		490455B92C879CBF1DCD88BC /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = lean;
 				CODE_SIGN_ENTITLEMENTS = Lean/Lean.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -482,7 +505,7 @@
 		FDE2779389661D05D307F990 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = lean;
 				CODE_SIGN_ENTITLEMENTS = Lean/Lean.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				LD_RUNPATH_SEARCH_PATHS = (

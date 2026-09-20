@@ -161,11 +161,11 @@ struct TabDisplayModeTests {
     @Test("ToolbarItemType and LeanStore customizer persistence")
     func toolbarCustomizerTests() {
         let store = LeanStore()
-        #expect(ToolbarItemType.allCases.count == 6)
+        #expect(ToolbarItemType.allCases.count == 7)
 
         // Reset to default
         store.resetToolbarItems()
-        #expect(store.shownToolbarItems.count == 6)
+        #expect(store.shownToolbarItems.count == 7)
         #expect(store.hiddenToolbarItems.isEmpty)
 
         // Hide an item

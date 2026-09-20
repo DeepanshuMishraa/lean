@@ -202,6 +202,30 @@ struct LeanView: View {
             .zIndex(190)
         }
 
+        // Bespoke Downloads Overlay
+        if store.isDownloadsPresented {
+            ZStack(alignment: .topTrailing) {
+                Color.black.opacity(0.0001)
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                            store.isDownloadsPresented = false
+                        }
+                    }
+
+                DownloadsPopover(store: store)
+                    .padding(.top, (store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : 4))
+                    .padding(.trailing, (store.enableWindowBorder ? store.windowBorderWidth : 0) + 12)
+            }
+            .transition(.asymmetric(
+                insertion: .scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity),
+                removal: .scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity)
+            ))
+            .animation(.spring(response: 0.22, dampingFraction: 0.82), value: store.isDownloadsPresented)
+            .zIndex(190)
+        }
+
         // Ctrl+Tab Thumbnail Switcher Overlay
         if store.isTabSwitcherVisible {
             TabSwitcherView(store: store)
@@ -307,6 +331,19 @@ struct LeanView: View {
                 }
             }
 
+            // When Downloads popover is open, dismiss when clicking outside its bounds (and the button)
+            if store.isDownloadsPresented {
+                let popoverFrame = store.downloadsPopoverFrame
+                let buttonFrame = store.downloadsButtonFrame
+                let isInsidePopover = popoverFrame.width > 0 && popoverFrame.contains(swiftUIPoint)
+                let isInsideButton = buttonFrame.width > 0 && buttonFrame.contains(swiftUIPoint)
+                if !isInsidePopover && !isInsideButton {
+                    withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+                        store.isDownloadsPresented = false
+                    }
+                }
+            }
+
             // When inline URL bar is being edited, dismiss when clicking outside its bounds (and dropdown)
             if store.isInlineURLEditing {
                 let barFrame = store.inlineURLBarFrame.insetBy(dx: -4, dy: -4)
@@ -344,6 +381,12 @@ struct LeanView: View {
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             // Intercept Escape (keyCode 53) to close quick settings, inline url bar, floating omnibar, new tab omnibar, or tab switcher
             if event.keyCode == 53 {
+                if store.isDownloadsPresented {
+                    withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+                        store.isDownloadsPresented = false
+                    }
+                    return nil
+                }
                 if store.isQuickSettingsPresented {
                     withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
                         store.isQuickSettingsPresented = false

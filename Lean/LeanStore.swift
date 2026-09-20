@@ -38,6 +38,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
     case forward = "forward"
     case reload = "reload"
     case newTab = "newTab"
+    case downloads = "downloads"
     case themeToggle = "themeToggle"
     case settings = "settings"
 
@@ -49,6 +50,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         case .forward: return "Forward"
         case .reload: return "Reload"
         case .newTab: return "New Tab"
+        case .downloads: return "Downloads"
         case .themeToggle: return "Theme"
         case .settings: return "Settings"
         }
@@ -60,6 +62,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         case .forward: return "chevron.right"
         case .reload: return "arrow.clockwise"
         case .newTab: return "plus"
+        case .downloads: return "arrow.down.circle"
         case .themeToggle: return "sun.max.fill"
         case .settings: return "gearshape"
         }
@@ -69,7 +72,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         switch self {
         case .back, .forward, .reload:
             return true
-        case .newTab, .themeToggle, .settings:
+        case .newTab, .downloads, .themeToggle, .settings:
             return false
         }
     }
@@ -115,6 +118,10 @@ final class LeanStore: ObservableObject {
     @Published var quickSettingsPopoverFrame: CGRect = .zero
     @Published var quickSettingsSubmenuFrame: CGRect = .zero
     @Published var settingsButtonFrame: CGRect = .zero
+    @Published var isDownloadsPresented = false
+    @Published var downloadsButtonFrame: CGRect = .zero
+    @Published var downloadsPopoverFrame: CGRect = .zero
+    @Published var downloadManager: DownloadManager
     @Published var customShortcuts: [String: CustomKeyCombo] = [:] {
         didSet {
             saveCustomShortcuts()
@@ -249,10 +256,12 @@ final class LeanStore: ObservableObject {
     private let database: AppDatabase?
     private var recentlyClosed: [URL] = []
     private var adBlockUpdateObserver: NSObjectProtocol?
+    private var cancellables = Set<AnyCancellable>()
 
     init(dataStore: WKWebsiteDataStore? = nil, database: AppDatabase? = nil) {
         self.dataStore = dataStore ?? WKWebsiteDataStore.default()
         self.database = database ?? AppDatabase.openDefault()
+        self.downloadManager = DownloadManager(database: self.database)
 
         let savedSearchEngine = databaseValue(self.database, String.self, forKey: Self.searchEngineKey)
             ?? UserDefaults.standard.string(forKey: Self.searchEngineKey)
@@ -397,6 +406,9 @@ final class LeanStore: ObservableObject {
         }
         ContentBlocker.refreshIfNeeded()
         loadCustomShortcuts()
+        downloadManager.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
 
         let savedSession = databaseValue(self.database, BrowserSession.self, forKey: Self.sessionStateKey)
         let legacySessionURLs = databaseValue(self.database, [String].self, forKey: Self.sessionKey)
@@ -600,8 +612,22 @@ final class LeanStore: ObservableObject {
         saveHistory()
     }
 
-    func openHistoryItem(_ item: HistoryItem, inNewTab: Bool = false) {
-        if inNewTab {
+    func cancelDownload(id: UUID) {
+        for tab in tabs {
+            tab.cancelActiveDownload(id: id)
+        }
+        downloadManager.cancelDownload(id: id)
+    }
+
+    func revealDownload(_ item: DownloadItem) {
+        NSWorkspace.shared.activateFileViewerSelecting([item.destinationURL])
+    }
+
+    func openDownload(_ item: DownloadItem) {
+        NSWorkspace.shared.open(item.destinationURL)
+    }
+
+    func openHistoryItem(_ item: HistoryItem, inNewTab: Bool = false) {        if inNewTab {
             newTab(url: item.url, select: true)
         } else {
             if let current = selectedTab, current.isSettingsPage || current.url == nil {
@@ -682,6 +708,7 @@ final class LeanStore: ObservableObject {
             }
             self.saveSession()
         }
+        tab.downloadManager = downloadManager
         tab.onOpenNewTab = { [weak self] url, configuration in
             self?.newTab(url: nil, configuration: configuration).webView
         }

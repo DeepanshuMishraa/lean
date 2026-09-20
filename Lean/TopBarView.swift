@@ -153,11 +153,25 @@ struct TopBarView: View {
             }
 
             // Window & Workspace Actions
+            let showDownloads = store.isToolbarItemShown(.downloads)
             let showTheme = store.isToolbarItemShown(.themeToggle)
             let showSettings = store.isToolbarItemShown(.settings)
 
-            if showTheme || showSettings {
+            if showDownloads || showTheme || showSettings {
                 HStack(spacing: 2) {
+                    if showDownloads {
+                        DownloadToolbarButton(store: store)
+                            .background(
+                                GeometryReader { proxy in
+                                    Color.clear
+                                        .preference(key: DownloadsButtonFrameKey.self, value: proxy.frame(in: .global))
+                                }
+                            )
+                            .onPreferenceChange(DownloadsButtonFrameKey.self) { frame in
+                                store.downloadsButtonFrame = frame
+                            }
+                    }
+
                     if showTheme {
                         InteractiveIconButton(
                             systemImage: store.isDarkMode ? "sun.max.fill" : "moon.fill",
@@ -726,6 +740,101 @@ private struct SettingsButtonFrameKey: PreferenceKey {
     static var defaultValue: CGRect = .zero
     static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
         value = nextValue()
+    }
+}
+
+// MARK: - PreferenceKey for Downloads Button Frame
+private struct DownloadsButtonFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+// MARK: - Downloads Toolbar Button (sits beside the theme icon)
+private struct DownloadToolbarButton: View {
+    @ObservedObject var store: LeanStore
+
+    @State private var isHovered = false
+    @State private var isPressed = false
+
+    private var hasActive: Bool {
+        store.downloadManager.hasActiveDownloads
+    }
+
+    private var foregroundColor: Color {
+        if store.isDownloadsPresented {
+            return store.adaptiveTheme.primaryText
+        }
+        if isHovered {
+            return store.adaptiveTheme.primaryText
+        }
+        return store.adaptiveTheme.secondaryText
+    }
+
+    private var backgroundColor: Color {
+        if isPressed {
+            return store.adaptiveTheme.iconPressedBackground
+        }
+        if isHovered || store.isDownloadsPresented {
+            return store.adaptiveTheme.iconHoverBackground
+        }
+        return Color.clear
+    }
+
+    var body: some View {
+        Button {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                store.isQuickSettingsPresented = false
+                store.isDownloadsPresented.toggle()
+            }
+        } label: {
+            ZStack {
+                Image(systemName: hasActive || store.isDownloadsPresented ? "arrow.down.circle.fill" : "arrow.down.circle")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(foregroundColor)
+                    .frame(width: 24, height: 24)
+                    .background(
+                        backgroundColor,
+                        in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    )
+                    .scaleEffect(isPressed ? 0.92 : (isHovered ? 1.05 : 1.0))
+
+                if hasActive {
+                    Capsule()
+                        .fill(store.adaptiveTheme.secondaryText.opacity(0.25))
+                        .frame(width: 12, height: 2)
+                        .offset(y: 8)
+                    Capsule()
+                        .fill(store.isDarkMode ? Color.white : Color.black)
+                        .frame(width: 12 * CGFloat(store.downloadManager.overallProgress), height: 2)
+                        .offset(y: 8)
+                } else if !store.downloadManager.downloads.isEmpty {
+                    Circle()
+                        .fill(store.adaptiveTheme.secondaryText.opacity(0.55))
+                        .frame(width: 4, height: 4)
+                        .offset(x: 7, y: -7)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .help(downloadsHelpText)
+        .onHover { isHovered = $0 }
+        .animation(.spring(response: 0.20, dampingFraction: 0.75), value: isHovered)
+        .animation(.spring(response: 0.15, dampingFraction: 0.8), value: isPressed)
+        .animation(.easeInOut(duration: 0.2), value: hasActive)
+    }
+
+    private var downloadsHelpText: String {
+        let active = store.downloadManager.activeDownloads.count
+        if active > 0 {
+            return "Downloads (\(active) active — click to view)"
+        }
+        let total = store.downloadManager.downloads.count
+        if total > 0 {
+            return "Downloads (\(total)) — click to view"
+        }
+        return "Downloads"
     }
 }
 

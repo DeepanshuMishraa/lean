@@ -27,8 +27,18 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     var onStateChange: (() -> Void)?
     var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
+    var downloadManager: DownloadManager?
     private var progressObserver: NSKeyValueObservation?
     private var navigationObservers: [NSKeyValueObservation] = []
+    private var activeDownloadIDs: [ObjectIdentifier: UUID] = [:]
+    private var downloadProgressObservers: [ObjectIdentifier: NSKeyValueObservation] = [:]
+    private var downloadLastSample: [UUID: (bytes: Int64, date: Date, speed: Double)] = [:]
+    private var activeDownloadObjects: [UUID: WKDownload] = [:]
+
+    func cancelActiveDownload(id: UUID) {
+        activeDownloadObjects[id]?.cancel()
+        activeDownloadObjects[id] = nil
+    }
 
     init(
         dataStore: WKWebsiteDataStore,
@@ -505,23 +515,100 @@ extension LeanTab: WKDownloadDelegate {
         suggestedFilename: String,
         completionHandler: @escaping (URL?) -> Void
     ) {
-        guard let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
-            completionHandler(nil)
-            return
+        let manager = downloadManager
+        let fallbackDir = DownloadManager.defaultDownloadsDirectory()
+        try? FileManager.default.createDirectory(at: fallbackDir, withIntermediateDirectories: true)
+        let destination = manager?.uniqueDestination(for: suggestedFilename)
+            ?? fallbackDir.appendingPathComponent(suggestedFilename.isEmpty ? "download" : suggestedFilename)
+
+        let totalBytes: Int64 = {
+            if response.expectedContentLength > 0 { return response.expectedContentLength }
+            if download.progress.totalUnitCount > 0 { return download.progress.totalUnitCount }
+            return -1
+        }()
+        let fileName = destination.lastPathComponent
+        let itemID = manager?.beginDownload(
+            fileName: fileName,
+            sourceURL: response.url,
+            destinationURL: destination,
+            totalBytes: totalBytes
+        ) ?? UUID()
+        let key = ObjectIdentifier(download)
+        activeDownloadIDs[key] = itemID
+        activeDownloadObjects[itemID] = download
+        downloadLastSample[itemID] = (bytes: 0, date: Date(), speed: 0)
+        downloadProgressObservers[key] = download.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
+            guard let self else { return }
+            Task { @MainActor in
+                self.handleDownloadProgress(itemID: itemID, progress: progress)
+            }
         }
-
-        var destination = downloadsURL.appendingPathComponent(suggestedFilename)
-        var counter = 1
-        let name = (suggestedFilename as NSString).deletingPathExtension
-        let ext = (suggestedFilename as NSString).pathExtension
-
-        while FileManager.default.fileExists(atPath: destination.path) {
-            let uniqueName = ext.isEmpty ? "\(name) \(counter)" : "\(name) \(counter).\(ext)"
-            destination = downloadsURL.appendingPathComponent(uniqueName)
-            counter += 1
-        }
-
         completionHandler(destination)
+    }
+
+    @MainActor
+    private func handleDownloadProgress(itemID: UUID, progress: Progress) {
+        let received = progress.completedUnitCount
+        let total = progress.totalUnitCount
+        let now = Date()
+        let last = downloadLastSample[itemID]
+        var speed = last?.speed ?? 0
+        if let last {
+            let dt = now.timeIntervalSince(last.date)
+            if dt > 0.15 {
+                let instant = Double(received - last.bytes) / dt
+                if instant >= 0 {
+                    // Exponential smoothing keeps the readout stable.
+                    speed = last.speed * 0.6 + instant * 0.4
+                }
+                downloadLastSample[itemID] = (bytes: received, date: now, speed: speed)
+            }
+        } else {
+            downloadLastSample[itemID] = (bytes: received, date: now, speed: 0)
+        }
+        downloadManager?.updateProgress(
+            id: itemID,
+            receivedBytes: received,
+            totalBytes: total > 0 ? total : Int64(-1),
+            speedBytesPerSec: speed
+        )
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        let key = ObjectIdentifier(download)
+        let itemID = activeDownloadIDs[key]
+        downloadProgressObservers[key]?.invalidate()
+        downloadProgressObservers[key] = nil
+        activeDownloadIDs[key] = nil
+        guard let itemID else { return }
+        activeDownloadObjects[itemID] = nil
+        // Final byte count from disk beats progress accounting.
+        if let item = downloadManager?.downloads.first(where: { $0.id == itemID }) {
+            let diskSize = (try? FileManager.default.attributesOfItem(atPath: item.destinationURL.path)[.size] as? Int64) ?? nil
+            let received = diskSize ?? download.progress.completedUnitCount
+            let total = download.progress.totalUnitCount > 0 ? download.progress.totalUnitCount : received
+            downloadManager?.updateProgress(id: itemID, receivedBytes: received, totalBytes: total, speedBytesPerSec: 0)
+        }
+        let fileName = downloadManager?.downloads.first(where: { $0.id == itemID })?.destinationURL.lastPathComponent
+        downloadManager?.finishDownload(id: itemID, fileName: fileName)
+        downloadLastSample[itemID] = nil
+    }
+
+    func download(
+        _ download: WKDownload,
+        didFailWithError error: Error,
+        resumeData: Data?
+    ) {
+        let key = ObjectIdentifier(download)
+        let itemID = activeDownloadIDs[key]
+        downloadProgressObservers[key]?.invalidate()
+        downloadProgressObservers[key] = nil
+        activeDownloadIDs[key] = nil
+        guard let itemID else { return }
+        activeDownloadObjects[itemID] = nil
+        let cancelled = (error as NSError).code == NSURLErrorCancelled
+        downloadManager?.failDownload(id: itemID, errorDescription: error.localizedDescription, cancelled: cancelled)
+        downloadLastSample[itemID] = nil
     }
 }
 

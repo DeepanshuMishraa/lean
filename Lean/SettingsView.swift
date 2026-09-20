@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -10,6 +11,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case privacy = "Privacy"
     case shortcuts = "Shortcuts"
     case history = "History"
+    case downloads = "Downloads"
 
     var id: String { rawValue }
 
@@ -23,6 +25,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .privacy: return "shield"
         case .shortcuts: return "command"
         case .history: return "clock"
+        case .downloads: return "arrow.down.circle"
         }
     }
 
@@ -36,6 +39,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .privacy: return "Search provider, content filtering, and local data"
         case .shortcuts: return "Keyboard shortcuts, navigation hotkeys, and quick actions"
         case .history: return "Recently visited pages"
+        case .downloads: return "Download location and file history"
         }
     }
 }
@@ -282,6 +286,8 @@ struct SettingsView: View {
             ShortcutsSection(store: store)
         case .history:
             HistorySection(store: store)
+        case .downloads:
+            DownloadsSection(store: store)
         }
     }
 }
@@ -1726,5 +1732,385 @@ private struct KeycapBadge: View {
                     .stroke(badgeBorder, lineWidth: 0.5)
             )
             .shadow(color: shadowColor, radius: 1, x: 0, y: 1)
+    }
+}
+
+// MARK: - Downloads Section
+private struct DownloadsSection: View {
+    @ObservedObject var store: LeanStore
+    @State private var searchText = ""
+
+    private var filteredItems: [DownloadItem] {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return store.downloadManager.downloads }
+        let lower = trimmed.lowercased()
+        return store.downloadManager.downloads.filter {
+            $0.fileName.lowercased().contains(lower)
+                || $0.destinationURL.path.lowercased().contains(lower)
+        }
+    }
+
+    private var primaryText: Color {
+        store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12)
+    }
+
+    private var secondaryText: Color {
+        store.isDarkMode ? Color(white: 0.50) : Color(white: 0.48)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Save location
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Save Location", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+
+                SettingsGroup(isDark: store.isDarkMode) {
+                    HStack(alignment: .center, spacing: 16) {
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 15))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
+                            .frame(width: 30, height: 30)
+                            .background(
+                                store.isDarkMode ? Color.white.opacity(0.07) : Color.black.opacity(0.05),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+
+                        VStack(alignment: .leading, spacing: 2.5) {
+                            Text(store.downloadManager.downloadDirectory.lastPathComponent)
+                                .font(store.leanUIFont.font(size: 13, weight: .medium))
+                                .foregroundColor(primaryText)
+                                .lineLimit(1)
+                            Text(store.downloadManager.downloadDirectory.path)
+                                .font(store.leanUIFont.font(size: 11))
+                                .foregroundColor(secondaryText)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+
+                        Spacer(minLength: 12)
+
+                        Button {
+                            NSWorkspace.shared.activateFileViewerSelecting([store.downloadManager.downloadDirectory])
+                        } label: {
+                            Text("Show in Finder")
+                                .font(store.leanUIFont.font(size: 11.5, weight: .medium))
+                                .foregroundColor(primaryText)
+                                .padding(.horizontal, 11)
+                                .frame(height: 27)
+                                .background(
+                                    store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05),
+                                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .help("Reveal the download folder in Finder")
+
+                        Button {
+                            chooseDownloadFolder()
+                        } label: {
+                            Text("Change...")
+                                .font(store.leanUIFont.font(size: 11.5, weight: .medium))
+                                .foregroundColor(primaryText)
+                                .padding(.horizontal, 11)
+                                .frame(height: 27)
+                                .background(
+                                    store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05),
+                                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .help("Choose where downloaded files are saved")
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+            }
+
+            // File history
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    SettingsHeaderLabel("Downloaded Files", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                    Spacer()
+                    if store.downloadManager.downloads.contains(where: { !$0.isActive }) {
+                        Button {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                                store.downloadManager.clearCompleted()
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 9.5))
+                                Text("Clear Finished")
+                                    .font(store.leanUIFont.font(size: 11, weight: .medium))
+                            }
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.60) : Color.black.opacity(0.55))
+                            .padding(.horizontal, 9)
+                            .frame(height: 24)
+                            .background(
+                                store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                if !store.downloadManager.downloads.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
+
+                        TextField("Search downloads...", text: $searchText)
+                            .textFieldStyle(.plain)
+                            .font(store.leanUIFont.font(size: 12.5))
+                            .foregroundColor(primaryText)
+
+                        if !searchText.isEmpty {
+                            Button {
+                                searchText = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(secondaryText)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(height: 32)
+                    .background(
+                        store.isDarkMode ? Color.white.opacity(0.04) : Color.black.opacity(0.035),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.05), lineWidth: 0.75)
+                    )
+                }
+
+                if store.downloadManager.downloads.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.system(size: 32, weight: .ultraLight))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.30) : Color.black.opacity(0.30))
+                        Text("No Downloads Yet")
+                            .font(store.leanUIFont.font(size: 14, weight: .medium))
+                            .foregroundColor(primaryText)
+                        Text("Downloaded files are saved to your Downloads folder and listed here.")
+                            .font(store.leanUIFont.font(size: 12))
+                            .foregroundColor(secondaryText)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 48)
+                } else if filteredItems.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 28, weight: .light))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.30) : Color.black.opacity(0.30))
+                        Text("No Matches Found")
+                            .font(store.leanUIFont.font(size: 14, weight: .medium))
+                            .foregroundColor(primaryText)
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Text("Clear Search")
+                                .font(store.leanUIFont.font(size: 11.5, weight: .medium))
+                                .foregroundColor(primaryText)
+                                .padding(.horizontal, 10)
+                                .frame(height: 24)
+                                .background(
+                                    store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05),
+                                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+                } else {
+                    SettingsGroup(isDark: store.isDarkMode) {
+                        ForEach(Array(filteredItems.enumerated()), id: \.element.id) { index, item in
+                            if index > 0 {
+                                SettingsRowDivider(isDark: store.isDarkMode, inset: 46)
+                            }
+                            DownloadSettingsRow(item: item, store: store)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func chooseDownloadFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        panel.message = "Choose where downloaded files are saved"
+        panel.directoryURL = store.downloadManager.downloadDirectory
+        if panel.runModal() == .OK, let url = panel.url {
+            store.downloadManager.setDownloadDirectory(url)
+        }
+    }
+}
+
+// MARK: - Download Settings Row
+private struct DownloadSettingsRow: View {
+    let item: DownloadItem
+    @ObservedObject var store: LeanStore
+    @State private var isHovered = false
+    @State private var showHoverActions = false
+    @State private var hoverWorkItem: DispatchWorkItem?
+
+    /// Delayed like the popover row: a double-click must never land on a
+    /// Cancel button that just popped into layout.
+    private func setHovered(_ hovering: Bool) {
+        isHovered = hovering
+        hoverWorkItem?.cancel()
+        hoverWorkItem = nil
+        if hovering {
+            let work = DispatchWorkItem { showHoverActions = true }
+            hoverWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+        } else {
+            showHoverActions = false
+        }
+    }
+
+    private var subtitle: String {
+        switch item.state {
+        case .downloading:
+            var parts = [DownloadFormat.progressText(received: item.receivedBytes, total: item.totalBytes)]
+            let speed = DownloadFormat.speed(item.speedBytesPerSec)
+            if speed != "—" { parts.append(speed) }
+            return parts.joined(separator: " · ")
+        case .completed:
+            let when = item.endDate.map { DownloadFormat.relativeTime($0) } ?? "just now"
+            let size = item.totalBytes > 0 ? DownloadFormat.fileSize(item.totalBytes) : DownloadFormat.fileSize(item.receivedBytes)
+            return "\(size) · downloaded \(when)"
+        case .failed:
+            return item.errorDescription ?? "Download failed"
+        case .cancelled:
+            return "Cancelled"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: DownloadFormat.systemImage(for: item.fileName))
+                .font(.system(size: 14))
+                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
+                .frame(width: 32, height: 32)
+                .background(
+                    store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04),
+                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                )
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.fileName)
+                    .font(store.leanUIFont.font(size: 13, weight: .medium))
+                    .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Text(subtitle)
+                    .font(store.leanUIFont.font(size: 11))
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.45) : Color.black.opacity(0.45))
+                    .lineLimit(1)
+
+                if item.state == .downloading, item.totalBytes > 0 {
+                    GeometryReader { geo in
+                        Capsule()
+                            .fill(store.isDarkMode ? Color.white.opacity(0.10) : Color.black.opacity(0.08))
+                            .frame(height: 3)
+                            .overlay(alignment: .leading) {
+                                Capsule()
+                                    .fill(store.isDarkMode ? Color.white.opacity(0.85) : Color.black.opacity(0.7))
+                                    .frame(width: geo.size.width * CGFloat(item.fractionCompleted), height: 3)
+                            }
+                    }
+                    .frame(height: 3)
+                    .frame(maxWidth: 220)
+                }
+            }
+
+            Spacer(minLength: 12)
+
+            HStack(spacing: 6) {
+                if item.state == .downloading {
+                    if item.totalBytes > 0 {
+                        Text("\(Int((item.fractionCompleted * 100).rounded()))%")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.45) : Color.black.opacity(0.40))
+                    }
+                    SettingsIconButton(systemImage: "xmark", help: "Cancel download", store: store) {
+                        store.cancelDownload(id: item.id)
+                    }
+                    .opacity(showHoverActions ? 1 : 0)
+                    .disabled(!showHoverActions)
+                } else if showHoverActions {
+                    SettingsIconButton(systemImage: "folder", help: "Show in Finder", store: store) {
+                        store.revealDownload(item)
+                    }
+                    if item.state == .completed {
+                        SettingsIconButton(systemImage: "arrow.up.forward", help: "Open file", store: store) {
+                            store.openDownload(item)
+                        }
+                    }
+                    SettingsIconButton(systemImage: "trash", help: "Remove from list", store: store) {
+                        withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
+                            store.downloadManager.removeDownload(id: item.id)
+                        }
+                    }
+                }
+            }
+            .frame(minWidth: 60, alignment: .trailing)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .background(
+            isHovered
+                ? (store.isDarkMode ? Color.white.opacity(0.035) : Color.black.opacity(0.02))
+                : Color.clear
+        )
+        .onHover(perform: setHovered)
+        .help(item.destinationURL.path)
+        .onTapGesture {
+            if item.state == .completed {
+                store.openDownload(item)
+            } else {
+                store.revealDownload(item)
+            }
+        }
+        .onDisappear {
+            hoverWorkItem?.cancel()
+            hoverWorkItem = nil
+        }
+    }
+}
+
+private struct SettingsIconButton: View {
+    let systemImage: String
+    let help: String
+    @ObservedObject var store: LeanStore
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.7) : Color.black.opacity(0.65))
+                .frame(width: 26, height: 26)
+                .background(
+                    store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05),
+                    in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }

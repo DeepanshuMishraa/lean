@@ -742,6 +742,8 @@ private struct GeneralSection: View {
                     .buttonStyle(.plain)
                     .disabled(!updater.canCheckForUpdates)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
         }
     }

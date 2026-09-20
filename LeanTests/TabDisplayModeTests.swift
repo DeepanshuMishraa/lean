@@ -46,8 +46,9 @@ struct TabDisplayModeTests {
 
     @MainActor
     @Test("LeanStore dismissInlineURLEditing resets state and frames")
-    func dismissInlineURLEditing() {
-        let store = LeanStore()
+    func dismissInlineURLEditing() throws {
+        let (store, directory) = try makeIsolatedTestStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
         store.isInlineURLEditing = true
         store.inlineURLBarFrame = CGRect(x: 10, y: 10, width: 200, height: 30)
         store.inlineSuggestionsFrame = CGRect(x: 10, y: 40, width: 200, height: 100)
@@ -159,8 +160,9 @@ struct TabDisplayModeTests {
 
     @MainActor
     @Test("ToolbarItemType and LeanStore customizer persistence")
-    func toolbarCustomizerTests() {
-        let store = LeanStore()
+    func toolbarCustomizerTests() throws {
+        let (store, directory) = try makeIsolatedTestStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
         #expect(ToolbarItemType.allCases.count == 7)
 
         // Reset to default
@@ -195,13 +197,14 @@ struct TabDisplayModeTests {
 
     @MainActor
     @Test("In-Tab Settings page navigation and address resolution")
-    func inTabSettingsTests() {
+    func inTabSettingsTests() throws {
         // Address resolution
         #expect(AddressResolver.resolve("settings")?.absoluteString == "lean://settings")
         #expect(AddressResolver.resolve("lean://settings")?.absoluteString == "lean://settings")
         #expect(AddressResolver.resolve("about:settings")?.absoluteString == "lean://settings")
 
-        let store = LeanStore()
+        let (store, directory) = try makeIsolatedTestStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
         store.openSettings()
 
         // Should have a selected tab with settings
@@ -223,8 +226,9 @@ struct TabDisplayModeTests {
 
     @MainActor
     @Test("HistoryItem recording, deletion, and clear management")
-    func historyManagementTests() {
-        let store = LeanStore()
+    func historyManagementTests() throws {
+        let (store, directory) = try makeIsolatedTestStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
         store.clearHistory()
         #expect(store.historyItems.isEmpty)
         #expect(store.visitedHistory.isEmpty)
@@ -256,5 +260,71 @@ struct TabDisplayModeTests {
         store.clearHistory()
         #expect(store.historyItems.isEmpty)
         #expect(store.visitedHistory.isEmpty)
+    }
+
+    @MainActor
+    @Test("TabLayout enum and LeanStore persistence")
+    func tabLayoutTests() throws {
+        #expect(TabLayout.allCases.count == 2)
+        #expect(TabLayout.top.rawValue == "top")
+        #expect(TabLayout.sidebar.rawValue == "sidebar")
+        #expect(TabLayout.top.title == "Top of Window")
+        #expect(TabLayout.sidebar.title == "Sidebar")
+
+        let (database, directory) = try temporaryDatabase()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LeanStore(database: database)
+
+        #expect(store.tabLayout == .top)
+
+        // Switching to sidebar enforces enableWindowBorder = true
+        store.enableWindowBorder = false
+        store.tabLayout = .sidebar
+        #expect(store.tabLayout == .sidebar)
+        #expect(store.enableWindowBorder == true)
+        #expect(try database.value(String.self, forKey: "tabLayout").get() == "sidebar")
+
+        // While in sidebar layout, frame mode cannot be disabled
+        store.enableWindowBorder = false
+        #expect(store.enableWindowBorder == true)
+
+        // Toggling sidebar collapse
+        #expect(store.isSidebarCollapsed == false)
+        store.toggleSidebar()
+        #expect(store.isSidebarCollapsed == true)
+        #expect(try database.value(Bool.self, forKey: "isSidebarCollapsed").get() == true)
+        store.toggleSidebar()
+        #expect(store.isSidebarCollapsed == false)
+
+        // Switching back to top allows toggling window border
+        store.tabLayout = .top
+        #expect(store.tabLayout == .top)
+        #expect(try database.value(String.self, forKey: "tabLayout").get() == "top")
+        store.enableWindowBorder = false
+        #expect(store.enableWindowBorder == false)
+    }
+
+    @MainActor
+    @Test("Sidebar shortcuts and toggle behavior")
+    func sidebarShortcutsTests() throws {
+        let (store, directory) = try makeIsolatedTestStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let action = ShortcutAction.toggleSidebar
+        #expect(action.title == "Toggle Sidebar")
+        #expect(action.defaultShortcut.key == "s")
+        #expect(action.defaultShortcut.modifiers == ["command"])
+
+        #expect(store.isSidebarCollapsed == false)
+        action.performAction(in: store)
+        #expect(store.isSidebarCollapsed == true)
+        action.performAction(in: store)
+        #expect(store.isSidebarCollapsed == false)
+
+        // Toggle frame shortcut cannot turn off border when in sidebar mode
+        store.tabLayout = .sidebar
+        #expect(store.enableWindowBorder == true)
+        ShortcutAction.toggleFrame.performAction(in: store)
+        #expect(store.enableWindowBorder == true)
     }
 }

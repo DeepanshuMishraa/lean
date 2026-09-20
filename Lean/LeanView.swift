@@ -9,11 +9,33 @@ struct LeanView: View {
     @State private var isZenTopBarRevealed = false
     @State private var hideTopBarWorkItem: DispatchWorkItem?
 
+    @State private var isZenSidebarRevealed = false
+    @State private var hideSidebarWorkItem: DispatchWorkItem?
+    @State private var isMouseOverSidebar = false
+
     private var isTopBarVisible: Bool {
+        // Popovers must keep the top bar visible
+        if store.isQuickSettingsPresented || store.isDownloadsPresented {
+            return true
+        }
         if !store.enableZenMode {
             return true
         }
         return isZenTopBarRevealed
+    }
+
+    private var isSidebarEffectivelyVisible: Bool {
+        guard store.tabLayout == .sidebar else { return false }
+        // Popovers must keep the sidebar visible
+        if store.isQuickSettingsPresented || store.isDownloadsPresented {
+            return true
+        }
+        // If sidebar is pinned (!isSidebarCollapsed), it is ALWAYS visible and expanded (auto-hide disabled)
+        if !store.isSidebarCollapsed {
+            return true
+        }
+        // When auto-hide is enabled (isSidebarCollapsed == true), visibility follows hover reveal
+        return isZenSidebarRevealed
     }
 
     private func setZenHoverState(isHoveringTop: Bool) {
@@ -26,8 +48,15 @@ struct LeanView: View {
                 }
             }
         } else {
+            // Never hide while quick settings or downloads popover is open
+            if store.isQuickSettingsPresented || store.isDownloadsPresented {
+                hideTopBarWorkItem?.cancel()
+                hideTopBarWorkItem = nil
+                return
+            }
             hideTopBarWorkItem?.cancel()
             let item = DispatchWorkItem {
+                guard !store.isQuickSettingsPresented && !store.isDownloadsPresented else { return }
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                     isZenTopBarRevealed = false
                 }
@@ -37,219 +66,94 @@ struct LeanView: View {
         }
     }
 
+    private func setSidebarHoverState(isHovering: Bool) {
+        // If sidebar is pinned, auto-hide is completely disabled - do nothing
+        guard store.isSidebarCollapsed else {
+            hideSidebarWorkItem?.cancel()
+            hideSidebarWorkItem = nil
+            return
+        }
+
+        if isHovering {
+            hideSidebarWorkItem?.cancel()
+            hideSidebarWorkItem = nil
+            if !isZenSidebarRevealed {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                    isZenSidebarRevealed = true
+                }
+            }
+        } else {
+            // Never hide while quick settings or downloads popover is open
+            if store.isQuickSettingsPresented || store.isDownloadsPresented {
+                hideSidebarWorkItem?.cancel()
+                hideSidebarWorkItem = nil
+                return
+            }
+            hideSidebarWorkItem?.cancel()
+            let item = DispatchWorkItem {
+                guard !store.isQuickSettingsPresented && !store.isDownloadsPresented else { return }
+                if store.isSidebarCollapsed {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                        isZenSidebarRevealed = false
+                    }
+                }
+            }
+            hideSidebarWorkItem = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: item)
+        }
+    }
+
     var body: some View {
-        ZStack(alignment: .top) {
-            VStack(spacing: 0) {
-                // Top Bar - In Zen mode, disappears and reveals on hover
-                if isTopBarVisible {
-                    TopBarView(store: store)
-                        .onHover { hovering in
-                            if store.enableZenMode {
-                                setZenHoverState(isHoveringTop: hovering)
-                            }
-                        }
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .top).combined(with: .opacity),
-                            removal: .move(edge: .top).combined(with: .opacity)
-                        ))
-                        .zIndex(20)
-                }
+        ZStack(alignment: .topLeading) {
+            if store.tabLayout == .sidebar {
+                ZStack(alignment: .topLeading) {
+                    mainContentCard
 
-                // Main Content Area
-                ZStack {
-                    (store.enableWindowBorder ? Color.clear : store.themeColors.windowBackground)
-                        .ignoresSafeArea()
-
-                    let cardSidePadding: CGFloat = store.enableWindowBorder ? store.windowBorderWidth : 0
-                    let cardBottomPadding: CGFloat = store.enableWindowBorder ? store.windowBorderWidth : 0
-                    let cardTopPadding: CGFloat = store.enableWindowBorder ? (isTopBarVisible ? 2 : store.windowBorderWidth) : 0
-
-                    if let tab = store.selectedTab {
-                        if tab.isSettingsPage {
-                            SettingsView(store: store)
-                                .id(tab.id)
-                                .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
-                                        .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
-                                )
-                                .shadow(
-                                    color: store.adaptiveTheme.webCardShadow,
-                                    radius: store.adaptiveTheme.webCardShadowRadius,
-                                    x: 0,
-                                    y: store.adaptiveTheme.isFrameLight ? 2 : 3
-                                )
-                                .padding(.horizontal, cardSidePadding)
-                                .padding(.bottom, cardBottomPadding)
-                                .padding(.top, cardTopPadding)
-                        } else if tab.url != nil {
-                            // Web Page Loaded
-                            ZStack(alignment: .topTrailing) {
-                                WebView(tab: tab)
-                                    .id(tab.id)
-
-                            if store.showsFindBar {
-                                floatingFindBar
-                            }
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
-                                .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
-                        )
-                        .shadow(
-                            color: store.adaptiveTheme.webCardShadow,
-                            radius: store.adaptiveTheme.webCardShadowRadius,
-                            x: 0,
-                            y: store.adaptiveTheme.isFrameLight ? 2 : 3
-                        )
-                        .padding(.horizontal, cardSidePadding)
-                        .padding(.bottom, cardBottomPadding)
-                        .padding(.top, cardTopPadding)
-                    } else {
-                        // New Tab Empty Canvas
-                        ZStack {
-                            store.themeColors.windowBackground
-                                .ignoresSafeArea()
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    if store.isNewTabOmnibarFloating {
-                                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                                            store.isNewTabOmnibarFloating = false
-                                        }
-                                    }
-                                }
-
-                            VStack(spacing: 0) {
-                                if store.isNewTabOmnibarFloating {
-                                    Spacer().frame(height: 80)
-                                } else {
-                                    Spacer()
-                                }
-
-                                OmnibarView(store: store, isFloating: false)
-
-                                Spacer()
-                                if !store.isNewTabOmnibarFloating {
-                                    Spacer()
-                                }
-                            }
-                            .animation(.spring(response: 0.34, dampingFraction: 0.82), value: store.isNewTabOmnibarFloating)
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
-                                .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
-                        )
-                        .shadow(
-                            color: store.adaptiveTheme.webCardShadow,
-                            radius: store.adaptiveTheme.webCardShadowRadius,
-                            x: 0,
-                            y: store.adaptiveTheme.isFrameLight ? 2 : 3
-                        )
-                        .padding(.horizontal, cardSidePadding)
-                        .padding(.bottom, cardBottomPadding)
-                        .padding(.top, cardTopPadding)
+                    if isSidebarEffectivelyVisible {
+                        sidebarCard
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .leading).combined(with: .opacity),
+                                removal: .move(edge: .leading).combined(with: .opacity)
+                            ))
+                            .zIndex(40)
                     }
                 }
-            }
-        }
-
-        // Floating Omnibar Overlay (Cmd+T / Cmd+L / Active Tab Pill Click)
-        if store.isFloatingOmnibarVisible {
-            ZStack(alignment: .top) {
-                Color.black.opacity(0.0001)
-                    .contentShape(Rectangle())
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        store.dismissFloatingOmnibar()
-                    }
-
+            } else {
                 VStack(spacing: 0) {
-                    Spacer().frame(height: 72)
-                    OmnibarView(store: store, isFloating: true)
-                }
-            }
-            .transition(.asymmetric(
-                insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .top)),
-                removal: .opacity
-            ))
-            .animation(.easeOut(duration: 0.12), value: store.isFloatingOmnibarVisible)
-            .zIndex(150)
-        }
-
-        // Bespoke Quick Settings Overlay
-        if store.isQuickSettingsPresented {
-            ZStack(alignment: .topTrailing) {
-                Color.black.opacity(0.0001)
-                    .contentShape(Rectangle())
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                            store.isQuickSettingsPresented = false
-                        }
+                    // Top Bar - In Zen mode, disappears and reveals on hover
+                    if isTopBarVisible {
+                        TopBarView(store: store)
+                            .onHover { hovering in
+                                if store.enableZenMode {
+                                    setZenHoverState(isHoveringTop: hovering)
+                                }
+                            }
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .top).combined(with: .opacity),
+                                removal: .move(edge: .top).combined(with: .opacity)
+                            ))
+                            .zIndex(20)
                     }
 
-                QuickSettingsPopover(store: store)
-                    .padding(.top, (store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : 4))
-                    .padding(.trailing, (store.enableWindowBorder ? store.windowBorderWidth : 0) + 12)
+                    mainContentCard
+                }
             }
-            .transition(.asymmetric(
-                insertion: .scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity),
-                removal: .scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity)
-            ))
-            .animation(.spring(response: 0.22, dampingFraction: 0.82), value: store.isQuickSettingsPresented)
-            .zIndex(190)
-        }
 
-        // Bespoke Downloads Overlay
-        if store.isDownloadsPresented {
-            ZStack(alignment: .topTrailing) {
-                Color.black.opacity(0.0001)
+            // Left Sidebar Hover Detection Zone (invisible trigger active at left edge when sidebar is hidden)
+            if store.tabLayout == .sidebar && !isSidebarEffectivelyVisible {
+                Color.clear
+                    .frame(width: 18)
                     .contentShape(Rectangle())
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                            store.isDownloadsPresented = false
+                    .onHover { hovering in
+                        if hovering {
+                            setSidebarHoverState(isHovering: true)
                         }
                     }
-
-                DownloadsPopover(store: store)
-                    .padding(.top, (store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : 4))
-                    .padding(.trailing, (store.enableWindowBorder ? store.windowBorderWidth : 0) + 12)
+                    .zIndex(50)
             }
-            .transition(.asymmetric(
-                insertion: .scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity),
-                removal: .scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity)
-            ))
-            .animation(.spring(response: 0.22, dampingFraction: 0.82), value: store.isDownloadsPresented)
-            .zIndex(190)
-        }
-
-        // Ctrl+Tab Thumbnail Switcher Overlay
-        if store.isTabSwitcherVisible {
-            TabSwitcherView(store: store)
-                .transition(.asymmetric(
-                    insertion: .scale(scale: 0.96).combined(with: .opacity),
-                    removal: .scale(scale: 0.98).combined(with: .opacity)
-                ))
-                .animation(.spring(response: 0.22, dampingFraction: 0.84), value: store.isTabSwitcherVisible)
-                .zIndex(100)
-        }
-
-        // When inline URL bar is being edited, clicking anywhere in the content area collapses it
-        if store.isInlineURLEditing {
-            Color.black.opacity(0.0001)
-                .contentShape(Rectangle())
-                .ignoresSafeArea()
-                .onTapGesture {
-                    store.dismissInlineURLEditing()
-                }
-                .zIndex(15)
-        }
 
             // Top Hover Detection Zone (invisible trigger active at top edge in Zen mode when top bar is hidden)
-            if store.enableZenMode && !isTopBarVisible {
+            if store.enableZenMode && store.tabLayout == .top && !isTopBarVisible {
                 Color.clear
                     .frame(height: 28)
                     .contentShape(Rectangle())
@@ -260,6 +164,102 @@ struct LeanView: View {
                     }
                     .zIndex(50)
             }
+            // Floating Omnibar Overlay (Cmd+T / Cmd+L / Active Tab Pill Click)
+            if store.isFloatingOmnibarVisible {
+                ZStack(alignment: .top) {
+                    Color.black.opacity(0.0001)
+                        .contentShape(Rectangle())
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            store.dismissFloatingOmnibar()
+                        }
+
+                    VStack(spacing: 0) {
+                        Spacer().frame(height: 72)
+                        OmnibarView(store: store, isFloating: true)
+                    }
+                }
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .top)),
+                    removal: .opacity
+                ))
+                .animation(.easeOut(duration: 0.12), value: store.isFloatingOmnibarVisible)
+                .zIndex(150)
+            }
+
+            // Bespoke Quick Settings Overlay
+            if store.isQuickSettingsPresented {
+                ZStack(alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing) {
+                    Color.black.opacity(0.0001)
+                        .contentShape(Rectangle())
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                                store.isQuickSettingsPresented = false
+                            }
+                        }
+
+                    QuickSettingsPopover(store: store)
+                        .padding(.top, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : 4)))
+                        .padding(.trailing, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? store.windowBorderWidth : 0) + 12))
+                        .padding(.leading, store.tabLayout == .sidebar ? (store.windowBorderWidth + 12) : 0)
+                        .padding(.bottom, store.tabLayout == .sidebar ? (store.windowBorderWidth + 46) : 0)
+                }
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.94, anchor: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing).combined(with: .opacity),
+                    removal: .scale(scale: 0.96, anchor: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing).combined(with: .opacity)
+                ))
+                .animation(.spring(response: 0.22, dampingFraction: 0.82), value: store.isQuickSettingsPresented)
+                .zIndex(190)
+            }
+
+            // Bespoke Downloads Overlay
+            if store.isDownloadsPresented {
+                ZStack(alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing) {
+                    Color.black.opacity(0.0001)
+                        .contentShape(Rectangle())
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                                store.isDownloadsPresented = false
+                            }
+                        }
+
+                    DownloadsPopover(store: store)
+                        .padding(.top, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : 4)))
+                        .padding(.trailing, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? store.windowBorderWidth : 0) + 12))
+                        .padding(.leading, store.tabLayout == .sidebar ? (store.windowBorderWidth + 12) : 0)
+                        .padding(.bottom, store.tabLayout == .sidebar ? (store.windowBorderWidth + 46) : 0)
+                }
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.94, anchor: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing).combined(with: .opacity),
+                    removal: .scale(scale: 0.96, anchor: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing).combined(with: .opacity)
+                ))
+                .animation(.spring(response: 0.22, dampingFraction: 0.82), value: store.isDownloadsPresented)
+                .zIndex(190)
+            }
+
+            // Ctrl+Tab Thumbnail Switcher Overlay
+            if store.isTabSwitcherVisible {
+                TabSwitcherView(store: store)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.96).combined(with: .opacity),
+                        removal: .scale(scale: 0.98).combined(with: .opacity)
+                    ))
+                    .animation(.spring(response: 0.22, dampingFraction: 0.84), value: store.isTabSwitcherVisible)
+                    .zIndex(100)
+            }
+
+            // When inline URL bar is being edited, clicking anywhere in the content area collapses it
+            if store.isInlineURLEditing {
+                Color.black.opacity(0.0001)
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        store.dismissInlineURLEditing()
+                    }
+                    .zIndex(15)
+            }
         }
         .ignoresSafeArea(.all)
         .background(
@@ -267,9 +267,13 @@ struct LeanView: View {
                 ? AnyView(store.effectiveZenColor.ignoresSafeArea())
                 : AnyView(store.themeColors.windowBackground.ignoresSafeArea())
         )
-        .background(WindowConfigurator(store: store, isTopBarVisible: isTopBarVisible))
+        .background(WindowConfigurator(store: store, isTopBarVisible: isTopBarVisible, isSidebarVisible: isSidebarEffectivelyVisible))
         .preferredColorScheme(store.colorScheme)
         .animation(.spring(response: 0.28, dampingFraction: 0.86), value: isTopBarVisible)
+        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: isSidebarEffectivelyVisible)
+        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: store.isSidebarCollapsed)
+        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: cardLeadingPadding)
+        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.tabLayout)
         .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.enableZenMode)
         .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.enableWindowBorder)
         .animation(.easeInOut(duration: 0.2), value: store.effectiveZenColor)
@@ -299,6 +303,193 @@ struct LeanView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .showSettings)) { _ in
             store.openSettings()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                if store.isSidebarCollapsed {
+                    // Auto-hide enabled: if mouse is not over sidebar, hide it immediately
+                    if !isMouseOverSidebar {
+                        isZenSidebarRevealed = false
+                    }
+                } else {
+                    // Pinned / Always Expanded
+                    isZenSidebarRevealed = true
+                }
+            }
+        }
+        .onChange(of: store.isQuickSettingsPresented) { _, presented in
+            if !presented {
+                if store.enableZenMode && store.tabLayout == .top {
+                    setZenHoverState(isHoveringTop: false)
+                }
+                if store.isSidebarCollapsed && store.tabLayout == .sidebar && !isMouseOverSidebar {
+                    setSidebarHoverState(isHovering: false)
+                }
+            }
+        }
+        .onChange(of: store.isDownloadsPresented) { _, presented in
+            if !presented {
+                if store.enableZenMode && store.tabLayout == .top {
+                    setZenHoverState(isHoveringTop: false)
+                }
+                if store.isSidebarCollapsed && store.tabLayout == .sidebar && !isMouseOverSidebar {
+                    setSidebarHoverState(isHovering: false)
+                }
+            }
+        }
+    }
+
+    // MARK: - Framed Sidebar Card
+    private var sidebarCard: some View {
+        SidebarView(store: store)
+            .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
+                    .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
+            )
+            .shadow(
+                color: store.adaptiveTheme.webCardShadow,
+                radius: 18,
+                x: 6,
+                y: 2
+            )
+            .padding(.top, store.windowBorderWidth)
+            .padding(.bottom, store.windowBorderWidth)
+            .padding(.leading, store.windowBorderWidth)
+            .onHover { hovering in
+                isMouseOverSidebar = hovering
+                if store.isSidebarCollapsed {
+                    setSidebarHoverState(isHovering: hovering)
+                }
+            }
+    }
+
+    // MARK: - Main Content Card & Spacing
+    private var cardTopPadding: CGFloat {
+        if !store.enableWindowBorder { return 0 }
+        if store.tabLayout == .sidebar {
+            return store.windowBorderWidth
+        }
+        return isTopBarVisible ? 2 : store.windowBorderWidth
+    }
+
+    private var cardBottomPadding: CGFloat {
+        store.enableWindowBorder ? store.windowBorderWidth : 0
+    }
+
+    private var isCurrentTabWebPage: Bool {
+        store.selectedTab?.url != nil || store.selectedTab?.isSettingsPage == true
+    }
+
+    private var cardLeadingPadding: CGFloat {
+        let basePadding = store.enableWindowBorder ? store.windowBorderWidth : 0
+        if store.tabLayout == .sidebar && isSidebarEffectivelyVisible && !store.isSidebarCollapsed && isCurrentTabWebPage {
+            let gap = store.enableWindowBorder ? store.windowBorderWidth : 8
+            return basePadding + 256 + gap
+        }
+        return basePadding
+    }
+
+    private var cardTrailingPadding: CGFloat {
+        store.enableWindowBorder ? store.windowBorderWidth : 0
+    }
+
+    private var mainContentCard: some View {
+        ZStack {
+            (store.enableWindowBorder ? Color.clear : store.themeColors.windowBackground)
+                .ignoresSafeArea()
+
+            if let tab = store.selectedTab {
+                if tab.isSettingsPage {
+                    SettingsView(store: store)
+                        .id(tab.id)
+                        .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
+                                .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
+                        )
+                        .shadow(
+                            color: store.adaptiveTheme.webCardShadow,
+                            radius: store.adaptiveTheme.webCardShadowRadius,
+                            x: 0,
+                            y: store.adaptiveTheme.isFrameLight ? 2 : 3
+                        )
+                        .padding(.leading, cardLeadingPadding)
+                        .padding(.trailing, cardTrailingPadding)
+                        .padding(.bottom, cardBottomPadding)
+                        .padding(.top, cardTopPadding)
+                } else if tab.url != nil {
+                    // Web Page Loaded
+                    ZStack(alignment: .topTrailing) {
+                        WebView(tab: tab)
+                            .id(tab.id)
+
+                        if store.showsFindBar {
+                            floatingFindBar
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
+                            .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
+                    )
+                    .shadow(
+                        color: store.adaptiveTheme.webCardShadow,
+                        radius: store.adaptiveTheme.webCardShadowRadius,
+                        x: 0,
+                        y: store.adaptiveTheme.isFrameLight ? 2 : 3
+                    )
+                    .padding(.leading, cardLeadingPadding)
+                    .padding(.trailing, cardTrailingPadding)
+                    .padding(.bottom, cardBottomPadding)
+                    .padding(.top, cardTopPadding)
+                } else {
+                    // New Tab Empty Canvas
+                    ZStack {
+                        store.themeColors.windowBackground
+                            .ignoresSafeArea()
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if store.isNewTabOmnibarFloating {
+                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                        store.isNewTabOmnibarFloating = false
+                                    }
+                                }
+                            }
+
+                        VStack(spacing: 0) {
+                            if store.isNewTabOmnibarFloating {
+                                Spacer().frame(height: 80)
+                            } else {
+                                Spacer()
+                            }
+
+                            OmnibarView(store: store, isFloating: false)
+
+                            Spacer()
+                            if !store.isNewTabOmnibarFloating {
+                                Spacer()
+                            }
+                        }
+                        .animation(.spring(response: 0.34, dampingFraction: 0.82), value: store.isNewTabOmnibarFloating)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
+                            .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
+                    )
+                    .shadow(
+                        color: store.adaptiveTheme.webCardShadow,
+                        radius: store.adaptiveTheme.webCardShadowRadius,
+                        x: 0,
+                        y: store.adaptiveTheme.isFrameLight ? 2 : 3
+                    )
+                    .padding(.leading, cardLeadingPadding)
+                    .padding(.trailing, cardTrailingPadding)
+                    .padding(.bottom, cardBottomPadding)
+                    .padding(.top, cardTopPadding)
+                }
+            }
         }
     }
 
@@ -505,6 +696,7 @@ private struct WebView: NSViewRepresentable {
 private struct WindowConfigurator: NSViewRepresentable {
     @ObservedObject var store: LeanStore
     let isTopBarVisible: Bool
+    let isSidebarVisible: Bool
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -534,13 +726,23 @@ private struct WindowConfigurator: NSViewRepresentable {
             ? (store.adaptiveTheme.isFrameLight ? NSAppearance(named: .aqua) : NSAppearance(named: .darkAqua))
             : (store.isDarkMode ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua))
 
-        let targetAlpha: CGFloat = (!store.enableZenMode || isTopBarVisible) ? 1.0 : 0.0
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.22
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            window.standardWindowButton(.closeButton)?.animator().alphaValue = targetAlpha
-            window.standardWindowButton(.miniaturizeButton)?.animator().alphaValue = targetAlpha
-            window.standardWindowButton(.zoomButton)?.animator().alphaValue = targetAlpha
+        if store.tabLayout == .sidebar {
+            window.standardWindowButton(.closeButton)?.isHidden = true
+            window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+            window.standardWindowButton(.zoomButton)?.isHidden = true
+        } else {
+            window.standardWindowButton(.closeButton)?.isHidden = false
+            window.standardWindowButton(.miniaturizeButton)?.isHidden = false
+            window.standardWindowButton(.zoomButton)?.isHidden = false
+
+            let targetAlpha: CGFloat = (!store.enableZenMode || isTopBarVisible || isSidebarVisible) ? 1.0 : 0.0
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.22
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                window.standardWindowButton(.closeButton)?.animator().alphaValue = targetAlpha
+                window.standardWindowButton(.miniaturizeButton)?.animator().alphaValue = targetAlpha
+                window.standardWindowButton(.zoomButton)?.animator().alphaValue = targetAlpha
+            }
         }
     }
 }
@@ -549,4 +751,5 @@ extension Notification.Name {
     static let focusAddress = Notification.Name("Lean.focusAddress")
     static let showFind = Notification.Name("Lean.showFind")
     static let showSettings = Notification.Name("Lean.showSettings")
+    static let toggleSidebar = Notification.Name("Lean.toggleSidebar")
 }

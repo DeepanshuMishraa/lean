@@ -32,10 +32,12 @@
 		8513BF00B4CABA9ED98F67DE /* CustomShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = E566A9FFD9A3DA622E49EC68 /* CustomShortcuts.swift */; };
 		85AF75933CD5073D9F2E185F /* AddressResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86BD95EC684E0650335C24A2 /* AddressResolver.swift */; };
 		8A6436AE37F332DE7548F77B /* AdBlockFilterConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD6B10DFBD20A8F10DF0B9C7 /* AdBlockFilterConverter.swift */; };
+		9189BD1604353EC11AD2E7BB /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A240F0FAABC15EC3C0D230E /* TestHelpers.swift */; };
 		9F7CDF17FBB0540000928EA0 /* OmnibarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AC627B2D3E8E4EB789B7523 /* OmnibarView.swift */; };
 		ACF15006217CE98EFFA1FE21 /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B68D79B10CF72FD177F0AC81 /* DownloadsView.swift */; };
 		B0F0B41EACFCFE4F5B932665 /* LeanApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E216B57DF202061DC88FE6D /* LeanApp.swift */; };
 		B2BE76A97BB55360B3E12B92 /* FontSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B6255463FA3D1604089AAF5 /* FontSettingsTests.swift */; };
+		B92CC1297B7BDFDDDB82379A /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FFFAF344F05056E843A70F1 /* SidebarView.swift */; };
 		BDA7E266340C8AF371134E07 /* LeanTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFACE78AD721D215A84F3FCD /* LeanTab.swift */; };
 		CFA967BA5CF33A8F4C36B321 /* OmnibarSuggestionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7FCB01A3F3CCDE9AA9530E /* OmnibarSuggestionRow.swift */; };
 		D8DA1C37849FCBD67C9EE9DF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A848AF7624C91DF439D4069E /* SettingsView.swift */; };
@@ -62,8 +64,10 @@
 /* Begin PBXFileReference section */
 		0658473FF4694836C4819D30 /* AppDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabaseTests.swift; sourceTree = "<group>"; };
 		0848E1405C94F6D577AC6C4F /* LeanCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanCommands.swift; sourceTree = "<group>"; };
+		0A240F0FAABC15EC3C0D230E /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
 		0E216B57DF202061DC88FE6D /* LeanApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanApp.swift; sourceTree = "<group>"; };
 		0E245A44DB008A4A9C0E6A77 /* DownloadsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsTests.swift; sourceTree = "<group>"; };
+		0FFFAF344F05056E843A70F1 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		14191AAB2D796CC5DE1EA6CB /* ContentBlocker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentBlocker.swift; sourceTree = "<group>"; };
 		169383803BA6823BA5839E0D /* FaviconService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconService.swift; sourceTree = "<group>"; };
 		1EDDD317B7AF50A826865F77 /* AppDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabase.swift; sourceTree = "<group>"; };
@@ -159,6 +163,7 @@
 				BA97354673D3289795AA33C7 /* SettingsControls.swift */,
 				A848AF7624C91DF439D4069E /* SettingsView.swift */,
 				84A5B4BCED207122DB77E61C /* SettingsWindowManager.swift */,
+				0FFFAF344F05056E843A70F1 /* SidebarView.swift */,
 				9E570BC18AD372821AB350BC /* TabFaviconView.swift */,
 				ECBB6F58B56C5F78D6616416 /* TabStripScrollSupport.swift */,
 				C67C2A4D475488A80C44F21C /* TabSwitcherView.swift */,
@@ -183,6 +188,7 @@
 				B53E2D1FDEBA2B433144566B /* SettingsPopoverHistoryTests.swift */,
 				8236FF60B8280FBD4BFA5233 /* SmoothScrollingTests.swift */,
 				45114A1E37748C7110643D1C /* TabDisplayModeTests.swift */,
+				0A240F0FAABC15EC3C0D230E /* TestHelpers.swift */,
 			);
 			path = LeanTests;
 			sourceTree = "<group>";
@@ -292,6 +298,7 @@
 				67450D98E0FF73EAC1CF3B35 /* SettingsPopoverHistoryTests.swift in Sources */,
 				14A2E99A6C34753A725F173B /* SmoothScrollingTests.swift in Sources */,
 				850717383D672DE296316A1A /* TabDisplayModeTests.swift in Sources */,
+				9189BD1604353EC11AD2E7BB /* TestHelpers.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -321,6 +328,7 @@
 				3C148F2CAF286BDD2E6095F3 /* SettingsControls.swift in Sources */,
 				D8DA1C37849FCBD67C9EE9DF /* SettingsView.swift in Sources */,
 				78C6CF86E4E44D9D9BCE3E8E /* SettingsWindowManager.swift in Sources */,
+				B92CC1297B7BDFDDDB82379A /* SidebarView.swift in Sources */,
 				69AC4FF3AD87A8C412AB8AA2 /* TabFaviconView.swift in Sources */,
 				E5BFC6064A14CB1E7A7C4D03 /* TabStripScrollSupport.swift in Sources */,
 				E50C5126DF34E590F29F4815 /* TabSwitcherView.swift in Sources */,

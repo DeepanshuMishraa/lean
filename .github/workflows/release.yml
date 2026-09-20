@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and publish (e.g. v1.2.3)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Resolve version from tag
+        id: resolve
+        run: |
+          tag="${{ github.event.release.tag_name || inputs.tag }}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag must use the vX.Y.Z format, got $tag"
+            exit 1
+          fi
+          version="${tag#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Building assets for published release $tag"
+
+  build-macos:
+    name: macOS ${{ matrix.arch }}
+    needs: version
+    runs-on: macos-14
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+          - arch: x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app || true
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen generate
+
+      # Ad-hoc sign + hardened runtime, no Developer ID / notarization.
+      # Same posture as the Insulator reference workflow.
+      - name: Build Lean (${{ matrix.arch }})
+        run: |
+          xcodebuild \
+            -project Lean.xcodeproj \
+            -scheme Lean \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            ARCHS='${{ matrix.arch }}' \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY='-' \
+            CODE_SIGN_STYLE=Manual \
+            ENABLE_HARDENED_RUNTIME=YES \
+            clean build
+
+      - name: Package DMG and ZIP
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          APP="build/Build/Products/Release/Lean.app"
+          test -d "$APP" || { echo "::error::Expected $APP not found"; exit 1; }
+          mkdir -p dist stage
+          rm -rf "stage/Lean.app" "stage/Applications"
+          cp -R "$APP" "stage/Lean.app"
+          ln -s /Applications "stage/Applications"
+          DMG="dist/Lean-${VERSION}-${ARCH}.dmg"
+          ZIP="dist/Lean-${VERSION}-${ARCH}.zip"
+          hdiutil create -volname "Lean" -srcfolder stage -ov -format UDZO "$DMG"
+          ditto -c -k --keepParent "$APP" "$ZIP"
+          (cd dist && shasum -a 256 "$(basename "$DMG")" "$(basename "$ZIP")" > "Lean-${VERSION}-${ARCH}.sha256")
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Publish assets to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ needs.version.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --clobber \
+            dist/*

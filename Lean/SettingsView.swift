@@ -673,15 +673,17 @@ private struct GeneralSection: View {
                     uiFont: store.leanUIFont
                 )
 
-                SettingsRowDivider(isDark: store.isDarkMode)
+                if store.tabLayout != .sidebar {
+                    SettingsRowDivider(isDark: store.isDarkMode)
 
-                CustomToggleRow(
-                    title: "Window frame",
-                    subtitle: "Encase the web view in an elegant, minimal outer border with adaptive light/dark appearance.",
-                    isOn: $store.enableWindowBorder,
-                    isDark: store.isDarkMode,
-                    uiFont: store.leanUIFont
-                )
+                    CustomToggleRow(
+                        title: "Window frame",
+                        subtitle: "Encase the web view in an elegant, minimal outer border with adaptive light/dark appearance.",
+                        isOn: $store.enableWindowBorder,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
+                }
 
                 if store.enableWindowBorder {
                     SettingsRowDivider(isDark: store.isDarkMode)
@@ -1093,6 +1095,13 @@ private struct TabsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
+            // Tab Layout Setting (Top of Window vs Sidebar)
+            VStack(alignment: .leading, spacing: 10) {
+                SettingsHeaderLabel("Tab Layout", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+
+                TabLayoutPickerView(store: store)
+            }
+
             // Tab Display Mode
             VStack(alignment: .leading, spacing: 8) {
                 SettingsHeaderLabel("Tab Display Style", uiFont: store.leanUIFont, isDark: store.isDarkMode)
@@ -1137,6 +1146,192 @@ private struct TabsSection: View {
                     )
                 }
             }
+        }
+    }
+}
+
+// MARK: - Tab Layout Picker Component
+private struct TabLayoutPickerView: View {
+    @ObservedObject var store: LeanStore
+
+    var body: some View {
+        HStack(spacing: 20) {
+            TabLayoutCard(
+                layout: .top,
+                isSelected: store.tabLayout == .top,
+                isDark: store.isDarkMode,
+                uiFont: store.leanUIFont
+            ) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    store.tabLayout = .top
+                }
+            }
+
+            TabLayoutCard(
+                layout: .sidebar,
+                isSelected: store.tabLayout == .sidebar,
+                isDark: store.isDarkMode,
+                uiFont: store.leanUIFont
+            ) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    store.tabLayout = .sidebar
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct TabLayoutCard: View {
+    let layout: TabLayout
+    let isSelected: Bool
+    let isDark: Bool
+    let uiFont: LeanFont
+    let onSelect: () -> Void
+
+    @State private var isHovered = false
+
+    private var windowFrameBackground: Color {
+        isDark ? Color(red: 40/255, green: 40/255, blue: 44/255) : Color(white: 0.93)
+    }
+
+    private var contentAreaBackground: Color {
+        isDark ? Color(red: 26/255, green: 26/255, blue: 28/255) : Color(white: 0.84)
+    }
+
+    private var tabShapeColor: Color {
+        isDark ? Color.white.opacity(0.35) : Color.black.opacity(0.22)
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            VStack(spacing: 9) {
+                // Miniature window illustration
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(windowFrameBackground)
+
+                    if layout == .top {
+                        topWindowIllustration
+                    } else {
+                        sidebarWindowIllustration
+                    }
+                }
+                .frame(width: 148, height: 96)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(
+                            isSelected
+                                ? (isDark ? Color.white : Color.black)
+                                : (isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.10)),
+                            lineWidth: isSelected ? 2 : 1
+                        )
+                )
+                .shadow(
+                    color: isSelected
+                        ? (isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.14))
+                        : (isHovered ? Color.black.opacity(0.08) : Color.clear),
+                    radius: isSelected ? 6 : 4,
+                    x: 0,
+                    y: 2
+                )
+                .scaleEffect(isHovered ? 1.02 : 1.0)
+                .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isHovered)
+                .animation(.spring(response: 0.24, dampingFraction: 0.82), value: isSelected)
+
+                // Label below card
+                Text(layout.title)
+                    .font(uiFont.font(size: 12.5, weight: isSelected ? .semibold : .medium))
+                    .foregroundColor(
+                        isSelected
+                            ? (isDark ? Color.white : Color.black)
+                            : (isDark ? Color.white.opacity(0.60) : Color.black.opacity(0.55))
+                    )
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+
+    // Window with horizontal tabs on top
+    private var topWindowIllustration: some View {
+        VStack(spacing: 5) {
+            // Top bar
+            HStack(spacing: 4) {
+                // Traffic light dots
+                HStack(spacing: 3) {
+                    Circle().fill(Color(red: 255/255, green: 95/255, blue: 86/255)).frame(width: 4.5, height: 4.5)
+                    Circle().fill(Color(red: 255/255, green: 189/255, blue: 46/255)).frame(width: 4.5, height: 4.5)
+                    Circle().fill(Color(red: 39/255, green: 201/255, blue: 63/255)).frame(width: 4.5, height: 4.5)
+                }
+
+                Spacer(minLength: 2)
+
+                // 3 horizontal tabs
+                HStack(spacing: 3) {
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .fill(tabShapeColor)
+                        .frame(width: 26, height: 8.5)
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .fill(tabShapeColor)
+                        .frame(width: 26, height: 8.5)
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .fill(tabShapeColor)
+                        .frame(width: 26, height: 8.5)
+                }
+            }
+            .padding(.horizontal, 6)
+            .frame(height: 14)
+
+            // Inner viewport content area
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(contentAreaBackground)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 4)
+                .padding(.bottom, 4)
+        }
+        .padding(.top, 4)
+    }
+
+    // Window with vertical tabs in sidebar
+    private var sidebarWindowIllustration: some View {
+        HStack(spacing: 5) {
+            // Sidebar area
+            VStack(alignment: .leading, spacing: 5) {
+                // Traffic light dots
+                HStack(spacing: 3) {
+                    Circle().fill(Color(red: 255/255, green: 95/255, blue: 86/255)).frame(width: 4.5, height: 4.5)
+                    Circle().fill(Color(red: 255/255, green: 189/255, blue: 46/255)).frame(width: 4.5, height: 4.5)
+                    Circle().fill(Color(red: 39/255, green: 201/255, blue: 63/255)).frame(width: 4.5, height: 4.5)
+                }
+                .padding(.top, 5)
+
+                // 3 vertical tab pills
+                VStack(spacing: 4) {
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .fill(tabShapeColor)
+                        .frame(width: 32, height: 8)
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .fill(tabShapeColor)
+                        .frame(width: 32, height: 8)
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .fill(tabShapeColor)
+                        .frame(width: 32, height: 8)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 6)
+            .frame(width: 42)
+
+            // Inner viewport content area
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(contentAreaBackground)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.vertical, 4)
+                .padding(.trailing, 4)
         }
     }
 }

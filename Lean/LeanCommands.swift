@@ -54,12 +54,21 @@ struct LeanCommands: Commands {
             }
             .keyboardShortcut("z", modifiers: [.command, .shift])
 
-            Button(store.enableWindowBorder ? "Hide Window Frame" : "Show Window Frame") {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                    store.enableWindowBorder.toggle()
+            if store.tabLayout == .sidebar {
+                Button(store.isSidebarCollapsed ? "Pin Sidebar (Always Expanded)" : "Auto-Hide Sidebar") {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        store.toggleSidebar()
+                    }
                 }
+                .keyboardShortcut("s", modifiers: .command)
+            } else {
+                Button(store.enableWindowBorder ? "Hide Window Frame" : "Show Window Frame") {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        store.enableWindowBorder.toggle()
+                    }
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
             }
-            .keyboardShortcut("b", modifiers: [.command, .shift])
 
             Divider()
             Button("Zoom In") { store.selectedTab?.zoomIn() }

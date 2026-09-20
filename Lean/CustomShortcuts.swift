@@ -27,6 +27,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
     case toggleTheme = "toggleTheme"
     case toggleZen = "toggleZen"
     case toggleFrame = "toggleFrame"
+    case toggleSidebar = "toggleSidebar"
     case zoomIn = "zoomIn"
     case zoomOut = "zoomOut"
     case actualSize = "actualSize"
@@ -53,6 +54,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .toggleTheme: return "Toggle Light/Dark"
         case .toggleZen: return "Toggle Zen Mode"
         case .toggleFrame: return "Toggle Window Frame"
+        case .toggleSidebar: return "Toggle Sidebar"
         case .zoomIn: return "Zoom In"
         case .zoomOut: return "Zoom Out"
         case .actualSize: return "Actual Size"
@@ -79,6 +81,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .toggleTheme: return "Switch between light and dark theme mode"
         case .toggleZen: return "Hide interface elements for pure immersion"
         case .toggleFrame: return "Show or hide subtle framed border"
+        case .toggleSidebar: return "Show or hide the vertical tabs sidebar"
         case .zoomIn: return "Enlarge web page contents"
         case .zoomOut: return "Reduce web page contents"
         case .actualSize: return "Reset page zoom to 100%"
@@ -104,7 +107,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
             return .navigation
         case .focusAddress, .findOnPage, .dismiss:
             return .omnibar
-        case .toggleTheme, .toggleZen, .toggleFrame, .zoomIn, .zoomOut, .actualSize, .openSettings:
+        case .toggleTheme, .toggleZen, .toggleFrame, .toggleSidebar, .zoomIn, .zoomOut, .actualSize, .openSettings:
             return .view
         }
     }
@@ -128,6 +131,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .toggleTheme: return CustomKeyCombo(key: "d", modifiers: ["shift", "command"])
         case .toggleZen: return CustomKeyCombo(key: "z", modifiers: ["shift", "command"])
         case .toggleFrame: return CustomKeyCombo(key: "b", modifiers: ["shift", "command"])
+        case .toggleSidebar: return CustomKeyCombo(key: "s", modifiers: ["command"])
         case .zoomIn: return CustomKeyCombo(key: "+", modifiers: ["command"])
         case .zoomOut: return CustomKeyCombo(key: "-", modifiers: ["command"])
         case .actualSize: return CustomKeyCombo(key: "0", modifiers: ["command"])
@@ -188,8 +192,14 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
                 store.enableZenMode.toggle()
             }
         case .toggleFrame:
+            if store.tabLayout != .sidebar {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    store.enableWindowBorder.toggle()
+                }
+            }
+        case .toggleSidebar:
             withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                store.enableWindowBorder.toggle()
+                store.toggleSidebar()
             }
         case .zoomIn:
             store.selectedTab?.zoomIn()

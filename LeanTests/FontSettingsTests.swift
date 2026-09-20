@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Lean
 
@@ -38,8 +39,9 @@ struct FontSettingsTests {
 
     @Test("LeanStore initializes with heading and body font weights")
     @MainActor
-    func storeFontWeights() {
-        let store = LeanStore()
+    func storeFontWeights() throws {
+        let (store, directory) = try makeIsolatedTestStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
         #expect(store.uiHeadingWeight == .semibold || LeanFontWeight.allCases.contains(store.uiHeadingWeight))
         #expect(store.uiBodyWeight == .regular || LeanFontWeight.allCases.contains(store.uiBodyWeight))
 
@@ -47,5 +49,23 @@ struct FontSettingsTests {
         store.uiBodyWeight = .light
         #expect(store.uiHeadingWeight == .bold)
         #expect(store.uiBodyWeight == .light)
+    }
+
+    @Test("Heading and body font weights survive a database reopen")
+    @MainActor
+    func fontWeightsPersistAcrossRestarts() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("Lean.sqlite3")
+
+        let first = LeanStore(database: try AppDatabase(url: url))
+        first.uiHeadingWeight = .black
+        first.uiBodyWeight = .thin
+
+        let second = LeanStore(database: try AppDatabase(url: url))
+        #expect(second.uiHeadingWeight == .black)
+        #expect(second.uiBodyWeight == .thin)
     }
 }

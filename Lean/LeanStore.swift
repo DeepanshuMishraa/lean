@@ -28,7 +28,28 @@ enum TabDisplayMode: String, CaseIterable, Identifiable {
         switch self {
         case .textOnly: return "Titles only"
         case .iconOnly: return "Icons only"
-        case .hybrid: return "Icon & title"
+        case .hybrid: return "Icons & titles"
+        }
+    }
+}
+
+enum TabLayout: String, CaseIterable, Identifiable, Codable {
+    case top = "top"
+    case sidebar = "sidebar"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .top: return "Top of Window"
+        case .sidebar: return "Sidebar"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .top: return "Horizontal tabs above web content"
+        case .sidebar: return "Vertical tabs in collapsible left sidebar"
         }
     }
 }
@@ -222,8 +243,32 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    @Published var tabLayout: TabLayout {
+        didSet {
+            persist(tabLayout.rawValue, forKey: Self.tabLayoutKey)
+            if tabLayout == .sidebar {
+                enableWindowBorder = true
+            }
+        }
+    }
+
+    @Published var isSidebarCollapsed: Bool {
+        didSet {
+            persist(isSidebarCollapsed, forKey: Self.isSidebarCollapsedKey)
+        }
+    }
+
+    func toggleSidebar() {
+        isSidebarCollapsed.toggle()
+        NotificationCenter.default.post(name: .toggleSidebar, object: nil)
+    }
+
     @Published var enableWindowBorder: Bool {
         didSet {
+            if tabLayout == .sidebar && !enableWindowBorder {
+                enableWindowBorder = true
+                return
+            }
             persist(enableWindowBorder, forKey: Self.windowBorderKey)
         }
     }
@@ -356,10 +401,21 @@ final class LeanStore: ObservableObject {
             ?? false
         self.enableZenMode = savedZen
 
+        let savedTabLayout = databaseValue(self.database, String.self, forKey: Self.tabLayoutKey)
+            ?? UserDefaults.standard.string(forKey: Self.tabLayoutKey)
+            ?? TabLayout.top.rawValue
+        let resolvedTabLayout = TabLayout(rawValue: savedTabLayout) ?? .top
+        self.tabLayout = resolvedTabLayout
+
+        let savedSidebarCollapsed = databaseValue(self.database, Bool.self, forKey: Self.isSidebarCollapsedKey)
+            ?? UserDefaults.standard.object(forKey: Self.isSidebarCollapsedKey) as? Bool
+            ?? false
+        self.isSidebarCollapsed = savedSidebarCollapsed
+
         let savedBorder = databaseValue(self.database, Bool.self, forKey: Self.windowBorderKey)
             ?? UserDefaults.standard.object(forKey: Self.windowBorderKey) as? Bool
             ?? false
-        self.enableWindowBorder = savedBorder
+        self.enableWindowBorder = resolvedTabLayout == .sidebar ? true : savedBorder
 
         let savedBorderHex = databaseValue(self.database, String.self, forKey: Self.windowBorderColorKey)
             ?? UserDefaults.standard.string(forKey: Self.windowBorderColorKey)
@@ -912,6 +968,8 @@ final class LeanStore: ObservableObject {
         persist(theme.rawValue, forKey: Self.themeKey)
         persist(scrollbarStyle.rawValue, forKey: Self.scrollbarKey)
         persist(tabDisplayMode.rawValue, forKey: Self.tabDisplayModeKey)
+        persist(tabLayout.rawValue, forKey: Self.tabLayoutKey)
+        persist(isSidebarCollapsed, forKey: Self.isSidebarCollapsedKey)
         persist(enableThumbnailsInTabSwitcher, forKey: Self.thumbnailsSwitcherKey)
         persist(smoothScrollingEnabled, forKey: Self.smoothScrollingKey)
         persist(showFullTitleOnActiveTab, forKey: Self.showFullTitleKey)
@@ -948,6 +1006,8 @@ final class LeanStore: ObservableObject {
     private static let themeKey = "appTheme"
     private static let scrollbarKey = "scrollbarStyle"
     private static let tabDisplayModeKey = "tabDisplayMode"
+    private static let tabLayoutKey = "tabLayout"
+    private static let isSidebarCollapsedKey = "isSidebarCollapsed"
     private static let thumbnailsSwitcherKey = "enableThumbnailsInTabSwitcher"
     private static let smoothScrollingKey = "smoothScrollingEnabled"
     private static let showFullTitleKey = "showFullTitleOnActiveTab"

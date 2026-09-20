@@ -429,7 +429,7 @@ private struct TopBarTabItem: View {
     }
 }
 
-private struct InlineURLBar: View {
+struct InlineURLBar: View {
     @ObservedObject var tab: LeanTab
     @ObservedObject var store: LeanStore
     var autoFocus: Bool = false
@@ -638,7 +638,7 @@ private struct InlineURLBar: View {
     }
 }
 
-private struct InlineSuggestionRow: View {
+struct InlineSuggestionRow: View {
     let match: OmnibarSuggestion
     let icon: String
     let isSelected: Bool
@@ -677,7 +677,7 @@ private struct InlineSuggestionRow: View {
     }
 }
 
-private struct InteractiveIconButton: View {
+struct InteractiveIconButton: View {
     let systemImage: String
     let helpText: String
     let size: CGFloat
@@ -736,7 +736,7 @@ private struct InteractiveIconButton: View {
 }
 
 // MARK: - PreferenceKey for Settings Button Frame
-private struct SettingsButtonFrameKey: PreferenceKey {
+struct SettingsButtonFrameKey: PreferenceKey {
     static var defaultValue: CGRect = .zero
     static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
         value = nextValue()
@@ -744,7 +744,7 @@ private struct SettingsButtonFrameKey: PreferenceKey {
 }
 
 // MARK: - PreferenceKey for Downloads Button Frame
-private struct DownloadsButtonFrameKey: PreferenceKey {
+struct DownloadsButtonFrameKey: PreferenceKey {
     static var defaultValue: CGRect = .zero
     static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
         value = nextValue()
@@ -752,7 +752,7 @@ private struct DownloadsButtonFrameKey: PreferenceKey {
 }
 
 // MARK: - Downloads Toolbar Button (sits beside the theme icon)
-private struct DownloadToolbarButton: View {
+struct DownloadToolbarButton: View {
     @ObservedObject var store: LeanStore
 
     @State private var isHovered = false
@@ -989,14 +989,16 @@ struct QuickSettingsPopover: View {
                     onHoverChanged: handleNonHistoryHovered
                 )
 
-                QuickToggleItem(
-                    icon: "macwindow",
-                    title: "Window frame",
-                    isOn: $store.enableWindowBorder,
-                    isDark: store.isDarkMode,
-                    uiFont: store.leanUIFont,
-                    onHoverChanged: handleNonHistoryHovered
-                )
+                if store.tabLayout != .sidebar {
+                    QuickToggleItem(
+                        icon: "macwindow",
+                        title: "Window frame",
+                        isOn: $store.enableWindowBorder,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont,
+                        onHoverChanged: handleNonHistoryHovered
+                    )
+                }
 
                 QuickToggleItem(
                     icon: "shield.fill",

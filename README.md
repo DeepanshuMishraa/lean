@@ -58,12 +58,27 @@ missing browser chrome does not provide will not work. Verified by testing:
 - **No private windows, profiles, or print support.** DevTools
   inspection is a debug-build feature only.
 
-### Opening a release build
+## Install a release
 
-Release builds are ad-hoc signed, not notarized, so Gatekeeper blocks
-the first launch. Right-click the app → Open → Open, or run
-`xattr -d com.apple.quarantine Lean.app`. Only a paid Developer ID
-certificate plus notarization removes this step.
+1. Download the right DMG from the
+   [releases page](https://github.com/DeepanshuMishraa/lean/releases):
+   `Lean-<version>-arm64.dmg` for Apple Silicon,
+   `Lean-<version>-x86_64.dmg` for Intel.
+   (Apple menu → About This Mac shows your chip.)
+2. Open the DMG, drag Lean into Applications, then eject the disk image.
+3. Open Lean from Applications or Spotlight. Releases are ad-hoc signed,
+   not notarized, so Gatekeeper blocks the first launch — pick one:
+   - Right-click (Control-click) Lean → Open → Open in the dialog.
+   - Or try opening once, then go to System Settings → Privacy &
+     Security, scroll to Security, and click Open Anyway.
+   - Or strip the quarantine flag in Terminal, then open normally:
+     ```sh
+     xattr -d com.apple.quarantine /Applications/Lean.app
+     ```
+     Add `sudo` in front only if permission is denied.
+4. From then on Lean opens normally and updates itself in-app.
+
+Only a paid Developer ID certificate plus notarization removes step 3.
 
 ## Principles
 

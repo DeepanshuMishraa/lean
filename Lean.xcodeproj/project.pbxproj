@@ -33,6 +33,7 @@
 		85AF75933CD5073D9F2E185F /* AddressResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86BD95EC684E0650335C24A2 /* AddressResolver.swift */; };
 		8A6436AE37F332DE7548F77B /* AdBlockFilterConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD6B10DFBD20A8F10DF0B9C7 /* AdBlockFilterConverter.swift */; };
 		9189BD1604353EC11AD2E7BB /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A240F0FAABC15EC3C0D230E /* TestHelpers.swift */; };
+		9E43DF834EFD61D237BC05DA /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5268449F35E5A41542EEF02 /* AppUpdater.swift */; };
 		9F7CDF17FBB0540000928EA0 /* OmnibarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AC627B2D3E8E4EB789B7523 /* OmnibarView.swift */; };
 		ACF15006217CE98EFFA1FE21 /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B68D79B10CF72FD177F0AC81 /* DownloadsView.swift */; };
 		B0F0B41EACFCFE4F5B932665 /* LeanApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E216B57DF202061DC88FE6D /* LeanApp.swift */; };
@@ -42,6 +43,7 @@
 		CFA967BA5CF33A8F4C36B321 /* OmnibarSuggestionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7FCB01A3F3CCDE9AA9530E /* OmnibarSuggestionRow.swift */; };
 		D8DA1C37849FCBD67C9EE9DF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A848AF7624C91DF439D4069E /* SettingsView.swift */; };
 		DB4831CB6B88926C41A5D902 /* NavigationControlsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E07226B7BD97E945B43B227 /* NavigationControlsTests.swift */; };
+		E1E4B3801476B9C153DE67AA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 35F2D4FF87DECD9F462CD726 /* Sparkle */; };
 		E50C5126DF34E590F29F4815 /* TabSwitcherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67C2A4D475488A80C44F21C /* TabSwitcherView.swift */; };
 		E5BFC6064A14CB1E7A7C4D03 /* TabStripScrollSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECBB6F58B56C5F78D6616416 /* TabStripScrollSupport.swift */; };
 		EF81104AE976E2079F2656FE /* LeanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53149805E8E44A5ECCE884F3 /* LeanView.swift */; };
@@ -87,6 +89,7 @@
 		8236FF60B8280FBD4BFA5233 /* SmoothScrollingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmoothScrollingTests.swift; sourceTree = "<group>"; };
 		84A5B4BCED207122DB77E61C /* SettingsWindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowManager.swift; sourceTree = "<group>"; };
 		86BD95EC684E0650335C24A2 /* AddressResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressResolver.swift; sourceTree = "<group>"; };
+		954940900091ED9F64DAAF5B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		990C495395F1F1C48EE3ABDA /* LeanTabTitleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanTabTitleTests.swift; sourceTree = "<group>"; };
 		9E570BC18AD372821AB350BC /* TabFaviconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabFaviconView.swift; sourceTree = "<group>"; };
 		A848AF7624C91DF439D4069E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -99,6 +102,7 @@
 		C67C2A4D475488A80C44F21C /* TabSwitcherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabSwitcherView.swift; sourceTree = "<group>"; };
 		CF6FE4814030CDFDD5C840C3 /* DropdownMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropdownMenuTests.swift; sourceTree = "<group>"; };
 		CFACE78AD721D215A84F3FCD /* LeanTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanTab.swift; sourceTree = "<group>"; };
+		D5268449F35E5A41542EEF02 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
 		DD6B10DFBD20A8F10DF0B9C7 /* AdBlockFilterConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdBlockFilterConverter.swift; sourceTree = "<group>"; };
 		E566A9FFD9A3DA622E49EC68 /* CustomShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomShortcuts.swift; sourceTree = "<group>"; };
 		E72942590E49E85581DFAAC5 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
@@ -108,6 +112,17 @@
 		F359A809C7FBA774892C62A2 /* PageScripts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageScripts.swift; sourceTree = "<group>"; };
 		FB880C0CDF8C1F10386A2F57 /* Lean.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Lean.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AD1D9BD511F0DEF4E6E4EA70 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E1E4B3801476B9C153DE67AA /* Sparkle in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		12D0A6D3C98A1B631FF69C1E /* Products */ = {
@@ -143,12 +158,14 @@
 				DD6B10DFBD20A8F10DF0B9C7 /* AdBlockFilterConverter.swift */,
 				86BD95EC684E0650335C24A2 /* AddressResolver.swift */,
 				1EDDD317B7AF50A826865F77 /* AppDatabase.swift */,
+				D5268449F35E5A41542EEF02 /* AppUpdater.swift */,
 				14191AAB2D796CC5DE1EA6CB /* ContentBlocker.swift */,
 				E566A9FFD9A3DA622E49EC68 /* CustomShortcuts.swift */,
 				F27EC5E6F10DEA6F39123642 /* DotMatrixLoader.swift */,
 				E72942590E49E85581DFAAC5 /* DownloadManager.swift */,
 				B68D79B10CF72FD177F0AC81 /* DownloadsView.swift */,
 				169383803BA6823BA5839E0D /* FaviconService.swift */,
+				954940900091ED9F64DAAF5B /* Info.plist */,
 				FB880C0CDF8C1F10386A2F57 /* Lean.entitlements */,
 				0E216B57DF202061DC88FE6D /* LeanApp.swift */,
 				0848E1405C94F6D577AC6C4F /* LeanCommands.swift */,
@@ -220,6 +237,7 @@
 			buildPhases = (
 				87A678AF7AABA85C421987A2 /* Sources */,
 				FF19CBF7DAD4E0584B0F2E0B /* Resources */,
+				AD1D9BD511F0DEF4E6E4EA70 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -227,6 +245,7 @@
 			);
 			name = Lean;
 			packageProductDependencies = (
+				35F2D4FF87DECD9F462CD726 /* Sparkle */,
 			);
 			productName = Lean;
 			productReference = AA93006FF8D0CD999AA120C4 /* Lean.app */;
@@ -258,6 +277,9 @@
 			);
 			mainGroup = 9412FC51AEFBF1C736151F97;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				6F8BD951BB759340237AA233 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 12D0A6D3C98A1B631FF69C1E /* Products */;
 			projectDirPath = "";
@@ -309,6 +331,7 @@
 				8A6436AE37F332DE7548F77B /* AdBlockFilterConverter.swift in Sources */,
 				85AF75933CD5073D9F2E185F /* AddressResolver.swift in Sources */,
 				FA99936939846790D9973977 /* AppDatabase.swift in Sources */,
+				9E43DF834EFD61D237BC05DA /* AppUpdater.swift in Sources */,
 				099C3F07574FA15E03AB213A /* ContentBlocker.swift in Sources */,
 				8513BF00B4CABA9ED98F67DE /* CustomShortcuts.swift in Sources */,
 				5A638900363577A489504B7F /* DotMatrixLoader.swift in Sources */,
@@ -400,9 +423,8 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -419,6 +441,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -436,6 +459,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = lean;
 				CODE_SIGN_ENTITLEMENTS = Lean/Lean.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Lean/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -451,6 +475,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -509,9 +534,8 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -528,6 +552,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = lean;
 				CODE_SIGN_ENTITLEMENTS = Lean/Lean.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Lean/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -569,6 +594,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		6F8BD951BB759340237AA233 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.9.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		35F2D4FF87DECD9F462CD726 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6F8BD951BB759340237AA233 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = AF61B94AE0F50A9E164C2C6B /* Project object */;
 }

@@ -3,8 +3,16 @@ import SwiftUI
 
 struct LeanCommands: Commands {
     @ObservedObject var store: LeanStore
+    @ObservedObject var updater: AppUpdater
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates...") {
+                updater.checkForUpdates()
+            }
+            .disabled(!updater.canCheckForUpdates)
+        }
+
         CommandGroup(replacing: .appSettings) {
             Button("Settings...") {
                 store.openSettings()

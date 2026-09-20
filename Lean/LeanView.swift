@@ -3,6 +3,7 @@ import WebKit
 
 struct LeanView: View {
     @ObservedObject var store: LeanStore
+    @ObservedObject var updater: AppUpdater
     @State private var findQuery = ""
     @State private var hasSetupKeyMonitor = false
 
@@ -401,7 +402,7 @@ struct LeanView: View {
 
             if let tab = store.selectedTab {
                 if tab.isSettingsPage {
-                    SettingsView(store: store)
+                    SettingsView(store: store, updater: updater)
                         .id(tab.id)
                         .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
                         .overlay(

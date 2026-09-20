@@ -46,6 +46,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @ObservedObject var store: LeanStore
+    @ObservedObject var updater: AppUpdater
     @State private var selectedCategory: SettingsCategory = .general
     @StateObject private var dropdownState = DropdownMenuState()
     @Namespace private var sidebarAnimation
@@ -271,7 +272,7 @@ struct SettingsView: View {
     private var contentForSelectedCategory: some View {
         switch selectedCategory {
         case .general:
-            GeneralSection(store: store)
+            GeneralSection(store: store, updater: updater)
         case .topBar:
             TopBarCustomizerSection(store: store)
         case .appearance:
@@ -661,6 +662,7 @@ private struct HistoryItemRow: View {
 // MARK: - 1. General Section (Zen Mode & Window Frame)
 private struct GeneralSection: View {
     @ObservedObject var store: LeanStore
+    @ObservedObject var updater: AppUpdater
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -697,6 +699,50 @@ private struct GeneralSection: View {
             }
             .animation(.spring(response: 0.26, dampingFraction: 0.82), value: store.enableZenMode)
             .animation(.spring(response: 0.26, dampingFraction: 0.82), value: store.enableWindowBorder)
+
+            SettingsGroup(isDark: store.isDarkMode) {
+                CustomToggleRow(
+                    title: "Automatically check for updates",
+                    subtitle: "Lean checks its GitHub release feed in the background. Updates are signed, so they stay safe without notarization.",
+                    isOn: Binding(
+                        get: { updater.automaticallyChecksForUpdates },
+                        set: { updater.automaticallyChecksForUpdates = $0 }
+                    ),
+                    isDark: store.isDarkMode,
+                    uiFont: store.leanUIFont
+                )
+
+                SettingsRowDivider(isDark: store.isDarkMode)
+
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 2.5) {
+                        Text("Lean \(updater.currentVersion)")
+                            .font(store.leanUIFont.font(size: 13, weight: .medium))
+                            .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                        Text("Signed updates from GitHub releases.")
+                            .font(store.leanUIFont.font(size: 11.5))
+                            .foregroundColor(store.isDarkMode ? Color(white: 0.50) : Color(white: 0.48))
+                    }
+
+                    Spacer(minLength: 16)
+
+                    Button {
+                        updater.checkForUpdates()
+                    } label: {
+                        Text("Check Now")
+                            .font(store.leanUIFont.font(size: 11.5, weight: .medium))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.75) : Color.black.opacity(0.65))
+                            .padding(.horizontal, 10)
+                            .frame(height: 26)
+                            .background(
+                                store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!updater.canCheckForUpdates)
+                }
+            }
         }
     }
 }

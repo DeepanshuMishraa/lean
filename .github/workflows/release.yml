@@ -25,7 +25,10 @@ jobs:
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       tag: ${{ steps.resolve.outputs.tag }}
+      build: ${{ steps.resolve.outputs.build }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Resolve version from tag
         id: resolve
         run: |
@@ -35,9 +38,18 @@ jobs:
             exit 1
           fi
           version="${tag#v}"
+          marketing=$(sed -n 's/^ *MARKETING_VERSION: "\(.*\)"/\1/p' project.yml | head -1)
+          if [ "$version" != "$marketing" ]; then
+            echo "::error::Tag $tag does not match MARKETING_VERSION $marketing in project.yml"
+            exit 1
+          fi
+          major="${version%%.*}"; rest="${version#*.}"
+          minor="${rest%%.*}"; patch="${rest#*.}"
+          build=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Building assets for published release $tag"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Building assets for published release $tag (build $build)"
 
   build-macos:
     name: macOS ${{ matrix.arch }}
@@ -66,7 +78,8 @@ jobs:
           xcodegen generate
 
       # Ad-hoc sign + hardened runtime, no Developer ID / notarization.
-      # Same posture as the Insulator reference workflow.
+      # Same posture as the Insulator reference workflow. Sparkle
+      # authenticates updates with the Ed25519 key instead.
       - name: Build Lean (${{ matrix.arch }})
         run: |
           xcodebuild \
@@ -80,6 +93,7 @@ jobs:
             CODE_SIGN_IDENTITY='-' \
             CODE_SIGN_STYLE=Manual \
             ENABLE_HARDENED_RUNTIME=YES \
+            CURRENT_PROJECT_VERSION='${{ needs.version.outputs.build }}' \
             clean build
 
       - name: Package DMG and ZIP
@@ -115,3 +129,62 @@ jobs:
             --repo "${{ github.repository }}" \
             --clobber \
             dist/*
+
+  appcast:
+    name: Sparkle appcast
+    needs: [version, build-macos]
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Install Sparkle tools
+        env:
+          SPARKLE_VERSION: 2.9.4
+          SPARKLE_SHA256: ce89daf967db1e1893ed3ebd67575ed82d3902563e3191ca92aaec9164fbdef9
+        run: |
+          set -euo pipefail
+          mkdir -p .sparkle-tools && cd .sparkle-tools
+          curl -fsSL --retry 3 -o "Sparkle-${SPARKLE_VERSION}.tar.xz" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          echo "${SPARKLE_SHA256}  Sparkle-${SPARKLE_VERSION}.tar.xz" | shasum -a 256 -c -
+          tar -xJf "Sparkle-${SPARKLE_VERSION}.tar.xz" ./bin
+
+      - name: Generate per-arch appcasts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SPARKLE_PRIVATE_KEY:-}" ]; then
+            echo "::error::SPARKLE_PRIVATE_KEY secret is not set"
+            exit 1
+          fi
+          mkdir -p updates-arm64 updates-x86_64
+          cp "artifacts/macos-arm64/Lean-${VERSION}-arm64.zip" updates-arm64/
+          cp "artifacts/macos-x86_64/Lean-${VERSION}-x86_64.zip" updates-x86_64/
+          prefix="https://github.com/${{ github.repository }}/releases/download/${TAG}/"
+          for arch in arm64 x86_64; do
+            printf '%s\n' "$SPARKLE_PRIVATE_KEY" | .sparkle-tools/bin/generate_appcast \
+              --download-url-prefix "$prefix" --ed-key-file - "updates-$arch"
+            mv "updates-$arch/appcast.xml" "appcast-$arch.xml"
+          done
+          # generate_appcast exits 0 even when enclosures are left unsigned
+          # on a key mismatch — reject that explicitly so we never ship a
+          # dead feed Sparkle would refuse to install from.
+          for arch in arm64 x86_64; do
+            total=$(grep -c '<enclosure' "appcast-$arch.xml")
+            signed=$(grep -c 'sparkle:edSignature=' "appcast-$arch.xml" || true)
+            if [ "$total" = "0" ] || [ "$total" != "$signed" ]; then
+              echo "::error::appcast-$arch.xml has $signed/$total signed enclosures"
+              exit 1
+            fi
+          done
+          gh release upload "$TAG" \
+            --repo "${{ github.repository }}" \
+            --clobber \
+            appcast-arm64.xml appcast-x86_64.xml

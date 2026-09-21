@@ -23,6 +23,14 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     /// global engine choice only affects newly opened tabs.
     private(set) var engineKind: BrowserEngineKind
 
+    // MARK: - CEF engine state (nil for WebKit tabs)
+    var cefHost: CEFBrowserHost?
+    private var cefContainer: CEFContainerView?
+    private var pendingCEFURL: URL?
+    private var cefAttached = false
+    private var cefDownloadItems: [String: UUID] = [:]
+    private var cefDownloadSamples: [UUID: (bytes: Int64, date: Date, speed: Double)] = [:]
+
     var isSettingsPage: Bool {
         guard let url = url else { return false }
         return url.absoluteString == "lean://settings" || (url.scheme == "lean" && url.host == "settings")
@@ -31,6 +39,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     var onStateChange: (() -> Void)?
     var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
     var onCloseTab: (() -> Void)?
+    /// CEF popup URLs (v1: opened as plain new tabs inheriting the store engine).
+    var onOpenNewTabURL: ((URL) -> Void)?
     var downloadManager: DownloadManager?
     var mediaPermissionStore: MediaPermissionStore?
     private var progressObserver: NSKeyValueObservation?
@@ -43,6 +53,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     func cancelActiveDownload(id: UUID) {
         activeDownloadObjects[id]?.cancel()
         activeDownloadObjects[id] = nil
+        if let cefKey = cefDownloadItems.first(where: { $0.value == id })?.key {
+            cefDownloadItems.removeValue(forKey: cefKey)
+            cefDownloadSamples.removeValue(forKey: id)
+            cefHost?.cancelDownload(cefKey)
+        }
     }
 
     init(
@@ -159,6 +174,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         ]
 
         applyAdBlocking(adBlockingEnabled)
+
+        if engineKind == .cef, CEFIntegration.isAvailable() {
+            setupCEFHost()
+        }
 
         if let initialURL {
             self.load(initialURL)
@@ -289,6 +308,16 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             onStateChange?()
             return
         }
+        if let cef = cefHost {
+            pendingCEFURL = url
+            isLoading = true
+            onStateChange?()
+            updateFavicon(for: url)
+            if cefAttached {
+                cef.loadURL(url.absoluteString)
+            }
+            return
+        }
         isLoading = true
         onStateChange?()
         updateFavicon(for: url)
@@ -301,26 +330,56 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     func goBack() {
+        if let cef = cefHost {
+            isLoading = true
+            onStateChange?()
+            cef.goBack()
+            return
+        }
         isLoading = true
         onStateChange?()
         webView.goBack()
     }
     func goForward() {
+        if let cef = cefHost {
+            isLoading = true
+            onStateChange?()
+            cef.goForward()
+            return
+        }
         isLoading = true
         onStateChange?()
         webView.goForward()
     }
     func reload() {
+        if let cef = cefHost {
+            isLoading = true
+            onStateChange?()
+            cef.reload()
+            return
+        }
         isLoading = true
         onStateChange?()
         webView.reload()
     }
     func reloadFromOrigin() {
+        if let cef = cefHost {
+            isLoading = true
+            onStateChange?()
+            cef.reloadFromOrigin()
+            return
+        }
         isLoading = true
         onStateChange?()
         webView.reloadFromOrigin()
     }
     func stop() {
+        if let cef = cefHost {
+            isLoading = false
+            cef.stopLoading()
+            onStateChange?()
+            return
+        }
         isLoading = false
         webView.stopLoading()
         onStateChange?()
@@ -335,6 +394,17 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         onStateChange = nil
         onOpenNewTab = nil
         onCloseTab = nil
+        onOpenNewTabURL = nil
+
+        if let cef = cefHost {
+            cef.close()
+            cefHost = nil
+        }
+        cefContainer?.removeFromSuperview()
+        cefContainer = nil
+        pendingCEFURL = nil
+        cefDownloadItems.removeAll()
+        cefDownloadSamples.removeAll()
 
         // 1. Pause and remove all audio/video elements immediately
         let stopMediaJS = """
@@ -373,12 +443,22 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.removeFromSuperview()
     }
 
-    func zoomIn() { webView.pageZoom = min(webView.pageZoom + 0.1, 3) }
-    func zoomOut() { webView.pageZoom = max(webView.pageZoom - 0.1, 0.5) }
-    func resetZoom() { webView.pageZoom = 1 }
+    func zoomIn() {
+        if let cef = cefHost { cef.zoomIn(); return }
+        webView.pageZoom = min(webView.pageZoom + 0.1, 3)
+    }
+    func zoomOut() {
+        if let cef = cefHost { cef.zoomOut(); return }
+        webView.pageZoom = max(webView.pageZoom - 0.1, 0.5)
+    }
+    func resetZoom() {
+        if let cef = cefHost { cef.resetZoom(); return }
+        webView.pageZoom = 1
+    }
 
     func find(_ query: String) {
         guard !query.isEmpty else { return }
+        if let cef = cefHost { cef.find(query); return }
         webView.find(query, configuration: WKFindConfiguration()) { _ in }
     }
 
@@ -805,4 +885,250 @@ extension LeanTab: WKDownloadDelegate {
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+// MARK: - CEF engine
+
+extension LeanTab {
+    private func setupCEFHost() {
+        guard CEFBootstrap.ensureInitialized() else { return }
+        let host = CEFBrowserHost()
+        cefHost = host
+
+        host.onTitle = { [weak self] title in
+            guard let self else { return }
+            let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.title = clean.isEmpty ? (self.url?.host ?? "New Tab") : clean
+            self.onStateChange?()
+        }
+        host.onURL = { [weak self] urlString in
+            guard let self else { return }
+            if let url = URL(string: urlString) {
+                self.url = url
+            }
+            self.onStateChange?()
+        }
+        host.onLoadingState = { [weak self] loading, back, forward in
+            guard let self else { return }
+            self.isLoading = loading
+            self.canGoBack = back
+            self.canGoForward = forward
+            self.onStateChange?()
+        }
+        host.onFaviconURLs = { [weak self] urls in
+            guard let self else { return }
+            self.updateFavicon(for: self.url, explicitIconURL: urls.first)
+        }
+        host.onLoadError = { [weak self] _, _ in
+            guard let self else { return }
+            self.isLoading = false
+            self.onStateChange?()
+        }
+        host.onClose = { [weak self] in
+            self?.onCloseTab?()
+        }
+        host.onPopupURL = { [weak self] urlString in
+            guard let self, let url = URL(string: urlString) else { return }
+            self.onOpenNewTabURL?(url)
+        }
+        host.onJSAlert = { [weak self] message, id in
+            guard let self else { return }
+            self.presentAlert(message: message, showsTextField: false, isConfirmation: false) { _, _ in
+                self.cefHost?.completeJSDialog(id, ok: true, text: nil)
+            }
+        }
+        host.onJSConfirm = { [weak self] message, id in
+            guard let self else { return }
+            self.presentAlert(message: message, showsTextField: false, isConfirmation: true) { confirmed, _ in
+                self.cefHost?.completeJSDialog(id, ok: confirmed, text: nil)
+            }
+        }
+        host.onJSPrompt = { [weak self] message, defaultText, id in
+            guard let self else { return }
+            self.presentAlert(message: message, showsTextField: true, isConfirmation: true, defaultText: defaultText) { confirmed, text in
+                self.cefHost?.completeJSDialog(id, ok: confirmed, text: text)
+            }
+        }
+        host.onAuthChallenge = { [weak self] challengeHost, realm, id in
+            self?.presentCEFCredentialsSheet(host: challengeHost, realm: realm, id: id)
+        }
+        host.onMediaPermission = { [weak self] originURLString, id in
+            self?.handleCEFMediaPermission(originURLString: originURLString, id: id)
+        }
+        host.onDownloadStarted = { [weak self] downloadId, suggestedName, sourceURLString, total in
+            self?.startCEFDownload(id: downloadId, suggestedName: suggestedName,
+                                   sourceURLString: sourceURLString, totalBytes: total)
+        }
+        host.onDownloadProgress = { [weak self] downloadId, received, total in
+            self?.updateCEFDownload(id: downloadId, receivedBytes: received, totalBytes: total)
+        }
+        host.onDownloadFinished = { [weak self] downloadId, _ in
+            self?.finishCEFDownload(id: downloadId)
+        }
+        host.onDownloadFailed = { [weak self] downloadId, cancelled in
+            self?.failCEFDownload(id: downloadId, cancelled: cancelled)
+        }
+    }
+
+    /// The single container view for this tab's CEF browser. Returned to the
+    /// SwiftUI representable so tab switches re-insert the same view.
+    func cefContainerView() -> CEFContainerView {
+        if let cefContainer { return cefContainer }
+        let view = CEFContainerView()
+        view.tab = self
+        cefContainer = view
+        return view
+    }
+
+    /// Creates the browser inside `view` (first presentation only).
+    func attachCEF(to view: NSView) {
+        guard let host = cefHost, !cefAttached else { return }
+        cefAttached = true
+        // Only flush a pending URL that still matches the tab; a stale one
+        // (e.g. from before a settings navigation) must not resurrect.
+        let initial: URL?
+        if let pending = pendingCEFURL, pending == url {
+            initial = pending
+        } else {
+            initial = url
+        }
+        pendingCEFURL = initial
+        host.create(in: view, initialURL: initial?.absoluteString)
+    }
+
+    private func presentCEFCredentialsSheet(host challengeHost: String, realm: String, id: Int64) {
+        guard let window = webView.window else {
+            cefHost?.completeAuth(id, username: nil, password: nil)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Sign in to \(challengeHost)"
+        alert.informativeText = realm.isEmpty
+            ? "This site is asking for a username and password."
+            : realm
+        alert.alertStyle = .informational
+        let username = NSTextField(string: "")
+        username.placeholderString = "Username"
+        let password = NSSecureTextField()
+        password.placeholderString = "Password"
+        let stack = NSStackView(views: [username, password])
+        stack.orientation = .vertical
+        stack.spacing = 8
+        stack.frame = NSRect(x: 0, y: 0, width: 280, height: 52)
+        alert.accessoryView = stack
+        alert.addButton(withTitle: "Sign In")
+        alert.addButton(withTitle: "Cancel")
+        alert.layout()
+        window.makeFirstResponder(username)
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else {
+                self?.cefHost?.completeAuth(id, username: nil, password: nil)
+                return
+            }
+            self?.cefHost?.completeAuth(id, username: username.stringValue, password: password.stringValue)
+        }
+    }
+
+    private func handleCEFMediaPermission(originURLString: String, id: Int64) {
+        guard let originURL = URL(string: originURLString),
+              let originKey = MediaPermissionStore.originKey(for: originURL) else {
+            cefHost?.completeMediaPermission(id, allow: false)
+            return
+        }
+        if let stored = mediaPermissionStore?.decision(forOriginKey: originKey) {
+            cefHost?.completeMediaPermission(id, allow: stored)
+            return
+        }
+        guard let window = webView.window else {
+            cefHost?.completeMediaPermission(id, allow: false)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Allow camera and microphone?"
+        alert.informativeText = "\(originURL.host ?? originKey) wants to use your camera and microphone."
+        alert.addButton(withTitle: "Allow")
+        alert.addButton(withTitle: "Don't Allow")
+        alert.alertStyle = .informational
+        alert.beginSheetModal(for: window) { [weak self] response in
+            let allowed = response == .alertFirstButtonReturn
+            self?.mediaPermissionStore?.setDecision(allowed, forOriginKey: originKey)
+            self?.cefHost?.completeMediaPermission(id, allow: allowed)
+        }
+    }
+
+    private func startCEFDownload(id: String, suggestedName: String,
+                                  sourceURLString: String, totalBytes: Int64) {
+        let manager = downloadManager
+        let fallbackDir = DownloadManager.defaultDownloadsDirectory()
+        try? FileManager.default.createDirectory(at: fallbackDir, withIntermediateDirectories: true)
+        let fileName = suggestedName.isEmpty ? "download" : suggestedName
+        let destination = manager?.uniqueDestination(for: fileName)
+            ?? fallbackDir.appendingPathComponent(fileName)
+        let total = totalBytes > 0 ? totalBytes : Int64(-1)
+        let itemID = manager?.beginDownload(
+            fileName: destination.lastPathComponent,
+            sourceURL: URL(string: sourceURLString),
+            destinationURL: destination,
+            totalBytes: total
+        ) ?? UUID()
+        cefDownloadItems[id] = itemID
+        cefDownloadSamples[itemID] = (bytes: 0, date: Date(), speed: 0)
+        cefHost?.continueDownload(id, path: destination.path)
+    }
+
+    private func updateCEFDownload(id: String, receivedBytes: Int64, totalBytes: Int64) {
+        guard let itemID = cefDownloadItems[id] else { return }
+        let now = Date()
+        var speed = cefDownloadSamples[itemID]?.speed ?? 0
+        if let last = cefDownloadSamples[itemID] {
+            let dt = now.timeIntervalSince(last.date)
+            if dt > 0.15 {
+                let instant = Double(receivedBytes - last.bytes) / dt
+                if instant >= 0 {
+                    speed = last.speed * 0.6 + instant * 0.4
+                }
+                cefDownloadSamples[itemID] = (bytes: receivedBytes, date: now, speed: speed)
+            }
+        }
+        downloadManager?.updateProgress(
+            id: itemID,
+            receivedBytes: receivedBytes,
+            totalBytes: totalBytes > 0 ? totalBytes : Int64(-1),
+            speedBytesPerSec: speed
+        )
+    }
+
+    private func finishCEFDownload(id: String) {
+        guard let itemID = cefDownloadItems[id] else { return }
+        cefDownloadItems[id] = nil
+        // A cancelled download can still report finish if the cancel raced
+        // the final bytes: drop the partial file instead of presenting it.
+        if downloadManager?.downloads.first(where: { $0.id == itemID })?.state == .cancelled {
+            if let dst = downloadManager?.downloads.first(where: { $0.id == itemID })?.destinationURL {
+                try? FileManager.default.removeItem(at: dst)
+            }
+            downloadManager?.failDownload(id: itemID, errorDescription: "Cancelled", cancelled: true)
+            cefDownloadSamples[itemID] = nil
+            return
+        }
+        if let item = downloadManager?.downloads.first(where: { $0.id == itemID }) {
+            let diskSize = (try? FileManager.default.attributesOfItem(atPath: item.destinationURL.path)[.size] as? Int64) ?? nil
+            let received = diskSize ?? -1
+            let total = received >= 0 ? received : Int64(-1)
+            downloadManager?.updateProgress(id: itemID, receivedBytes: received >= 0 ? received : 0,
+                                            totalBytes: total, speedBytesPerSec: 0)
+        }
+        let fileName = downloadManager?.downloads.first(where: { $0.id == itemID })?.destinationURL.lastPathComponent
+        downloadManager?.finishDownload(id: itemID, fileName: fileName)
+        cefDownloadSamples[itemID] = nil
+    }
+
+    private func failCEFDownload(id: String, cancelled: Bool) {
+        guard let itemID = cefDownloadItems[id] else { return }
+        cefDownloadItems[id] = nil
+        cefDownloadSamples[itemID] = nil
+        downloadManager?.failDownload(id: itemID,
+                                      errorDescription: cancelled ? "Cancelled" : "Download failed",
+                                      cancelled: cancelled)
+    }
 }

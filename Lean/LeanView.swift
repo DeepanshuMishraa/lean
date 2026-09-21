@@ -240,6 +240,22 @@ struct LeanView: View {
                 .zIndex(190)
             }
 
+            // Engine Restart Dialog (modal: dimmed backdrop, no tap-through)
+            if store.isEngineRestartDialogPresented {
+                ZStack {
+                    Color.black.opacity(store.isDarkMode ? 0.5 : 0.25)
+                        .ignoresSafeArea()
+
+                    EngineRestartDialog(store: store)
+                }
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.96).combined(with: .opacity),
+                    removal: .scale(scale: 0.98).combined(with: .opacity)
+                ))
+                .animation(.spring(response: 0.24, dampingFraction: 0.84), value: store.isEngineRestartDialogPresented)
+                .zIndex(200)
+            }
+
             // Ctrl+Tab Thumbnail Switcher Overlay
             if store.isTabSwitcherVisible {
                 TabSwitcherView(store: store)
@@ -422,11 +438,11 @@ struct LeanView: View {
                 } else if tab.url != nil {
                     // Web Page Loaded — engine slot. Shell chrome is identical
                     // for both engines; only this content view branches.
-                    // WebKit renders WKWebView. CEF tabs render the real
-                    // CEFEngineView once the framework lands (see docs/CEF.md);
-                    // until then they render an in-content notice.
                     ZStack(alignment: .topTrailing) {
-                        if tab.engineKind == .cef && !CEFIntegration.isAvailable() {
+                        if tab.engineKind == .cef, CEFIntegration.isAvailable(), tab.cefHost != nil {
+                            CEFEngineView(tab: tab)
+                                .id(tab.id)
+                        } else if tab.engineKind == .cef {
                             CEFUnavailableView(store: store)
                                 .id(tab.id)
                         } else {
@@ -582,6 +598,10 @@ struct LeanView: View {
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             // Intercept Escape (keyCode 53) to close quick settings, inline url bar, floating omnibar, new tab omnibar, or tab switcher
             if event.keyCode == 53 {
+                if store.isEngineRestartDialogPresented {
+                    store.cancelEngineChange()
+                    return nil
+                }
                 if store.isDownloadsPresented {
                     withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
                         store.isDownloadsPresented = false
@@ -723,7 +743,7 @@ private struct CEFUnavailableView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)
             Button {
-                store.engineKind = .webKit
+                store.requestEngineChange(.webKit)
             } label: {
                 Text("Use WebKit for new tabs")
                     .font(store.bodyFont(size: 12))

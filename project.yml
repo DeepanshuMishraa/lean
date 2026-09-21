@@ -19,11 +19,20 @@ targets:
     type: application
     platform: macOS
     sources:
-      - Lean
+      - path: Lean
+        excludes:
+          - Helper/main.mm
       - path: icons/lean.icon
         buildPhase: resources
+      # libcef_dll_wrapper sources compile straight into the target.
+      # Missing vendor/cef dir simply matches nothing; WebKit keeps working.
+      - path: vendor/cef/libcef_dll
+        includes:
+          - "**/*.cc"
+          - "**/*.mm"
     dependencies:
       - package: Sparkle
+      - target: LeanHelper
     settings:
       base:
         PRODUCT_NAME: Lean
@@ -31,6 +40,44 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Lean/Lean.entitlements
         INFOPLIST_FILE: Lean/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: lean
+        SWIFT_OBJC_BRIDGING_HEADER: Lean/Lean-Bridging-Header.h
+        CLANG_CXX_LANGUAGE_STANDARD: c++20
+        GCC_PREPROCESSOR_DEFINITIONS: ["$(inherited)", "WRAPPING_CEF_SHARED=1"]
+        HEADER_SEARCH_PATHS: $(SRCROOT)/vendor/cef
+        FRAMEWORK_SEARCH_PATHS: $(SRCROOT)/vendor/cef/Release
+        LD_RUNPATH_SEARCH_PATHS: ["@executable_path/../Frameworks"]
+        OTHER_LDFLAGS: -weak_framework "Chromium Embedded Framework"
+    postBuildScripts:
+      - name: Embed CEF framework and helper
+        basedOnDependencyAnalysis: false
+        script: sh "${SRCROOT}/scripts/embed-cef.sh"
+  LeanHelper:
+    type: application
+    platform: macOS
+    sources:
+      - Lean/Helper
+      - path: vendor/cef/libcef_dll
+        includes:
+          - "**/*.cc"
+          - "**/*.mm"
+    settings:
+      base:
+        PRODUCT_NAME: Lean Helper
+        PRODUCT_BUNDLE_IDENTIFIER: com.dipxsy.lean.helper
+        CODE_SIGN_ENTITLEMENTS: Lean/Helper/LeanHelper.entitlements
+        # Critical: Xcode must not inject its Debug extras (get-task-allow,
+        # testmanagerd, …). Sandbox inheritance aborts/mis-sandboxes helpers
+        # carrying anything beyond app-sandbox + inherit (dead GPU/renderer
+        # children, exit 5). Re-signing in embed-cef.sh enforces this too.
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+        INFOPLIST_FILE: Lean/Helper/Info.plist
+        CLANG_CXX_LANGUAGE_STANDARD: c++20
+        GCC_PREPROCESSOR_DEFINITIONS: ["$(inherited)", "WRAPPING_CEF_SHARED=1"]
+        HEADER_SEARCH_PATHS: $(SRCROOT)/vendor/cef
+        FRAMEWORK_SEARCH_PATHS: $(SRCROOT)/vendor/cef/Release
+        LD_RUNPATH_SEARCH_PATHS: ["@loader_path/../../.."]
+        OTHER_LDFLAGS: -weak_framework "Chromium Embedded Framework"
+        SKIP_INSTALL: YES
   LeanTests:
     type: bundle.unit-test
     platform: macOS

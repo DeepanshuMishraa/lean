@@ -1390,7 +1390,7 @@ private struct BrowsingSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            // Rendering Engine — WebKit default, CEF opt-in for new tabs.
+            // Rendering Engine — WebKit default, CEF opt-in. Switching restarts Lean.
             VStack(alignment: .leading, spacing: 8) {
                 SettingsHeaderLabel("Rendering Engine", uiFont: store.leanUIFont, isDark: store.isDarkMode)
 
@@ -1404,7 +1404,7 @@ private struct BrowsingSection: View {
                     uiFont: store.leanUIFont
                 ) { newId in
                     if let kind = BrowserEngineKind(rawValue: newId) {
-                        store.engineKind = kind
+                        store.requestEngineChange(kind)
                     }
                 }
 
@@ -1451,15 +1451,17 @@ private struct BrowsingSection: View {
     }
 
     private var engineFootnote: String {
-        switch store.engineKind {
-        case .webKit:
-            return "System WebKit · default. No bundled engine, tiny updates. Applies to new tabs."
-        case .cef:
-            if CEFIntegration.isAvailable() {
-                return "Chromium (CEF) · applies to new tabs. Existing tabs keep their engine."
+        let engineName: String = {
+            switch store.engineKind {
+            case .webKit: return "System WebKit · default, no bundled engine."
+            case .cef:
+                if CEFIntegration.isAvailable() {
+                    return "Chromium (CEF) · bundled engine, broader site compatibility."
+                }
+                return "Chromium selected · framework not bundled in this build (see docs/CEF.md)."
             }
-            return "Chromium selected · framework not bundled yet, so new tabs show a notice until docs/CEF.md is wired. WebKit keeps working."
-        }
+        }()
+        return engineName + " Switching engines restarts Lean; open tabs are restored."
     }
 }
 

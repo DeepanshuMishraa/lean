@@ -173,6 +173,15 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    /// Engine this process booted with. New tabs always use it — switching
+    /// the selection restarts the app, so a process never mixes engines.
+    let bootEngineKind: BrowserEngineKind
+
+    /// True while the selection differs from the booted engine.
+    var needsEngineRestart: Bool { engineKind != bootEngineKind }
+
+    @Published var isEngineRestartDialogPresented = false
+
     @Published var theme: AppTheme {
         didSet {
             persist(theme.rawValue, forKey: Self.themeKey)
@@ -331,7 +340,9 @@ final class LeanStore: ObservableObject {
         let savedEngine = databaseValue(self.database, String.self, forKey: Self.engineKindKey)
             ?? UserDefaults.standard.string(forKey: Self.engineKindKey)
             ?? BrowserEngineKind.webKit.rawValue
-        self.engineKind = BrowserEngineKind(rawValue: savedEngine) ?? .webKit
+        let resolvedEngine = BrowserEngineKind(rawValue: savedEngine) ?? .webKit
+        self.engineKind = resolvedEngine
+        self.bootEngineKind = resolvedEngine
 
         if let savedHistory = databaseValue(self.database, [HistoryItem].self, forKey: Self.historyKey) {
             self.historyItems = savedHistory
@@ -545,6 +556,40 @@ final class LeanStore: ObservableObject {
 
     func toggleTheme() {
         theme = isDarkMode ? .light : .dark
+    }
+
+    // MARK: - Engine switching (restart to apply)
+
+    /// Called from the Settings picker. Same engine: silent. Different
+    /// engine: persist the choice and ask for a restart.
+    func requestEngineChange(_ kind: BrowserEngineKind) {
+        engineKind = kind
+        isEngineRestartDialogPresented = kind != bootEngineKind
+    }
+
+    /// Dialog "Not now": revert the selection to the booted engine.
+    func cancelEngineChange() {
+        engineKind = bootEngineKind
+        isEngineRestartDialogPresented = false
+    }
+
+    /// Dialog "Restart now": save the session, launch a fresh instance,
+    /// then quit this one. Tabs restore under the new engine on launch.
+    func restartForEngineChange() {
+        saveSession()
+        isEngineRestartDialogPresented = false
+        let config = NSWorkspace.OpenConfiguration()
+        config.createsNewApplicationInstance = true
+        config.activates = true
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { _, error in
+            if let error {
+                NSLog("Engine restart relaunch failed: %@", String(describing: error))
+                return
+            }
+            DispatchQueue.main.async {
+                NSApp.terminate(nil)
+            }
+        }
     }
 
     func openSettings(category: SettingsCategory = .general) {
@@ -769,7 +814,7 @@ final class LeanStore: ObservableObject {
             smoothScrolling: smoothScrollingEnabled,
             pageFont: webPageFont,
             adBlockingEnabled: adBlockingEnabled,
-            engineKind: engineKind,
+            engineKind: bootEngineKind,
             configuration: configuration
         )
         tab.onStateChange = { [weak self] in
@@ -792,6 +837,9 @@ final class LeanStore: ObservableObject {
                 self.close(child)
             }
             return child.webView
+        }
+        tab.onOpenNewTabURL = { [weak self] url in
+            self?.newTab(url: url)
         }
         tabs.append(tab)
         if select {

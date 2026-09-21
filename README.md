@@ -92,11 +92,23 @@ Only a paid Developer ID certificate plus notarization removes step 3.
 Requires macOS 14+, Xcode, and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```sh
+scripts/fetch-cef.sh   # one-time: downloads the pinned CEF build (~350MB, gitignored).
+                       # Skip it for a WebKit-only build; the app still compiles and runs.
 xcodegen generate
 open Lean.xcodeproj
 ```
 
 Select the `Lean` scheme and run.
+
+WebKit is the default engine. Chromium (CEF) is opt-in per Settings →
+Browsing → Rendering Engine and applies to new tabs. Because the App Sandbox
+blocks the CEF helper inside DerivedData, run CEF from an installed copy:
+
+```sh
+scripts/run-cef-dev.sh   # build → copy to /Applications/Lean Dev.app → open
+```
+
+See `docs/CEF.md` for the integration contract and its sharp edges.
 
 ## Shortcuts
 

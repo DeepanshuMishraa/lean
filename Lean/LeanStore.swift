@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import PhosphorSwift
 import SwiftUI
 import WebKit
 
@@ -77,6 +78,18 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         }
     }
 
+    var icon: Ph {
+        switch self {
+        case .back: return .caretLeft
+        case .forward: return .caretRight
+        case .reload: return .arrowClockwise
+        case .newTab: return .plus
+        case .downloads: return .arrowCircleDown
+        case .themeToggle: return .sun
+        case .settings: return .gear
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .back: return "chevron.left"
@@ -95,6 +108,19 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
             return true
         case .newTab, .downloads, .themeToggle, .settings:
             return false
+        }
+    }
+}
+
+public extension Ph {
+    /// Returns the `.fill` variant for icons with natural fills, or `.bold` for stroke-only glyphs
+    /// where Phosphor's `.fill` is an inverted square tile (such as plus, x, minus, check).
+    var uiIcon: Image {
+        switch self {
+        case .plus, .x, .minus, .check:
+            return self.bold
+        default:
+            return self.fill
         }
     }
 }

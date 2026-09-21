@@ -1,3 +1,4 @@
+import PhosphorSwift
 import SwiftUI
 
 /// Restart-to-switch-engines dialog. Same card language as the popovers
@@ -29,8 +30,9 @@ struct EngineRestartDialog: View {
                             .stroke(store.adaptiveTheme.dropdownStroke, lineWidth: 0.5)
                     )
                     .frame(width: 44, height: 44)
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 18, weight: .medium))
+                Ph.arrowsCounterClockwise.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 18, height: 18)
                     .foregroundColor(store.adaptiveTheme.primaryText)
             }
             .padding(.bottom, 12)

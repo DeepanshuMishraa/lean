@@ -104,6 +104,7 @@
 		348F9050750E201B6AAB3176 /* run_file_dialog_callback_cpptoc.cc in Sources */ = {isa = PBXBuildFile; fileRef = BA97AFA7C77EE3001D4CE41D /* run_file_dialog_callback_cpptoc.cc */; };
 		34D779BF13915350F8A57C8E /* v8_backing_store_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = 4AEC2EE06D668B11347F1DF0 /* v8_backing_store_ctocpp.cc */; };
 		350927ACFD8A4BD0914368FC /* command_line_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = 5C301CB9FAEF70C952070EE1 /* command_line_ctocpp.cc */; };
+		36263F7E30E145458FFD8B1C /* PhosphorSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 89C25F9B0B6EF82E03127EF8 /* PhosphorSwift */; };
 		379182E53F46F6D592EA7A50 /* read_handler_cpptoc.cc in Sources */ = {isa = PBXBuildFile; fileRef = 2251BBDDABAD84EBF365DCC5 /* read_handler_cpptoc.cc */; };
 		381C35188388B8F87D863D12 /* cookie_visitor_cpptoc.cc in Sources */ = {isa = PBXBuildFile; fileRef = EB06F4E4006DA9A2F4141E51 /* cookie_visitor_cpptoc.cc */; };
 		3C148F2CAF286BDD2E6095F3 /* SettingsControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA97354673D3289795AA33C7 /* SettingsControls.swift */; };
@@ -144,6 +145,7 @@
 		4EFF4BA4EC7F87761CF70F06 /* media_sink_device_info_callback_cpptoc.cc in Sources */ = {isa = PBXBuildFile; fileRef = 134EEE4B0073537D6AC0AEFC /* media_sink_device_info_callback_cpptoc.cc */; };
 		4FD4C27A55760A60E55C5EBC /* api_version_test_scoped_library_child_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = 78BB9733B381BD622A567BD6 /* api_version_test_scoped_library_child_ctocpp.cc */; };
 		50541AD09DDEE5B327272D66 /* transfer_util.cc in Sources */ = {isa = PBXBuildFile; fileRef = 50E327168CF6EB4C2ACF475C /* transfer_util.cc */; };
+		5067C36A76BF7EFB08F60BC0 /* PhosphorSwift in Frameworks */ = {isa = PBXBuildFile; productRef = C1A105E24BF3B8F38A1EAB36 /* PhosphorSwift */; };
 		510DD86C20F775C3F5A542B7 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E72942590E49E85581DFAAC5 /* DownloadManager.swift */; };
 		5198C080F8A33C19A5D49992 /* post_data_element_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = 2769947A6FEF69B2ADDC9453 /* post_data_element_ctocpp.cc */; };
 		528B117F29C5A1E8019261C5 /* WebEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFEE1335003A4544272D347D /* WebEngine.swift */; };
@@ -793,6 +795,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				E1E4B3801476B9C153DE67AA /* Sparkle in Frameworks */,
+				36263F7E30E145458FFD8B1C /* PhosphorSwift in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CCC37DF03199B8293AABDDA3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5067C36A76BF7EFB08F60BC0 /* PhosphorSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1235,6 +1246,7 @@
 			buildConfigurationList = 515AA73AED7EF770EAB7BD23 /* Build configuration list for PBXNativeTarget "LeanTests" */;
 			buildPhases = (
 				6B04689857053EA066E0A32C /* Sources */,
+				CCC37DF03199B8293AABDDA3 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -1243,6 +1255,7 @@
 			);
 			name = LeanTests;
 			packageProductDependencies = (
+				C1A105E24BF3B8F38A1EAB36 /* PhosphorSwift */,
 			);
 			productName = LeanTests;
 			productReference = 6E77360D10ACD1A5D4909F84 /* LeanTests.xctest */;
@@ -1265,6 +1278,7 @@
 			name = Lean;
 			packageProductDependencies = (
 				35F2D4FF87DECD9F462CD726 /* Sparkle */,
+				89C25F9B0B6EF82E03127EF8 /* PhosphorSwift */,
 			);
 			productName = Lean;
 			productReference = AA93006FF8D0CD999AA120C4 /* Lean.app */;
@@ -1300,6 +1314,7 @@
 			mainGroup = 9412FC51AEFBF1C736151F97;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				68ADA17D7C833A2C9FA82550 /* XCRemoteSwiftPackageReference "swift" */,
 				6F8BD951BB759340237AA233 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -2170,6 +2185,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		68ADA17D7C833A2C9FA82550 /* XCRemoteSwiftPackageReference "swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/phosphor-icons/swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.1.0;
+			};
+		};
 		6F8BD951BB759340237AA233 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
@@ -2185,6 +2208,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 6F8BD951BB759340237AA233 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
+		};
+		89C25F9B0B6EF82E03127EF8 /* PhosphorSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 68ADA17D7C833A2C9FA82550 /* XCRemoteSwiftPackageReference "swift" */;
+			productName = PhosphorSwift;
+		};
+		C1A105E24BF3B8F38A1EAB36 /* PhosphorSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 68ADA17D7C833A2C9FA82550 /* XCRemoteSwiftPackageReference "swift" */;
+			productName = PhosphorSwift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

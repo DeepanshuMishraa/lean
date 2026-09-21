@@ -1,3 +1,4 @@
+import PhosphorSwift
 import SwiftUI
 
 struct OmnibarView: View {
@@ -100,8 +101,9 @@ struct OmnibarView: View {
     // MARK: - Input Header
     private var inputHeader: some View {
         HStack(spacing: 12) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 14, weight: .regular))
+            Ph.magnifyingGlass.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 14, height: 14)
                 .foregroundColor(store.isDarkMode ? Color.white.opacity(0.4) : Color.black.opacity(0.4))
 
             ZStack(alignment: .leading) {

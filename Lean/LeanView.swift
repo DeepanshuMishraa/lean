@@ -1,3 +1,4 @@
+import PhosphorSwift
 import SwiftUI
 import WebKit
 
@@ -686,8 +687,9 @@ struct LeanView: View {
 
     private var floatingFindBar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 12))
+            Ph.magnifyingGlass.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 12, height: 12)
                 .foregroundColor(store.themeColors.secondaryText)
 
             TextField("Find on page", text: $findQuery)
@@ -700,8 +702,9 @@ struct LeanView: View {
             Button {
                 store.selectedTab?.find(findQuery)
             } label: {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                Ph.caretDown.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 10, height: 10)
                     .foregroundColor(store.themeColors.secondaryText)
             }
             .buttonStyle(.plain)
@@ -711,8 +714,9 @@ struct LeanView: View {
                 store.showsFindBar = false
                 findQuery = ""
             } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .semibold))
+                Ph.x.bold
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 10, height: 10)
                     .foregroundColor(store.themeColors.secondaryText)
             }
             .buttonStyle(.plain)
@@ -760,8 +764,9 @@ private struct CEFCrashedView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 28, weight: .light))
+            Ph.warning.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 28, height: 28)
                 .foregroundColor(store.themeColors.secondaryText)
             Text("This page crashed")
                 .font(store.headingFont(size: 14))
@@ -804,8 +809,9 @@ private struct CEFUnavailableView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: "cpu")
-                .font(.system(size: 28, weight: .light))
+            Ph.cpu.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 28, height: 28)
                 .foregroundColor(store.themeColors.secondaryText)
             Text(isDerivedDataLaunch ? "Chromium can't render from here" : "Chromium engine not installed")
                 .font(store.headingFont(size: 14))

@@ -1,4 +1,5 @@
 import AppKit
+import PhosphorSwift
 import SwiftUI
 
 // MARK: - Sidebar View for Vertical Tabs
@@ -21,7 +22,7 @@ struct SidebarView: View {
                 Spacer().frame(width: 12)
 
                 InteractiveIconButton(
-                    systemImage: "sidebar.left",
+                    icon: .sidebar,
                     helpText: store.isSidebarCollapsed ? "Pin Sidebar (Always Expanded) (⌘S)" : "Enable Auto-hide (⌘S)",
                     size: 24,
                     iconSize: 13,
@@ -39,7 +40,7 @@ struct SidebarView: View {
                 Spacer().frame(width: 4)
 
                 InteractiveIconButton(
-                    systemImage: "arrow.left",
+                    icon: .arrowLeft,
                     helpText: "Back (⌘[)",
                     size: 24,
                     iconSize: 12,
@@ -57,7 +58,7 @@ struct SidebarView: View {
                 Spacer().frame(width: 4)
 
                 InteractiveIconButton(
-                    systemImage: "arrow.right",
+                    icon: .arrowRight,
                     helpText: "Forward (⌘])",
                     size: 24,
                     iconSize: 12,
@@ -76,7 +77,7 @@ struct SidebarView: View {
 
                 if store.selectedTab?.isLoading == true {
                     InteractiveIconButton(
-                        systemImage: "xmark",
+                        icon: .x,
                         helpText: "Stop Loading (Esc)",
                         size: 24,
                         iconSize: 12,
@@ -91,7 +92,7 @@ struct SidebarView: View {
                     }
                 } else {
                     InteractiveIconButton(
-                        systemImage: "arrow.clockwise",
+                        icon: .arrowClockwise,
                         helpText: "Reload (⌘R)",
                         size: 24,
                         iconSize: 12,
@@ -132,7 +133,7 @@ struct SidebarView: View {
                 Spacer()
 
                 InteractiveIconButton(
-                    systemImage: "plus",
+                    icon: .plus,
                     helpText: "New Tab (⌘T)",
                     size: 22,
                     iconSize: 11,
@@ -185,7 +186,7 @@ struct SidebarView: View {
                 Spacer()
 
                 InteractiveIconButton(
-                    systemImage: store.isDarkMode ? "sun.max.fill" : "moon.fill",
+                    icon: store.isDarkMode ? .sun : .moon,
                     helpText: store.isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
                     size: 24,
                     iconSize: 11.5,
@@ -201,7 +202,7 @@ struct SidebarView: View {
                 }
 
                 InteractiveIconButton(
-                    systemImage: "gearshape",
+                    icon: .gear,
                     helpText: "Settings (⌘,)",
                     size: 24,
                     iconSize: 11.5,
@@ -316,8 +317,9 @@ private struct SidebarAddressBar: View {
             VStack(spacing: 2) {
                 ForEach(Array(suggestions.prefix(6).enumerated()), id: \.element.id) { index, match in
                     HStack(spacing: 8) {
-                        Image(systemName: match.isSearch ? "magnifyingglass" : (match.isSwitchToTab ? "arrow.right.circle" : "globe"))
-                            .font(.system(size: 10.5))
+                        (match.isSearch ? Ph.magnifyingGlass.fill : (match.isSwitchToTab ? Ph.arrowCircleRight.fill : Ph.globe.fill))
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 12, height: 12)
                             .foregroundColor(store.adaptiveTheme.secondaryText)
                             .frame(width: 14)
 
@@ -364,8 +366,9 @@ private struct SidebarAddressBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11, weight: .medium))
+            Ph.magnifyingGlass.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 12, height: 12)
                 .foregroundColor(store.adaptiveTheme.secondaryText)
 
             addressField
@@ -376,8 +379,9 @@ private struct SidebarAddressBar: View {
                 Button {
                     text = ""
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
+                    Ph.xCircle.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 11, height: 11)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
                 }
                 .buttonStyle(.plain)
@@ -393,8 +397,9 @@ private struct SidebarAddressBar: View {
                         }
                     }
                 } label: {
-                    Image(systemName: didCopyLink ? "checkmark" : "link")
-                        .font(.system(size: 11.5, weight: .medium))
+                    (didCopyLink ? Ph.check.bold : Ph.copy.fill)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
                         .foregroundColor(didCopyLink ? Color.green : store.adaptiveTheme.secondaryText)
                         .frame(width: 20, height: 20)
                 }
@@ -508,8 +513,9 @@ struct SidebarTabItem: View {
                         onClose()
                     }
                 }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8.5, weight: .bold))
+                    Ph.x.bold
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 8.5, height: 8.5)
                         .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
                         .frame(width: 16, height: 16)
                         .background(
@@ -589,7 +595,7 @@ private struct SidebarTrafficLights: View {
             TrafficLightButton(
                 color: Color(red: 255/255, green: 95/255, blue: 87/255),
                 strokeColor: Color(red: 224/255, green: 68/255, blue: 62/255, opacity: 0.9),
-                symbol: "xmark",
+                symbol: .x,
                 symbolSize: 6,
                 isHoveringGroup: isHoveringAll,
                 isActive: isWindowActive,
@@ -604,7 +610,7 @@ private struct SidebarTrafficLights: View {
             TrafficLightButton(
                 color: Color(red: 255/255, green: 189/255, blue: 46/255),
                 strokeColor: Color(red: 222/255, green: 161/255, blue: 35/255, opacity: 0.9),
-                symbol: "minus",
+                symbol: .minus,
                 symbolSize: 6.5,
                 isHoveringGroup: isHoveringAll,
                 isActive: isWindowActive,
@@ -619,7 +625,7 @@ private struct SidebarTrafficLights: View {
             TrafficLightButton(
                 color: Color(red: 39/255, green: 201/255, blue: 63/255),
                 strokeColor: Color(red: 26/255, green: 171/255, blue: 41/255, opacity: 0.9),
-                symbol: "arrow.up.left.and.arrow.down.right",
+                symbol: .arrowsOutSimple,
                 symbolSize: 5.5,
                 isHoveringGroup: isHoveringAll,
                 isActive: isWindowActive,
@@ -649,7 +655,7 @@ private struct SidebarTrafficLights: View {
 private struct TrafficLightButton: View {
     let color: Color
     let strokeColor: Color
-    let symbol: String
+    let symbol: Ph
     let symbolSize: CGFloat
     let isHoveringGroup: Bool
     let isActive: Bool
@@ -684,8 +690,9 @@ private struct TrafficLightButton: View {
                     )
 
                 if isHoveringGroup && isActive {
-                    Image(systemName: symbol)
-                        .font(.system(size: symbolSize, weight: .bold))
+                    symbol.bold
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: symbolSize, height: symbolSize)
                         .foregroundColor(Color.black.opacity(0.65))
                 }
             }

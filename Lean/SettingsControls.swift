@@ -1,5 +1,6 @@
-import SwiftUI
 import AppKit
+import PhosphorSwift
+import SwiftUI
 
 // MARK: - Settings Group Container
 /// A continuous, quiet surface that groups related settings with subtle hairline borders and dividers.
@@ -149,8 +150,9 @@ struct SearchEngineBadgeView: View {
         case .duckDuckGo:
             ZStack {
                 Circle().fill(Color(red: 222/255, green: 88/255, blue: 51/255))
-                Image(systemName: "shield.fill")
-                    .font(.system(size: size * 0.55, weight: .bold))
+                Ph.shield.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size * 0.55, height: size * 0.55)
                     .foregroundColor(.white)
             }
         case .bing:
@@ -163,15 +165,17 @@ struct SearchEngineBadgeView: View {
         case .brave:
             ZStack {
                 Circle().fill(Color(red: 251/255, green: 84/255, blue: 43/255))
-                Image(systemName: "flame.fill")
-                    .font(.system(size: size * 0.55, weight: .bold))
+                Ph.fire.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size * 0.55, height: size * 0.55)
                     .foregroundColor(.white)
             }
         case .ecosia:
             ZStack {
                 Circle().fill(Color(red: 0/255, green: 138/255, blue: 94/255))
-                Image(systemName: "leaf.fill")
-                    .font(.system(size: size * 0.55, weight: .bold))
+                Ph.leaf.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size * 0.55, height: size * 0.55)
                     .foregroundColor(.white)
             }
         case .yahoo:
@@ -225,8 +229,9 @@ struct CustomDropdownButton<Leading: View>: View {
                     .font(font)
                     .foregroundColor(isDark ? Color(white: 0.94) : Color(white: 0.12))
 
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8.5, weight: .semibold))
+                Ph.caretDown.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 9, height: 9)
                     .foregroundColor(isDark ? Color.white.opacity(0.50) : Color.black.opacity(0.45))
                     .rotationEffect(.degrees(isPresented ? 180 : 0))
             }
@@ -238,7 +243,7 @@ struct CustomDropdownButton<Leading: View>: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6.5, style: .continuous)
-                    .stroke(buttonBorder, lineWidth: 0.5)
+                    .stroke(buttonBorder, lineWidth: 0.75)
             )
         }
         .buttonStyle(.plain)
@@ -327,8 +332,9 @@ struct CustomDropdownItemRow<Leading: View>: View {
                 Spacer(minLength: 8)
 
                 if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 9.5, weight: .bold))
+                    Ph.check.bold
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 10, height: 10)
                         .foregroundColor(isDark ? Color.white : Color.black)
                 }
             }
@@ -515,9 +521,9 @@ struct FontPickerRow: View {
 struct SegmentOption: Identifiable {
     let id: String
     let label: String
-    let icon: String?
+    let icon: Ph?
 
-    init(id: String, label: String, icon: String? = nil) {
+    init(id: String, label: String, icon: Ph? = nil) {
         self.id = id
         self.label = label
         self.icon = icon
@@ -557,8 +563,9 @@ struct CustomSegmentedPicker: View {
                 } label: {
                     HStack(spacing: 6) {
                         if let icon = opt.icon {
-                            Image(systemName: icon)
-                                .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
+                            icon.fill
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 12, height: 12)
                         }
                         Text(opt.label)
                             .font(uiFont.font(size: 12, weight: isSelected ? .semibold : .medium))

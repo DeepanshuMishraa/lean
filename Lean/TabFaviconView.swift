@@ -1,3 +1,4 @@
+import PhosphorSwift
 import SwiftUI
 
 struct TabFaviconView: View {
@@ -27,19 +28,22 @@ struct TabFaviconView: View {
     @ViewBuilder
     private var fallbackIcon: some View {
         if tab.isSettingsPage {
-            Image(systemName: "gearshape")
-                .font(.system(size: size * 0.85, weight: .semibold))
+            Ph.browser.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
         } else if tab.url == nil {
-            Image(systemName: "globe")
-                .font(.system(size: size * 0.85, weight: .regular))
-                .foregroundColor(isDark ? Color.white.opacity(0.4) : Color.black.opacity(0.4))
+            Ph.browser.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.85, height: size * 0.85)
+                .foregroundColor(isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
         } else if host.contains("youtube") || host.contains("youtu.be") {
             ZStack {
                 RoundedRectangle(cornerRadius: 2.5, style: .continuous)
                     .fill(Color(red: 255/255, green: 0, blue: 0))
-                Image(systemName: "play.fill")
-                    .font(.system(size: size * 0.45, weight: .bold))
+                Ph.play.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size * 0.45, height: size * 0.45)
                     .foregroundColor(.white)
                     .offset(x: 0.5)
             }
@@ -51,8 +55,9 @@ struct TabFaviconView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(isDark ? Color.white : Color.black)
-                Image(systemName: "chevron.left.forwardslash.chevron.right")
-                    .font(.system(size: size * 0.5, weight: .black))
+                Ph.code.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size * 0.5, height: size * 0.5)
                     .foregroundColor(isDark ? Color.black : Color.white)
             }
         } else if host.contains("google") {
@@ -64,28 +69,34 @@ struct TabFaviconView: View {
                     .foregroundColor(.white)
             }
         } else if host.contains("apple") {
-            Image(systemName: "apple.logo")
-                .font(.system(size: size * 0.85, weight: .semibold))
+            Ph.appleLogo.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(isDark ? Color.white : Color.black)
         } else if host.contains("discord") {
-            Image(systemName: "bubble.left.and.bubble.right.fill")
-                .font(.system(size: size * 0.8, weight: .semibold))
+            Ph.chats.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.8, height: size * 0.8)
                 .foregroundColor(Color(red: 88/255, green: 101/255, blue: 242/255))
         } else if host.contains("slack") {
-            Image(systemName: "number")
-                .font(.system(size: size * 0.85, weight: .black))
+            Ph.hash.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(Color(red: 224/255, green: 30/255, blue: 90/255))
         } else if host.contains("claude") || host.contains("anthropic") {
-            Image(systemName: "sparkles")
-                .font(.system(size: size * 0.85, weight: .semibold))
+            Ph.sparkle.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(Color(red: 217/255, green: 119/255, blue: 87/255))
         } else if host.contains("cloudflare") {
-            Image(systemName: "cloud.fill")
-                .font(.system(size: size * 0.8, weight: .semibold))
+            Ph.cloud.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.8, height: size * 0.8)
                 .foregroundColor(Color(red: 243/255, green: 128/255, blue: 32/255))
         } else if host.contains("reddit") {
-            Image(systemName: "circle.circle.fill")
-                .font(.system(size: size * 0.85, weight: .bold))
+            Ph.redditLogo.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(Color(red: 255/255, green: 69/255, blue: 0))
         } else if !host.isEmpty {
             // Initial letter badge
@@ -98,9 +109,10 @@ struct TabFaviconView: View {
                     .foregroundColor(isDark ? Color.white.opacity(0.8) : Color.black.opacity(0.7))
             }
         } else {
-            Image(systemName: "globe")
-                .font(.system(size: size * 0.85, weight: .regular))
-                .foregroundColor(isDark ? Color.white.opacity(0.4) : Color.black.opacity(0.4))
+            Ph.browser.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.85, height: size * 0.85)
+                .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
         }
     }
 }
@@ -142,19 +154,22 @@ struct SiteFaviconView: View {
     @ViewBuilder
     private var fallbackIcon: some View {
         if let url = url, url.absoluteString.hasPrefix("lean://settings") {
-            Image(systemName: "gearshape")
-                .font(.system(size: size * 0.85, weight: .semibold))
+            Ph.browser.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
         } else if url == nil {
-            Image(systemName: "globe")
-                .font(.system(size: size * 0.85, weight: .regular))
-                .foregroundColor(isDark ? Color.white.opacity(0.4) : Color.black.opacity(0.4))
+            Ph.browser.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.85, height: size * 0.85)
+                .foregroundColor(isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
         } else if host.contains("youtube") || host.contains("youtu.be") {
             ZStack {
                 RoundedRectangle(cornerRadius: 2.5, style: .continuous)
                     .fill(Color(red: 255/255, green: 0, blue: 0))
-                Image(systemName: "play.fill")
-                    .font(.system(size: size * 0.45, weight: .bold))
+                Ph.play.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size * 0.45, height: size * 0.45)
                     .foregroundColor(.white)
                     .offset(x: 0.5)
             }
@@ -166,8 +181,9 @@ struct SiteFaviconView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(isDark ? Color.white : Color.black)
-                Image(systemName: "chevron.left.forwardslash.chevron.right")
-                    .font(.system(size: size * 0.5, weight: .black))
+                Ph.code.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size * 0.5, height: size * 0.5)
                     .foregroundColor(isDark ? Color.black : Color.white)
             }
         } else if host.contains("google") {
@@ -179,28 +195,34 @@ struct SiteFaviconView: View {
                     .foregroundColor(.white)
             }
         } else if host.contains("apple") {
-            Image(systemName: "apple.logo")
-                .font(.system(size: size * 0.85, weight: .semibold))
+            Ph.appleLogo.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(isDark ? Color.white : Color.black)
         } else if host.contains("discord") {
-            Image(systemName: "bubble.left.and.bubble.right.fill")
-                .font(.system(size: size * 0.8, weight: .semibold))
+            Ph.chats.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.8, height: size * 0.8)
                 .foregroundColor(Color(red: 88/255, green: 101/255, blue: 242/255))
         } else if host.contains("slack") {
-            Image(systemName: "number")
-                .font(.system(size: size * 0.85, weight: .black))
+            Ph.hash.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(Color(red: 224/255, green: 30/255, blue: 90/255))
         } else if host.contains("claude") || host.contains("anthropic") {
-            Image(systemName: "sparkles")
-                .font(.system(size: size * 0.85, weight: .semibold))
+            Ph.sparkle.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(Color(red: 217/255, green: 119/255, blue: 87/255))
         } else if host.contains("cloudflare") {
-            Image(systemName: "cloud.fill")
-                .font(.system(size: size * 0.8, weight: .semibold))
+            Ph.cloud.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.8, height: size * 0.8)
                 .foregroundColor(Color(red: 243/255, green: 128/255, blue: 32/255))
         } else if host.contains("reddit") {
-            Image(systemName: "circle.circle.fill")
-                .font(.system(size: size * 0.85, weight: .bold))
+            Ph.redditLogo.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(Color(red: 255/255, green: 69/255, blue: 0))
         } else if !host.isEmpty {
             let initial = String(host.prefix(1)).uppercased()
@@ -212,9 +234,10 @@ struct SiteFaviconView: View {
                     .foregroundColor(isDark ? Color.white.opacity(0.8) : Color.black.opacity(0.7))
             }
         } else {
-            Image(systemName: "globe")
-                .font(.system(size: size * 0.85, weight: .regular))
-                .foregroundColor(isDark ? Color.white.opacity(0.4) : Color.black.opacity(0.4))
+            Ph.browser.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.85, height: size * 0.85)
+                .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
         }
     }
 }

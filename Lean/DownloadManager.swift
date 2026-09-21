@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import PhosphorSwift
 
 enum DownloadState: String, Codable, Equatable {
     case downloading
@@ -372,6 +373,23 @@ enum DownloadFormat {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    static func icon(for fileName: String) -> Ph {
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        switch ext {
+        case "pdf": return .filePdf
+        case "zip", "gz", "tar", "rar", "7z", "dmg": return .fileArchive
+        case "png", "jpg", "jpeg", "gif", "webp", "svg", "heic": return .fileImage
+        case "mp4", "mov", "mkv", "webm": return .fileVideo
+        case "mp3", "wav", "flac", "m4a", "ogg": return .fileAudio
+        case "doc", "docx", "txt", "md", "rtf": return .fileText
+        case "xls", "xlsx", "csv": return .fileCsv
+        case "ppt", "pptx", "key": return .filePpt
+        case "app": return .appWindow
+        case "pkg": return .package
+        default: return .file
+        }
     }
 
     static func systemImage(for fileName: String) -> String {

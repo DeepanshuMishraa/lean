@@ -1,3 +1,4 @@
+import PhosphorSwift
 import SwiftUI
 
 struct TopBarView: View {
@@ -28,7 +29,7 @@ struct TopBarView: View {
 
                     if store.isToolbarItemShown(.newTab) {
                         InteractiveIconButton(
-                            systemImage: "plus",
+                            icon: .plus,
                             helpText: "New Tab (⌘T)",
                             size: store.enableWindowBorder ? 26 : 24,
                             iconSize: 11,
@@ -94,7 +95,7 @@ struct TopBarView: View {
                     HStack(spacing: 2) {
                         if showBack {
                             InteractiveIconButton(
-                                systemImage: "chevron.left",
+                                icon: .caretLeft,
                                 helpText: "Back (⌘[)",
                                 size: 24,
                                 iconSize: 12,
@@ -112,7 +113,7 @@ struct TopBarView: View {
 
                         if showForward {
                             InteractiveIconButton(
-                                systemImage: "chevron.right",
+                                icon: .caretRight,
                                 helpText: "Forward (⌘])",
                                 size: 24,
                                 iconSize: 12,
@@ -130,7 +131,7 @@ struct TopBarView: View {
 
                         if showReload {
                             InteractiveIconButton(
-                                systemImage: "arrow.clockwise",
+                                icon: .arrowClockwise,
                                 helpText: "Reload (⌘R)",
                                 size: 24,
                                 iconSize: 12,
@@ -174,7 +175,7 @@ struct TopBarView: View {
 
                     if showTheme {
                         InteractiveIconButton(
-                            systemImage: store.isDarkMode ? "sun.max.fill" : "moon.fill",
+                            icon: store.isDarkMode ? .sun : .moon,
                             helpText: store.isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
                             size: 24,
                             iconSize: 12,
@@ -193,7 +194,7 @@ struct TopBarView: View {
 
                     if showSettings {
                         InteractiveIconButton(
-                            systemImage: "gearshape",
+                            icon: .gear,
                             helpText: "Settings (⌘,)",
                             size: 24,
                             iconSize: 12,
@@ -415,8 +416,9 @@ private struct TopBarTabItem: View {
                 onClose()
             }
         }) {
-            Image(systemName: "xmark")
-                .font(.system(size: 8.5, weight: .bold))
+            Ph.x.bold
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 8, height: 8)
                 .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
                 .frame(width: 14, height: 14)
                 .background(
@@ -457,13 +459,13 @@ struct InlineURLBar: View {
         )
     }
 
-    private func suggestionIcon(for match: OmnibarSuggestion) -> String {
+    private func suggestionIcon(for match: OmnibarSuggestion) -> Ph {
         if match.isSearch {
-            return "magnifyingglass"
+            return .magnifyingGlass
         } else if match.isSwitchToTab {
-            return "arrow.right.circle"
+            return .arrowCircleRight
         } else {
-            return "globe"
+            return .globe
         }
     }
 
@@ -500,8 +502,9 @@ struct InlineURLBar: View {
 
             if !text.isEmpty {
                 Button(action: onClose) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 10))
+                    Ph.xCircle.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 11, height: 11)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
                 }
                 .buttonStyle(.plain)
@@ -640,15 +643,16 @@ struct InlineURLBar: View {
 
 struct InlineSuggestionRow: View {
     let match: OmnibarSuggestion
-    let icon: String
+    let icon: Ph
     let isSelected: Bool
     let store: LeanStore
     let onSelect: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 11))
+            icon.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 12, height: 12)
                 .foregroundColor(store.adaptiveTheme.secondaryText)
                 .frame(width: 14)
 
@@ -678,7 +682,7 @@ struct InlineSuggestionRow: View {
 }
 
 struct InteractiveIconButton: View {
-    let systemImage: String
+    let icon: Ph
     let helpText: String
     let size: CGFloat
     let iconSize: CGFloat
@@ -716,8 +720,9 @@ struct InteractiveIconButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: iconSize, weight: .medium))
+            icon.uiIcon
+                .aspectRatio(contentMode: .fit)
+                .frame(width: iconSize, height: iconSize)
                 .foregroundColor(foregroundColor)
                 .frame(width: size, height: size)
                 .background(
@@ -790,8 +795,9 @@ struct DownloadToolbarButton: View {
             }
         } label: {
             ZStack {
-                Image(systemName: hasActive || store.isDownloadsPresented ? "arrow.down.circle.fill" : "arrow.down.circle")
-                    .font(.system(size: 12, weight: .medium))
+                Ph.arrowCircleDown.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 13, height: 13)
                     .foregroundColor(foregroundColor)
                     .frame(width: 24, height: 24)
                     .background(
@@ -981,7 +987,7 @@ struct QuickSettingsPopover: View {
             // Quick Toggles starting directly from Zen mode
             VStack(spacing: 2) {
                 QuickToggleItem(
-                    icon: "slider.horizontal.3",
+                    icon: .slidersHorizontal,
                     title: "Zen mode",
                     isOn: $store.enableZenMode,
                     isDark: store.isDarkMode,
@@ -991,7 +997,7 @@ struct QuickSettingsPopover: View {
 
                 if store.tabLayout != .sidebar {
                     QuickToggleItem(
-                        icon: "macwindow",
+                        icon: .browser,
                         title: "Window frame",
                         isOn: $store.enableWindowBorder,
                         isDark: store.isDarkMode,
@@ -1001,7 +1007,7 @@ struct QuickSettingsPopover: View {
                 }
 
                 QuickToggleItem(
-                    icon: "shield.fill",
+                    icon: .shield,
                     title: "Ad & tracker filter",
                     isOn: $store.adBlockingEnabled,
                     isDark: store.isDarkMode,
@@ -1011,7 +1017,7 @@ struct QuickSettingsPopover: View {
                 )
 
                 QuickToggleItem(
-                    icon: "computermouse.fill",
+                    icon: .mouse,
                     title: "Smooth scrolling",
                     isOn: $store.smoothScrollingEnabled,
                     isDark: store.isDarkMode,
@@ -1054,16 +1060,18 @@ struct QuickSettingsPopover: View {
                     store.openSettings()
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 11, weight: .medium))
+                        Ph.gear.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 12, height: 12)
                         Text("All Settings...")
                             .font(store.headingFont(size: 12))
                         Spacer()
                         Text("⌘,")
                             .font(.system(size: 10, weight: .semibold, design: .monospaced))
                             .foregroundColor(store.adaptiveTheme.secondaryText)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 8, weight: .semibold))
+                        Ph.caretRight.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 8, height: 8)
                             .foregroundColor(store.adaptiveTheme.secondaryText)
                     }
                     .foregroundColor(store.adaptiveTheme.primaryText)
@@ -1118,8 +1126,9 @@ struct QuickSettingsHistoryRow: View {
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 8) {
-                Image(systemName: "clock")
-                    .font(.system(size: 11, weight: .medium))
+                Ph.clock.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 12, height: 12)
                     .foregroundColor(isDark ? Color.white.opacity(0.70) : Color.black.opacity(0.60))
                     .frame(width: 16)
 
@@ -1129,8 +1138,9 @@ struct QuickSettingsHistoryRow: View {
 
                 Spacer()
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
+                Ph.caretRight.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 8, height: 8)
                     .foregroundColor(isDark ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
             }
             .padding(.horizontal, 8)
@@ -1165,8 +1175,9 @@ struct QuickSettingsHistorySubmenu: View {
 
             if recentItems.isEmpty {
                 HStack(spacing: 8) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 11))
+                    Ph.clock.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
                         .frame(width: 14)
                     Text("No Recent History")
@@ -1200,8 +1211,9 @@ struct QuickSettingsHistorySubmenu: View {
             // Option to view all which opens the history tab in the settings
             Button(action: onOpenHistoryTab) {
                 HStack(spacing: 8) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 11, weight: .medium))
+                    Ph.clockCounterClockwise.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
                         .frame(width: 14)
 
@@ -1211,8 +1223,9 @@ struct QuickSettingsHistorySubmenu: View {
 
                     Spacer()
 
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
+                    Ph.caretRight.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 8, height: 8)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
                 }
                 .padding(.horizontal, 8)
@@ -1317,7 +1330,7 @@ private struct QuickSettingsHistorySubmenuItem: View {
 
 // MARK: - Quick Toggle Item
 struct QuickToggleItem: View {
-    let icon: String
+    let icon: Ph
     let title: String
     @Binding var isOn: Bool
     let isDark: Bool
@@ -1334,8 +1347,9 @@ struct QuickToggleItem: View {
             }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .medium))
+                icon.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 13, height: 13)
                     .foregroundColor(
                         isOn
                             ? (accentColor ?? (isDark ? Color.white : Color.black))

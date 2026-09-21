@@ -50,6 +50,11 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)zoomIn;
 - (void)zoomOut;
 - (void)resetZoom;
+- (void)focus;
+
+/// Captures the visible page through Chromium's compositor.
+- (void)captureSnapshotWithCompletion:(void (^)(NSData *_Nullable imageData))completion
+    NS_SWIFT_NAME(captureSnapshot(completion:));
 
 /// Complete a pending JS dialog / auth / media request by id.
 - (void)completeJSDialog:(long long)dialogId ok:(BOOL)ok text:(nullable NSString *)text;

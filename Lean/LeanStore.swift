@@ -916,8 +916,7 @@ final class LeanStore: ObservableObject {
         isFloatingOmnibarVisible = false
         floatingPaletteFrame = .zero
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
-            tab.webView.window?.makeFirstResponder(tab.webView)
+            self?.selectedTab?.focusContent()
         }
     }
 
@@ -935,13 +934,18 @@ final class LeanStore: ObservableObject {
         inlineURLBarFrame = .zero
         inlineSuggestionsFrame = .zero
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
-            tab.webView.evaluateJavaScript("window.getSelection()?.removeAllRanges()", completionHandler: nil)
-            tab.webView.window?.makeFirstResponder(tab.webView)
+            guard let tab = self?.selectedTab else { return }
+            if tab.engineKind == .webKit {
+                tab.webView.evaluateJavaScript("window.getSelection()?.removeAllRanges()", completionHandler: nil)
+            }
+            tab.focusContent()
         }
     }
 
     func switchToTab(id: LeanTab.ID) {
+        // Preserve the outgoing page's preview: its CEF/WK view detaches on
+        // switch, after which it can no longer be snapshotted.
+        selectedTab?.captureSnapshot()
         isFloatingOmnibarVisible = false
         isNewTabOmnibarFloating = false
         isInlineURLEditing = false
@@ -951,8 +955,7 @@ final class LeanStore: ObservableObject {
         selectedID = id
         saveSession()
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
-            tab.webView.window?.makeFirstResponder(tab.webView)
+            self?.selectedTab?.focusContent()
         }
     }
 
@@ -960,12 +963,12 @@ final class LeanStore: ObservableObject {
         guard tabs.count > 1,
               let selectedID,
               let index = tabs.firstIndex(where: { $0.id == selectedID }) else { return }
+        selectedTab?.captureSnapshot()
         let offset = reverse ? tabs.count - 1 : 1
         self.selectedID = tabs[(index + offset) % tabs.count].id
         saveSession()
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
-            tab.webView.window?.makeFirstResponder(tab.webView)
+            self?.selectedTab?.focusContent()
         }
     }
 
@@ -973,8 +976,12 @@ final class LeanStore: ObservableObject {
         guard !tabs.isEmpty else { return }
         let index = number == 9 ? tabs.count - 1 : number - 1
         guard tabs.indices.contains(index) else { return }
+        selectedTab?.captureSnapshot()
         selectedID = tabs[index].id
         saveSession()
+        DispatchQueue.main.async { [weak self] in
+            self?.selectedTab?.focusContent()
+        }
     }
 
     // MARK: - Ctrl+Tab Switcher Navigation
@@ -988,13 +995,6 @@ final class LeanStore: ObservableObject {
     func startTabSwitcher(reverse: Bool = false) {
         let validTabs = switcherTabs
         guard !validTabs.isEmpty else { return }
-
-        // If thumbnail previews are enabled, capture snapshot asynchronously in background so switcher opens with 0ms lag
-        if enableThumbnailsInTabSwitcher {
-            DispatchQueue.main.async { [weak self] in
-                self?.selectedTab?.captureSnapshot()
-            }
-        }
 
         if !isTabSwitcherVisible {
             isTabSwitcherVisible = true
@@ -1020,6 +1020,9 @@ final class LeanStore: ObservableObject {
         if validTabs.indices.contains(switcherSelectedIndex) {
             selectedID = validTabs[switcherSelectedIndex].id
             saveSession()
+            DispatchQueue.main.async { [weak self] in
+                self?.selectedTab?.focusContent()
+            }
         }
     }
 

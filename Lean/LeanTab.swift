@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import WebKit
 
 @MainActor
@@ -462,6 +463,14 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.pageZoom = 1
     }
 
+    func focusContent() {
+        if let cef = cefHost {
+            cef.focus()
+        } else {
+            webView.window?.makeFirstResponder(webView)
+        }
+    }
+
     func find(_ query: String) {
         guard !query.isEmpty else { return }
         if let cef = cefHost { cef.find(query); return }
@@ -469,12 +478,40 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     func captureSnapshot() {
+        if engineKind == .cef {
+            captureCEFSnapshot()
+            return
+        }
         guard webView.bounds.width > 0 && webView.bounds.height > 0 else { return }
         let config = WKSnapshotConfiguration()
         config.snapshotWidth = 440 // High DPI thumbnail width
         webView.takeSnapshot(with: config) { [weak self] image, _ in
             guard let self, let image else { return }
             self.snapshot = image
+        }
+    }
+
+    /// CEF renders into a GPU surface that macOS window capture returns as
+    /// black. Ask Chromium's compositor for the page image instead.
+    private func captureCEFSnapshot() {
+        guard url != nil, !isSettingsPage, let cefHost else { return }
+        cefHost.captureSnapshot { [weak self] data in
+            guard let self, let data,
+                  let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  let image = CGImageSourceCreateThumbnailAtIndex(
+                    source,
+                    0,
+                    [
+                        kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceCreateThumbnailWithTransform: true,
+                        kCGImageSourceThumbnailMaxPixelSize: 440
+                    ] as CFDictionary
+                  )
+            else { return }
+            self.snapshot = NSImage(
+                cgImage: image,
+                size: NSSize(width: image.width, height: image.height)
+            )
         }
     }
 
@@ -926,6 +963,11 @@ extension LeanTab {
             self.canGoBack = back
             self.canGoForward = forward
             self.onStateChange?()
+            if !loading {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    self?.captureSnapshot()
+                }
+            }
         }
         host.onFaviconURLs = { [weak self] urls in
             guard let self else { return }

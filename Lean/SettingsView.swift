@@ -22,7 +22,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .topBar: return .layout
         case .appearance: return .palette
         case .tabs: return .tabs
-        case .browsing: return .globe
+        case .browsing: return .compass
         case .privacy: return .shield
         case .shortcuts: return .command
         case .history: return .clock
@@ -152,49 +152,18 @@ struct SettingsView: View {
             // Category Items
             VStack(spacing: 3) {
                 ForEach(SettingsCategory.allCases) { category in
-                    let isSelected = category == selectedCategory
-                    Button {
+                    SidebarCategoryButton(
+                        category: category,
+                        isSelected: category == selectedCategory,
+                        isDark: store.isDarkMode,
+                        primaryText: primaryText,
+                        headingFont: store.headingFont,
+                        namespace: sidebarAnimation
+                    ) {
                         withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
                             selectedCategory = category
                         }
-                    } label: {
-                        HStack(spacing: 10) {
-                            category.icon.fill
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 14, height: 14)
-                                .foregroundColor(
-                                    isSelected
-                                        ? primaryText
-                                        : (store.isDarkMode ? Color.white.opacity(0.55) : Color.black.opacity(0.50))
-                                )
-                                .frame(width: 18)
-
-                            Text(category.rawValue)
-                                .font(store.headingFont(size: 13))
-                                .foregroundColor(
-                                    isSelected
-                                        ? primaryText
-                                        : (store.isDarkMode ? Color.white.opacity(0.65) : Color.black.opacity(0.60))
-                                )
-
-                            Spacer()
-                        }
-                        .padding(.horizontal, 12)
-                        .frame(height: 32)
-                        .background {
-                            if isSelected {
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .fill(store.isDarkMode ? Color.white.opacity(0.09) : Color.black.opacity(0.06))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                            .stroke(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04), lineWidth: 0.5)
-                                    )
-                                    .matchedGeometryEffect(id: "activeSidebarCategory", in: sidebarAnimation)
-                            }
-                        }
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 10)
@@ -215,39 +184,18 @@ struct SettingsView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
                 ForEach(SettingsCategory.allCases) { category in
-                    let isSelected = category == selectedCategory
-                    Button {
+                    CompactCategoryButton(
+                        category: category,
+                        isSelected: category == selectedCategory,
+                        isDark: store.isDarkMode,
+                        primaryText: primaryText,
+                        headingFont: store.headingFont,
+                        namespace: compactAnimation
+                    ) {
                         withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
                             selectedCategory = category
                         }
-                    } label: {
-                        HStack(spacing: 6) {
-                            category.icon.fill
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 12, height: 12)
-                            Text(category.rawValue)
-                        }
-                        .font(store.headingFont(size: 12))
-                        .foregroundColor(
-                            isSelected
-                                ? primaryText
-                                : (store.isDarkMode ? Color.white.opacity(0.50) : Color.black.opacity(0.50))
-                        )
-                        .padding(.horizontal, 12)
-                        .frame(height: 30)
-                        .background {
-                            if isSelected {
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .fill(store.isDarkMode ? Color.white.opacity(0.12) : Color.black.opacity(0.07))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                            .stroke(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05), lineWidth: 0.5)
-                                    )
-                                    .matchedGeometryEffect(id: "activeCompactCategory", in: compactAnimation)
-                            }
-                        }
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)
@@ -1412,7 +1360,7 @@ private struct BrowsingSection: View {
 
                 CustomSegmentedPicker(
                     options: [
-                        SegmentOption(id: BrowserEngineKind.webKit.rawValue, label: "WebKit", icon: .globe),
+                        SegmentOption(id: BrowserEngineKind.webKit.rawValue, label: "WebKit", icon: .compass),
                         SegmentOption(id: BrowserEngineKind.cef.rawValue, label: "Chromium", icon: .cpu)
                     ],
                     selectedId: store.engineKind.rawValue,
@@ -2410,7 +2358,7 @@ private struct SettingsIconButton: View {
 
     var body: some View {
         Button(action: action) {
-            icon.fill
+            icon.uiIcon
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 11, height: 11)
                 .foregroundColor(store.isDarkMode ? Color.white.opacity(0.7) : Color.black.opacity(0.65))
@@ -2419,8 +2367,128 @@ private struct SettingsIconButton: View {
                     store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05),
                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                 )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .help(help)
+    }
+}
+
+// MARK: - Sidebar Category Button
+private struct SidebarCategoryButton: View {
+    let category: SettingsCategory
+    let isSelected: Bool
+    let isDark: Bool
+    let primaryText: Color
+    let headingFont: (CGFloat) -> Font
+    let namespace: Namespace.ID
+    let onSelect: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 10) {
+                category.icon.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 14, height: 14)
+                    .foregroundColor(
+                        isSelected
+                            ? primaryText
+                            : (isHovered ? primaryText : (isDark ? Color.white.opacity(0.55) : Color.black.opacity(0.50)))
+                    )
+                    .frame(width: 18)
+
+                Text(category.rawValue)
+                    .font(headingFont(13))
+                    .foregroundColor(
+                        isSelected
+                            ? primaryText
+                            : (isHovered ? primaryText : (isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.60)))
+                    )
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 32)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(isDark ? Color.white.opacity(0.09) : Color.black.opacity(0.06))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .stroke(isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04), lineWidth: 0.5)
+                        )
+                        .matchedGeometryEffect(id: "activeSidebarCategory", in: namespace)
+                } else if isHovered {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.035))
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.12)) {
+                isHovered = hovering
+            }
+        }
+    }
+}
+
+// MARK: - Compact Category Button
+private struct CompactCategoryButton: View {
+    let category: SettingsCategory
+    let isSelected: Bool
+    let isDark: Bool
+    let primaryText: Color
+    let headingFont: (CGFloat) -> Font
+    let namespace: Namespace.ID
+    let onSelect: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 6) {
+                category.icon.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 12, height: 12)
+                Text(category.rawValue)
+            }
+            .font(headingFont(12))
+            .foregroundColor(
+                isSelected
+                    ? primaryText
+                    : (isHovered ? primaryText : (isDark ? Color.white.opacity(0.50) : Color.black.opacity(0.50)))
+            )
+            .padding(.horizontal, 12)
+            .frame(height: 30)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.07))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .stroke(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.05), lineWidth: 0.5)
+                        )
+                        .matchedGeometryEffect(id: "activeCompactCategory", in: namespace)
+                } else if isHovered {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.035))
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.12)) {
+                isHovered = hovering
+            }
+        }
     }
 }

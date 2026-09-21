@@ -243,17 +243,10 @@ private struct BrandFaviconView: View {
             SearchEngineFaviconView(engine: match.searchEngine ?? .google, isDark: isDark)
 
         case .generic:
-            if match.isSwitchToTab {
-                Ph.browser.fill
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 13, height: 13)
-                    .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
-            } else {
-                Ph.globe.fill
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 13, height: 13)
-                    .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
-            }
+            Ph.browser.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 13, height: 13)
+                .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
         }
     }
 }
@@ -270,7 +263,7 @@ private struct SearchEngineFaviconView: View {
                     .resizable()
                     .scaledToFit()
             } else {
-                Ph.globe.fill
+                Ph.browser.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 13, height: 13)
                     .foregroundColor(isDark ? .white.opacity(0.7) : .black.opacity(0.55))

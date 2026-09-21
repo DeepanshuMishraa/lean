@@ -435,6 +435,17 @@ struct LeanView: View {
         store.enableWindowBorder ? store.windowBorderWidth : 0
     }
 
+    private var acceptsCEFInput: Bool {
+        !store.isFloatingOmnibarVisible
+            && !store.isQuickSettingsPresented
+            && !store.isDownloadsPresented
+            && !store.isEngineRestartDialogPresented
+            && !store.isTabSwitcherVisible
+            && !store.isInlineURLEditing
+            && !store.showsFindBar
+            && !(store.tabLayout == .sidebar && store.isSidebarCollapsed && isSidebarEffectivelyVisible)
+    }
+
     private var mainContentCard: some View {
         ZStack {
             (store.enableWindowBorder ? Color.clear : store.themeColors.windowBackground)
@@ -468,7 +479,7 @@ struct LeanView: View {
                                 CEFCrashedView(tab: tab, store: store)
                                     .id(tab.id)
                             } else {
-                                CEFEngineView(tab: tab)
+                                CEFEngineView(tab: tab, acceptsInput: acceptsCEFInput)
                                     .id(tab.id)
                             }
                         } else if tab.engineKind == .cef {
@@ -866,7 +877,12 @@ private struct WindowConfigurator: NSViewRepresentable {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.styleMask.insert(.fullSizeContentView)
-        window.isMovableByWindowBackground = true
+        // Never use window-wide background dragging: with fullSizeContentView
+        // it makes AppKit treat presses on SwiftUI controls as potential
+        // window drags, so every button needs unnaturally still, repeated
+        // clicks to fire. Dragging is owned explicitly by WindowDragView
+        // surfaces behind the top bar / sidebar empty areas instead.
+        window.isMovableByWindowBackground = false
         window.isReleasedWhenClosed = false
         window.backgroundColor = store.enableWindowBorder
             ? NSColor(store.effectiveZenColor)

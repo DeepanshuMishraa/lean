@@ -109,11 +109,11 @@ struct SidebarView: View {
                 }
 
                 Spacer(minLength: 0)
+                    .background(WindowDragView())
             }
             .frame(height: 36)
             .padding(.top, 4)
             .padding(.trailing, 8)
-            .background(WindowDragView())
 
             // 2. Full-Width Interactive Omnibar / Address Field
             SidebarAddressBar(store: store)
@@ -135,8 +135,8 @@ struct SidebarView: View {
                 InteractiveIconButton(
                     icon: .plus,
                     helpText: "New Tab (⌘T)",
-                    size: 22,
-                    iconSize: 11,
+                    size: 24,
+                    iconSize: 12,
                     color: store.adaptiveTheme.secondaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
                     hoverBackground: store.adaptiveTheme.iconHoverBackground,
@@ -317,7 +317,7 @@ private struct SidebarAddressBar: View {
             VStack(spacing: 2) {
                 ForEach(Array(suggestions.prefix(6).enumerated()), id: \.element.id) { index, match in
                     HStack(spacing: 8) {
-                        (match.isSearch ? Ph.magnifyingGlass.fill : (match.isSwitchToTab ? Ph.arrowCircleRight.fill : Ph.globe.fill))
+                        (match.isSearch ? Ph.magnifyingGlass.fill : (match.isSwitchToTab ? Ph.arrowCircleRight.fill : Ph.browser.fill))
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 12, height: 12)
                             .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -383,8 +383,11 @@ private struct SidebarAddressBar: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 11, height: 11)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
             } else if store.selectedTab?.url != nil {
                 // Copy link button
                 Button {
@@ -401,9 +404,11 @@ private struct SidebarAddressBar: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 12, height: 12)
                         .foregroundColor(didCopyLink ? Color.green : store.adaptiveTheme.secondaryText)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
                 .help("Copy Page Link")
             }
         }
@@ -517,13 +522,15 @@ struct SidebarTabItem: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 8.5, height: 8.5)
                         .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
-                        .frame(width: 16, height: 16)
+                        .frame(width: 18, height: 18)
                         .background(
                             isHovered ? store.adaptiveTheme.tabCloseButtonHoverBackground : Color.clear,
                             in: Circle()
                         )
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .contentShape(Circle())
                 .help("Close Tab (⌘W)")
                 .transition(.scale.combined(with: .opacity))
             }
@@ -708,8 +715,10 @@ private struct TrafficLightButton: View {
     }
 }
 
-// MARK: - Window Drag Bridge
-private struct WindowDragView: NSViewRepresentable {
+// MARK: - Window Drag Bridge (shared with TopBarView: empty chrome areas
+// fall through to this view so the window stays draggable without the
+// window-wide isMovableByWindowBackground behavior that steals button clicks)
+struct WindowDragView: NSViewRepresentable {
     func makeNSView(context: Context) -> DragNSView {
         DragNSView()
     }

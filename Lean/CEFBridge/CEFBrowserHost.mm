@@ -12,6 +12,7 @@
 #include "include/cef_browser.h"
 #include "include/cef_client.h"
 #include "include/cef_display_handler.h"
+#include "include/cef_devtools_message_observer.h"
 #include "include/cef_download_handler.h"
 #include "include/cef_frame.h"
 #include "include/cef_jsdialog_handler.h"
@@ -39,6 +40,10 @@
 - (void)finishDownload:(NSString *)downloadId;
 - (void)browserCreated:(CefRefPtr<CefBrowser>)browser;
 - (void)browserGone;
+- (void)completeSnapshot:(int)messageId
+                 success:(bool)success
+                  result:(const void *)result
+                    size:(size_t)resultSize;
 @end
 
 namespace {
@@ -79,6 +84,7 @@ void PostToMain(dispatch_block_t block) {
 }
 
 class LeanCefClient : public CefClient,
+                      public CefDevToolsMessageObserver,
                       public CefDisplayHandler,
                       public CefLifeSpanHandler,
                       public CefLoadHandler,
@@ -90,6 +96,18 @@ class LeanCefClient : public CefClient,
   explicit LeanCefClient(CEFBrowserHost *owner) : owner_(owner) {}
 
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
+
+  void OnDevToolsMethodResult(CefRefPtr<CefBrowser>, int message_id,
+                              bool success, const void* result,
+                              size_t result_size) override {
+    CEFBrowserHost *owner = owner_;
+    if (owner) {
+      [owner completeSnapshot:message_id
+                     success:success
+                      result:result
+                        size:result_size];
+    }
+  }
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
   CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
   CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
@@ -408,6 +426,7 @@ struct PendingDownload {
 @implementation CEFBrowserHost {
   CefRefPtr<CefBrowser> _browser;
   CefRefPtr<LeanCefClient> _client;
+  CefRefPtr<CefRegistration> _devToolsRegistration;
   __weak NSView *_parentView;
   std::string _pendingURL;
   double _zoomRatio;
@@ -418,6 +437,7 @@ struct PendingDownload {
   std::map<int64_t, PendingMedia> _mediaReqs;
   std::map<std::string, PendingDownload> _downloads;
   std::map<uint32_t, std::string> _cefToLeanDownload;
+  NSMutableDictionary<NSNumber *, void (^)(NSData *_Nullable)> *_snapshotCompletions;
 }
 
 - (instancetype)init {
@@ -427,6 +447,7 @@ struct PendingDownload {
     _zoomRatio = 1.0;
     _nextId = 1;
     _downloadSeq = 1;
+    _snapshotCompletions = [NSMutableDictionary dictionary];
   }
   return self;
 }
@@ -486,11 +507,40 @@ struct PendingDownload {
 
 - (void)browserCreated:(CefRefPtr<CefBrowser>)browser {
   _browser = browser;
+  _devToolsRegistration = browser->GetHost()->AddDevToolsMessageObserver(_client);
   [self notifyParentResized];
 }
 
 - (void)browserGone {
+  _devToolsRegistration = nullptr;
   _browser = nullptr;
+  for (NSNumber *key in _snapshotCompletions.allKeys) {
+    _snapshotCompletions[key](nil);
+  }
+  [_snapshotCompletions removeAllObjects];
+}
+
+- (void)completeSnapshot:(int)messageId
+                 success:(bool)success
+                  result:(const void *)result
+                    size:(size_t)resultSize {
+  NSNumber *key = @(messageId);
+  void (^completion)(NSData *_Nullable) = _snapshotCompletions[key];
+  if (!completion) {
+    return;
+  }
+  [_snapshotCompletions removeObjectForKey:key];
+
+  NSData *imageData = nil;
+  if (success && result && resultSize > 0) {
+    NSData *jsonData = [NSData dataWithBytes:result length:resultSize];
+    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
+    NSString *base64 = [json isKindOfClass:NSDictionary.class] ? json[@"data"] : nil;
+    if ([base64 isKindOfClass:NSString.class]) {
+      imageData = [[NSData alloc] initWithBase64EncodedString:base64 options:0];
+    }
+  }
+  completion(imageData);
 }
 
 // Public API (main thread; hops to CEF UI thread).
@@ -615,6 +665,51 @@ struct PendingDownload {
 - (void)resetZoom {
   _zoomRatio = 1.0;
   [self applyZoom];
+}
+
+- (void)focus {
+  CEFBrowserHost *selfRef = self;
+  PostToUI([selfRef] {
+    if (selfRef->_browser) {
+      selfRef->_browser->GetHost()->SetFocus(true);
+    }
+  });
+}
+
+- (void)captureSnapshotWithCompletion:(void (^)(NSData *_Nullable))completion {
+  if (!completion) {
+    return;
+  }
+  CGFloat width = _parentView.bounds.size.width;
+  CGFloat height = _parentView.bounds.size.height;
+  if (width <= 8 || height <= 8) {
+    completion(nil);
+    return;
+  }
+
+  void (^completionCopy)(NSData *_Nullable) = [completion copy];
+  CEFBrowserHost *selfRef = self;
+  PostToUI([selfRef, completionCopy] {
+    if (!selfRef->_browser) {
+      completionCopy(nil);
+      return;
+    }
+
+    CefRefPtr<CefDictionaryValue> params = CefDictionaryValue::Create();
+    params->SetString("format", "jpeg");
+    params->SetInt("quality", 82);
+    params->SetBool("captureBeyondViewport", false);
+    params->SetBool("fromSurface", true);
+    params->SetBool("optimizeForSpeed", true);
+
+    int messageId = selfRef->_browser->GetHost()->ExecuteDevToolsMethod(
+        0, "Page.captureScreenshot", params);
+    if (messageId == 0) {
+      completionCopy(nil);
+      return;
+    }
+    selfRef->_snapshotCompletions[@(messageId)] = completionCopy;
+  });
 }
 
 - (void)completeJSDialog:(long long)dialogId ok:(BOOL)ok text:(nullable NSString *)text {
@@ -753,6 +848,10 @@ struct PendingDownload {
 - (void)zoomIn {}
 - (void)zoomOut {}
 - (void)resetZoom {}
+- (void)focus {}
+- (void)captureSnapshotWithCompletion:(void (^)(NSData *_Nullable))completion {
+  completion(nil);
+}
 - (void)completeJSDialog:(long long)dialogId ok:(BOOL)ok text:(nullable NSString *)text {
   (void)dialogId; (void)ok; (void)text;
 }

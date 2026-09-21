@@ -98,21 +98,11 @@ struct TabFaviconView: View {
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(Color(red: 255/255, green: 69/255, blue: 0))
-        } else if !host.isEmpty {
-            // Initial letter badge
-            let initial = String(host.prefix(1)).uppercased()
-            ZStack {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.08))
-                Text(initial)
-                    .font(.system(size: size * 0.65, weight: .bold, design: .rounded))
-                    .foregroundColor(isDark ? Color.white.opacity(0.8) : Color.black.opacity(0.7))
-            }
         } else {
             Ph.browser.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
-                .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
+                .foregroundColor(isDark ? Color.white.opacity(0.70) : Color.black.opacity(0.60))
         }
     }
 }
@@ -224,20 +214,11 @@ struct SiteFaviconView: View {
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(Color(red: 255/255, green: 69/255, blue: 0))
-        } else if !host.isEmpty {
-            let initial = String(host.prefix(1)).uppercased()
-            ZStack {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.08))
-                Text(initial)
-                    .font(.system(size: size * 0.65, weight: .bold, design: .rounded))
-                    .foregroundColor(isDark ? Color.white.opacity(0.8) : Color.black.opacity(0.7))
-            }
         } else {
             Ph.browser.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
-                .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
+                .foregroundColor(isDark ? Color.white.opacity(0.70) : Color.black.opacity(0.60))
         }
     }
 }

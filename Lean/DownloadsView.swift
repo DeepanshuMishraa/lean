@@ -341,7 +341,7 @@ private struct HoverIconButton: View {
 
     var body: some View {
         Button(action: action) {
-            icon.fill
+            icon.uiIcon
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 11, height: 11)
                 .foregroundColor(
@@ -354,8 +354,10 @@ private struct HoverIconButton: View {
                         : Color.clear,
                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                 )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .help(help)
         .onHover { isHovered = $0 }
     }

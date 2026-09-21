@@ -50,8 +50,19 @@ final class FaviconService {
         fetchFromCDN(host: host, completion: completion)
     }
 
+    private func isLocalHost(_ host: String) -> Bool {
+        host == "localhost" ||
+        host.hasSuffix(".local") ||
+        host == "127.0.0.1" ||
+        host == "::1" ||
+        host.hasPrefix("192.168.") ||
+        host.hasPrefix("10.") ||
+        host.hasPrefix("172.")
+    }
+
     private func fetchFromCDN(host: String, completion: @escaping @MainActor @Sendable (NSImage?) -> Void) {
-        guard let cdnURL = URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=64") else {
+        guard !isLocalHost(host),
+              let cdnURL = URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=64&default_icon=none") else {
             DispatchQueue.main.async { completion(nil) }
             return
         }
@@ -68,7 +79,11 @@ final class FaviconService {
 
     private func fetchImage(from url: URL, completion: @escaping @Sendable (NSImage?) -> Void) {
         let task = session.dataTask(with: url) { data, response, error in
-            guard let data, error == nil, let image = NSImage(data: data) else {
+            guard let data, error == nil,
+                  let httpResponse = response as? HTTPURLResponse,
+                  (200...299).contains(httpResponse.statusCode),
+                  data.count != 726, // Reject Google's default fallback globe PNG (726 bytes)
+                  let image = NSImage(data: data) else {
                 completion(nil)
                 return
             }

@@ -13,6 +13,7 @@ struct TopBarView: View {
             // Space reserved for native macOS traffic lights (centered at y = 16, x = 9..69)
             Spacer()
                 .frame(width: 80)
+                .background(WindowDragView())
 
             // Horizontal Tabs (New Tab or user opened tabs only - no default pinned sites!)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -84,6 +85,7 @@ struct TopBarView: View {
             .onHover { isTabStripHovered = $0 }
 
             Spacer()
+                .background(WindowDragView())
 
             // Navigation Controls (Back, Forward, Reload) - Hidden on homepage or if not shown
             if store.selectedTab?.url != nil {
@@ -230,12 +232,11 @@ struct TopBarView: View {
                 ? AnyView(Color.clear)
                 : AnyView(store.themeColors.topBarBackground)
         )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if store.isInlineURLEditing {
-                store.dismissInlineURLEditing()
-            }
-        }
+        // NOTE: no onTapGesture here on purpose. A tap gesture covering the
+        // whole bar competes with every toolbar/tab Button inside it, forcing
+        // double/triple clicks or pixel-hunting. Dismissing inline URL editing
+        // on outside clicks is already handled by the global mouse monitor in
+        // LeanView.setupKeyMonitor, which doesn't swallow the click.
         .animation(.easeInOut(duration: 0.2), value: store.isDarkMode)
         .animation(.easeInOut(duration: 0.2), value: store.enableWindowBorder)
         .animation(.easeInOut(duration: 0.2), value: store.effectiveZenColor)
@@ -420,13 +421,15 @@ private struct TopBarTabItem: View {
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 8, height: 8)
                 .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
-                .frame(width: 14, height: 14)
+                .frame(width: 16, height: 16)
                 .background(
                     isHovered ? store.adaptiveTheme.tabCloseButtonHoverBackground : Color.clear,
                     in: Circle()
                 )
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .contentShape(Circle())
         .transition(.scale.combined(with: .opacity))
     }
 }
@@ -465,7 +468,7 @@ struct InlineURLBar: View {
         } else if match.isSwitchToTab {
             return .arrowCircleRight
         } else {
-            return .globe
+            return .browser
         }
     }
 
@@ -501,13 +504,18 @@ struct InlineURLBar: View {
                 }
 
             if !text.isEmpty {
-                Button(action: onClose) {
+                Button {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        onClose()
+                    }
+                } label: {
                     Ph.xCircle.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 11, height: 11)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
                 }
                 .buttonStyle(.plain)
+                .help("Close Tab (⌘W)")
             }
         }
         .padding(.horizontal, 9)
@@ -729,11 +737,13 @@ struct InteractiveIconButton: View {
                     backgroundColor,
                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                 )
+                .contentShape(Rectangle())
                 .scaleEffect(isPressed ? 0.92 : (isHovered ? 1.05 : 1.0))
                 .animation(.spring(response: 0.20, dampingFraction: 0.75), value: isHovered)
                 .animation(.spring(response: 0.15, dampingFraction: 0.8), value: isPressed)
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .disabled(!isEnabled)
         .help(helpText)
         .onHover { isHovered = isEnabled && $0 }
@@ -822,8 +832,10 @@ struct DownloadToolbarButton: View {
                         .offset(x: 7, y: -7)
                 }
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .help(downloadsHelpText)
         .onHover { isHovered = $0 }
         .animation(.spring(response: 0.20, dampingFraction: 0.75), value: isHovered)
@@ -1395,6 +1407,7 @@ struct QuickToggleItem: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .onHover { hovering in
             isHovered = hovering
             onHoverChanged?(hovering)

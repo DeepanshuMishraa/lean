@@ -13,16 +13,25 @@ import SwiftUI
 /// and layout identical to WebKit tabs.
 final class CEFContainerView: NSView {
     weak var tab: LeanTab?
+    var acceptsInput = true
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        acceptsInput ? super.hitTest(point) : nil
+    }
 }
 
 struct CEFEngineView: NSViewRepresentable {
     @ObservedObject var tab: LeanTab
+    let acceptsInput: Bool
 
-    func makeNSView(context: Context) -> NSView {
+    func makeNSView(context: Context) -> CEFContainerView {
         let view = tab.cefContainerView()
+        view.acceptsInput = acceptsInput
         tab.attachCEF(to: view)
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: CEFContainerView, context: Context) {
+        nsView.acceptsInput = acceptsInput
+    }
 }

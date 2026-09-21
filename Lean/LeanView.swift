@@ -420,10 +420,19 @@ struct LeanView: View {
                         .padding(.bottom, cardBottomPadding)
                         .padding(.top, cardTopPadding)
                 } else if tab.url != nil {
-                    // Web Page Loaded
+                    // Web Page Loaded — engine slot. Shell chrome is identical
+                    // for both engines; only this content view branches.
+                    // WebKit renders WKWebView. CEF tabs render the real
+                    // CEFEngineView once the framework lands (see docs/CEF.md);
+                    // until then they render an in-content notice.
                     ZStack(alignment: .topTrailing) {
-                        WebView(tab: tab)
-                            .id(tab.id)
+                        if tab.engineKind == .cef && !CEFIntegration.isAvailable() {
+                            CEFUnavailableView(store: store)
+                                .id(tab.id)
+                        } else {
+                            WebView(tab: tab)
+                                .id(tab.id)
+                        }
 
                         if store.showsFindBar {
                             floatingFindBar
@@ -691,6 +700,44 @@ private struct WebView: NSViewRepresentable {
     func updateNSView(_ nsView: WKWebView, context: Context) {
         nsView.wantsLayer = true
         nsView.layer?.drawsAsynchronously = true
+    }
+}
+
+/// In-content notice for CEF tabs when the framework is not bundled.
+/// Lives inside the web content card only — top bar, sidebar, omnibar,
+/// and settings chrome are untouched.
+private struct CEFUnavailableView: View {
+    @ObservedObject var store: LeanStore
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "cpu")
+                .font(.system(size: 28, weight: .light))
+                .foregroundColor(store.themeColors.secondaryText)
+            Text("Chromium engine not installed")
+                .font(store.headingFont(size: 14))
+                .foregroundColor(store.themeColors.omnibarText)
+            Text("This tab asked for CEF, but the Chromium framework isn't bundled with this build. New tabs keep using WebKit until CEF lands — see docs/CEF.md.")
+                .font(store.bodyFont(size: 12))
+                .foregroundColor(store.themeColors.secondaryText)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+            Button {
+                store.engineKind = .webKit
+            } label: {
+                Text("Use WebKit for new tabs")
+                    .font(store.bodyFont(size: 12))
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(
+                        store.themeColors.omnibarBackground,
+                        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(store.themeColors.windowBackground)
     }
 }
 

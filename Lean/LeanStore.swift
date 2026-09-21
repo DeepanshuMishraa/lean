@@ -165,6 +165,14 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    /// Default engine for newly opened tabs. WebKit unless the user opts
+    /// into CEF. Existing tabs keep the engine they were created with.
+    @Published var engineKind: BrowserEngineKind {
+        didSet {
+            persist(engineKind.rawValue, forKey: Self.engineKindKey)
+        }
+    }
+
     @Published var theme: AppTheme {
         didSet {
             persist(theme.rawValue, forKey: Self.themeKey)
@@ -299,6 +307,7 @@ final class LeanStore: ObservableObject {
 
     private let dataStore: WKWebsiteDataStore
     private let database: AppDatabase?
+    private let mediaPermissionStore: MediaPermissionStore
     private var recentlyClosed: [URL] = []
     private var adBlockUpdateObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
@@ -307,6 +316,7 @@ final class LeanStore: ObservableObject {
         self.dataStore = dataStore ?? WKWebsiteDataStore.default()
         self.database = database ?? AppDatabase.openDefault()
         self.downloadManager = DownloadManager(database: self.database)
+        self.mediaPermissionStore = MediaPermissionStore(database: self.database)
 
         let savedSearchEngine = databaseValue(self.database, String.self, forKey: Self.searchEngineKey)
             ?? UserDefaults.standard.string(forKey: Self.searchEngineKey)
@@ -317,6 +327,11 @@ final class LeanStore: ObservableObject {
             ?? UserDefaults.standard.object(forKey: Self.adBlockingKey) as? Bool
             ?? true
         self.adBlockingEnabled = savedAdBlocking
+
+        let savedEngine = databaseValue(self.database, String.self, forKey: Self.engineKindKey)
+            ?? UserDefaults.standard.string(forKey: Self.engineKindKey)
+            ?? BrowserEngineKind.webKit.rawValue
+        self.engineKind = BrowserEngineKind(rawValue: savedEngine) ?? .webKit
 
         if let savedHistory = databaseValue(self.database, [HistoryItem].self, forKey: Self.historyKey) {
             self.historyItems = savedHistory
@@ -754,6 +769,7 @@ final class LeanStore: ObservableObject {
             smoothScrolling: smoothScrollingEnabled,
             pageFont: webPageFont,
             adBlockingEnabled: adBlockingEnabled,
+            engineKind: engineKind,
             configuration: configuration
         )
         tab.onStateChange = { [weak self] in
@@ -765,8 +781,17 @@ final class LeanStore: ObservableObject {
             self.saveSession()
         }
         tab.downloadManager = downloadManager
-        tab.onOpenNewTab = { [weak self] url, configuration in
-            self?.newTab(url: nil, configuration: configuration).webView
+        tab.mediaPermissionStore = mediaPermissionStore
+        tab.onOpenNewTab = { [weak self] _, configuration in
+            guard let self else { return nil }
+            // WebKit drives the popup load itself through the returned
+            // web view — do not pre-load or the OAuth handshake double-loads.
+            let child = self.newTab(url: nil, configuration: configuration)
+            child.onCloseTab = { [weak self, weak child] in
+                guard let self, let child else { return }
+                self.close(child)
+            }
+            return child.webView
         }
         tabs.append(tab)
         if select {
@@ -965,6 +990,7 @@ final class LeanStore: ObservableObject {
     private func migrateLegacyState(sessionURLs: [String]) {
         persist(searchEngine.rawValue, forKey: Self.searchEngineKey)
         persist(adBlockingEnabled, forKey: Self.adBlockingKey)
+        persist(engineKind.rawValue, forKey: Self.engineKindKey)
         persist(theme.rawValue, forKey: Self.themeKey)
         persist(scrollbarStyle.rawValue, forKey: Self.scrollbarKey)
         persist(tabDisplayMode.rawValue, forKey: Self.tabDisplayModeKey)
@@ -1003,6 +1029,7 @@ final class LeanStore: ObservableObject {
     private static let historyKey = "visitedHistory"
     private static let searchEngineKey = "searchEngine"
     private static let adBlockingKey = "adBlockingEnabled"
+    private static let engineKindKey = "browserEngineKind"
     private static let themeKey = "appTheme"
     private static let scrollbarKey = "scrollbarStyle"
     private static let tabDisplayModeKey = "tabDisplayMode"

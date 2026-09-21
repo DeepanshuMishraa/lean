@@ -1390,6 +1390,29 @@ private struct BrowsingSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
+            // Rendering Engine — WebKit default, CEF opt-in for new tabs.
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Rendering Engine", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+
+                CustomSegmentedPicker(
+                    options: [
+                        SegmentOption(id: BrowserEngineKind.webKit.rawValue, label: "WebKit", icon: "globe"),
+                        SegmentOption(id: BrowserEngineKind.cef.rawValue, label: "Chromium", icon: "cpu")
+                    ],
+                    selectedId: store.engineKind.rawValue,
+                    isDark: store.isDarkMode,
+                    uiFont: store.leanUIFont
+                ) { newId in
+                    if let kind = BrowserEngineKind(rawValue: newId) {
+                        store.engineKind = kind
+                    }
+                }
+
+                Text(engineFootnote)
+                    .font(store.leanUIFont.font(size: 11.5))
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.45) : Color.black.opacity(0.45))
+            }
+
             // Scrollbar Style
             VStack(alignment: .leading, spacing: 8) {
                 SettingsHeaderLabel("Scrollbar Appearance", uiFont: store.leanUIFont, isDark: store.isDarkMode)
@@ -1424,6 +1447,18 @@ private struct BrowsingSection: View {
                     )
                 }
             }
+        }
+    }
+
+    private var engineFootnote: String {
+        switch store.engineKind {
+        case .webKit:
+            return "System WebKit · default. No bundled engine, tiny updates. Applies to new tabs."
+        case .cef:
+            if CEFIntegration.isAvailable() {
+                return "Chromium (CEF) · applies to new tabs. Existing tabs keep their engine."
+            }
+            return "Chromium selected · framework not bundled yet, so new tabs show a notice until docs/CEF.md is wired. WebKit keeps working."
         }
     }
 }

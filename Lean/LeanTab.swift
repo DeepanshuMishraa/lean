@@ -19,6 +19,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private(set) var pageHeadingWeight: Int
     private(set) var pageBodyWeight: Int
     private(set) var adBlockingEnabled: Bool
+    /// Engine this tab was created with. Never hot-swapped: changing the
+    /// global engine choice only affects newly opened tabs.
+    private(set) var engineKind: BrowserEngineKind
 
     var isSettingsPage: Bool {
         guard let url = url else { return false }
@@ -27,7 +30,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     var onStateChange: (() -> Void)?
     var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
+    var onCloseTab: (() -> Void)?
     var downloadManager: DownloadManager?
+    var mediaPermissionStore: MediaPermissionStore?
     private var progressObserver: NSKeyValueObservation?
     private var navigationObservers: [NSKeyValueObservation] = []
     private var activeDownloadIDs: [ObjectIdentifier: UUID] = [:]
@@ -50,8 +55,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         pageHeadingWeight: Int = 0,
         pageBodyWeight: Int = 0,
         adBlockingEnabled: Bool = true,
+        engineKind: BrowserEngineKind = .webKit,
         configuration: WKWebViewConfiguration? = nil
     ) {
+        self.engineKind = engineKind
         self.scrollbarStyle = scrollbarStyle
         self.smoothScrollingEnabled = smoothScrolling
         self.pageFont = pageFont
@@ -327,6 +334,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         isLoading = false
         onStateChange = nil
         onOpenNewTab = nil
+        onCloseTab = nil
 
         // 1. Pause and remove all audio/video elements immediately
         let stopMediaJS = """
@@ -476,16 +484,91 @@ extension LeanTab: WKNavigationDelegate {
 
     func webView(
         _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        if let url = navigationAction.request.url,
+           ExternalLinkPolicy.shouldOpenExternally(url) {
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        let method = challenge.protectionSpace.authenticationMethod
+        if method == NSURLAuthenticationMethodServerTrust {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        if method == NSURLAuthenticationMethodHTTPBasic
+            || method == NSURLAuthenticationMethodHTTPDigest {
+            presentCredentialsSheet(for: challenge, completionHandler: completionHandler)
+            return
+        }
+        // Client certificates and other methods have no in-app UI: fail fast
+        // instead of hanging the page silently.
+        completionHandler(.cancelAuthenticationChallenge, nil)
+    }
+
+    private func presentCredentialsSheet(
+        for challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard let window = webView.window else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        let host = challenge.protectionSpace.host
+        let alert = NSAlert()
+        alert.messageText = "Sign in to \(host)"
+        alert.informativeText = "This site is asking for a username and password."
+        alert.alertStyle = .informational
+        let username = NSTextField(string: challenge.proposedCredential?.user ?? "")
+        username.placeholderString = "Username"
+        let password = NSSecureTextField()
+        password.placeholderString = "Password"
+        let stack = NSStackView(views: [username, password])
+        stack.orientation = .vertical
+        stack.spacing = 8
+        stack.frame = NSRect(x: 0, y: 0, width: 280, height: 52)
+        alert.accessoryView = stack
+        alert.addButton(withTitle: "Sign In")
+        alert.addButton(withTitle: "Cancel")
+        alert.layout()
+        window.makeFirstResponder(username)
+        alert.beginSheetModal(for: window) { response in
+            guard response == .alertFirstButtonReturn else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
+            let credential = URLCredential(
+                user: username.stringValue,
+                password: password.stringValue,
+                persistence: .forSession
+            )
+            completionHandler(.useCredential, credential)
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
         decidePolicyFor navigationResponse: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
-        // Only trigger download if Content-Disposition explicitly specifies attachment
-        if let httpResponse = navigationResponse.response as? HTTPURLResponse {
-            let disposition = (httpResponse.value(forHTTPHeaderField: "Content-Disposition") ?? "").lowercased()
-            if disposition.contains("attachment") {
-                decisionHandler(.download)
-                return
-            }
+        let disposition = (navigationResponse.response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Content-Disposition")
+        if DownloadPolicy.shouldDownload(
+            contentDisposition: disposition,
+            mimeType: navigationResponse.response.mimeType
+        ) {
+            decisionHandler(.download)
+            return
         }
 
         decisionHandler(.allow)
@@ -505,6 +588,114 @@ extension LeanTab: WKUIDelegate {
     ) -> WKWebView? {
         guard let url = navigationAction.request.url else { return nil }
         return onOpenNewTab?(url, configuration)
+    }
+
+    /// Lets OAuth / SSO popups close themselves (`window.close()`), which
+    /// previously stalled the `postMessage` handshake and left dead tabs.
+    func webViewDidClose(_ webView: WKWebView) {
+        onCloseTab?()
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptAlertPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping () -> Void
+    ) {
+        presentAlert(message: message, showsTextField: false, isConfirmation: false) { confirmed, _ in
+            completionHandler()
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        presentAlert(message: message, showsTextField: false, isConfirmation: true) { confirmed, _ in
+            completionHandler(confirmed)
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptTextInputPanelWithPrompt prompt: String,
+        defaultText: String?,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (String?) -> Void
+    ) {
+        presentAlert(message: prompt, showsTextField: true, isConfirmation: true, defaultText: defaultText) { confirmed, text in
+            completionHandler(confirmed ? text : nil)
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+        initiatedByFrame frame: WKFrameInfo,
+        type: WKMediaCaptureType,
+        decisionHandler: @escaping (WKPermissionDecision) -> Void
+    ) {
+        let originKey: String = {
+            if origin.port != 0 {
+                return "\(origin.protocol)://\(origin.host):\(origin.port)"
+            }
+            return "\(origin.protocol)://\(origin.host)"
+        }()
+        if let stored = mediaPermissionStore?.decision(forOriginKey: originKey) {
+            decisionHandler(stored ? .grant : .deny)
+            return
+        }
+        guard let window = webView.window else {
+            decisionHandler(.deny)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Allow camera and microphone?"
+        alert.informativeText = "\(origin.host) wants to use your camera and microphone."
+        alert.addButton(withTitle: "Allow")
+        alert.addButton(withTitle: "Don't Allow")
+        alert.alertStyle = .informational
+        alert.beginSheetModal(for: window) { [weak self] response in
+            let allowed = response == .alertFirstButtonReturn
+            self?.mediaPermissionStore?.setDecision(allowed, forOriginKey: originKey)
+            decisionHandler(allowed ? .grant : .deny)
+        }
+    }
+
+    private func presentAlert(
+        message: String,
+        showsTextField: Bool,
+        isConfirmation: Bool,
+        defaultText: String? = nil,
+        completion: @escaping (Bool, String?) -> Void
+    ) {
+        guard let window = webView.window else {
+            completion(false, nil)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = webView.title?.nilIfEmpty ?? url?.host ?? "This page"
+        alert.informativeText = message
+        alert.alertStyle = .informational
+        let textField: NSTextField? = showsTextField ? NSTextField(string: defaultText ?? "") : nil
+        if let textField {
+            textField.frame = NSRect(x: 0, y: 0, width: 280, height: 22)
+            alert.accessoryView = textField
+        }
+        alert.addButton(withTitle: "OK")
+        if isConfirmation || showsTextField {
+            alert.addButton(withTitle: "Cancel")
+        }
+        alert.beginSheetModal(for: window) { response in
+            let confirmed = response == .alertFirstButtonReturn
+            completion(confirmed, textField?.stringValue)
+        }
+        alert.layout()
+        if showsTextField {
+            window.makeFirstResponder(textField)
+        }
     }
 }
 

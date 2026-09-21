@@ -63,9 +63,52 @@ enum AddressResolver {
         let looksLikeHost = !value.contains(" ") && (
             value.contains(".") ||
             value.hasPrefix("localhost") ||
+            isLoopbackInput(value) ||
             value.range(of: #"^\d{1,3}(\.\d{1,3}){3}(:\d+)?(/.*)?$"#, options: .regularExpression) != nil
         )
         guard looksLikeHost else { return nil }
-        return URLComponents(string: "https://\(value)")?.url
+        let scheme = isLoopbackInput(value) ? "http" : "https"
+        return URLComponents(string: "\(scheme)://\(value)")?.url
+    }
+
+    /// True when the raw input points at a loopback host, with or without an
+    /// explicit http(s) scheme, port, or path (e.g. "localhost:3000",
+    /// "http://localhost:3000/x", "127.0.0.1:8080", "[::1]:3000").
+    static func isLoopbackURLString(_ value: String) -> Bool {
+        var v = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if v.hasPrefix("http://") {
+            v = String(v.dropFirst("http://".count))
+        } else if v.hasPrefix("https://") {
+            v = String(v.dropFirst("https://".count))
+        }
+        return isLoopbackInput(v)
+    }
+
+    /// Bare loopback addresses (localhost, 127.x, ::1) almost always serve
+    /// plain HTTP, so default them to http:// instead of https://.
+    static func isLoopbackInput(_ value: String) -> Bool {
+        var host = value.lowercased()
+        if let slash = host.firstIndex(of: "/") {
+            host = String(host[..<slash])
+        }
+        // Strip userinfo if present.
+        if let at = host.lastIndex(of: "@") {
+            host = String(host[host.index(after: at)...])
+        }
+        // Strip port, keeping IPv6 literals like [::1] intact.
+        if host.hasPrefix("[") {
+            if let close = host.firstIndex(of: "]") {
+                host = String(host[...close])
+            }
+        } else if let colon = host.firstIndex(of: ":") {
+            host = String(host[..<colon])
+        }
+        host = host.trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
+        return host == "localhost"
+            || host.hasSuffix(".localhost")
+            || host == "127.0.0.1"
+            || host.hasPrefix("127.")
+            || host == "::1"
+            || host == "0.0.0.0"
     }
 }

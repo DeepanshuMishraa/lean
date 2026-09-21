@@ -138,8 +138,7 @@ enum PageScripts {
         """
     }
 
-    static func smoothScrolling(enabled: Bool) -> String {
-        let css = enabled ? "html { scroll-behavior: smooth !important; }" : ""
+    static func smoothScrolling(enabled: Bool) -> String {        let css = enabled ? "html { scroll-behavior: smooth !important; }" : ""
         return """
         (function() {
             function apply() {

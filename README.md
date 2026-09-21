@@ -22,35 +22,26 @@ Lean is a thin wrapper around `WKWebView`, so anything WebKit or the
 missing browser chrome does not provide will not work. Verified by testing:
 
 - **"Continue with Google" / third-party OAuth buttons often fail.**
-  Logging into Google directly (Gmail, YouTube) works, but "Sign in with
-  Google" on other sites usually does not. These flows open a
-  `window.open` popup and pass the credential back via `postMessage`
-  before closing the popup with `window.close()`. Lean opens the popup
-  as a new tab but does not implement `webViewDidClose`, so the popup
-  cannot close itself and the handshake stalls. Google may also refuse
-  the flow outright for non-Safari browsers. Workaround: use the site's
-  direct email/password login, or finish that login in Safari.
-- **Popups that expect `window.close` never close.** Same missing
-  `webViewDidClose` as above; close the tab yourself.
-- **No JavaScript dialogs.** `alert` / `confirm` / `prompt` have no
-  handlers, so pages waiting on one will sit idle.
-- **No camera or microphone.** `requestMediaCapturePermission` is not
-  implemented, so Meet, Zoom, and other calling sites cannot access
-  devices.
-- **No HTTP Basic auth or client-certificate prompts.** There is no
-  `authenticationChallenge` handler, so enterprise SSO pages using these
-  fail silently.
-- **External and app links do nothing.** There is no navigation-action
-  policy for `mailto:`, `tel:`, or app schemes (`slack://`,
-  `zoommtg://`, `myapp://` OAuth callbacks), so they fail instead of
-  opening the target app.
+  Logging into Google directly (Gmail, YouTube) works. Popup-based
+  "Sign in with Google" now opens the popup as a tab and lets it close
+  itself (`webViewDidClose`), so the `postMessage` handshake completes.
+  Google may still refuse the flow outright for non-Safari browsers.
+  Workaround: use the site's direct email/password login, or finish that
+  login in Safari.
+- **JavaScript dialogs, HTTP Basic auth, external links, and
+  camera/microphone are handled natively.** `alert` / `confirm` /
+  `prompt` show sheets, HTTP Basic shows a sign-in sheet, `mailto:` /
+  `tel:` / app schemes open the target app, and camera/mic asks per
+  site (remembered per origin). Client-certificate pages still fail —
+  there is no certificate picker.
+- **Some downloads never start.** `Content-Disposition: attachment` and
+  `application/octet-stream` become downloads; other files served inline
+  without them still render instead of downloading.
 - **No passkeys, autofill, or Apple Pay.** Safari-only integrations
   (iCloud Passwords autofill, Touch ID passkeys, `ApplePaySession`) are
   unavailable in a third-party `WKWebView`.
 - **No web push notifications or extensions.** Password-manager and
   blocker extensions cannot be installed; use copy-paste.
-- **Some downloads never start.** Only `Content-Disposition: attachment`
-  becomes a download; files served inline without it may render blank.
 - **DRM video is limited.** Widevine does not exist on WebKit, and
   high-resolution Netflix/Prime/Spotify playback is Safari-only.
 - **If a bank or SSO page breaks, try disabling ad blocking** in

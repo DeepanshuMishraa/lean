@@ -6,7 +6,10 @@ struct AddressResolverTests {
     @Test("Resolves addresses and searches", arguments: [
         ("example.com", "https://example.com"),
         ("https://example.com/path", "https://example.com/path"),
-        ("localhost:8080", "https://localhost:8080"),
+        ("localhost:8080", "http://localhost:8080"),
+        ("localhost:3000", "http://localhost:3000"),
+        ("http://localhost:3000", "http://localhost:3000"),
+        ("127.0.0.1:3000", "http://127.0.0.1:3000"),
         ("minimal mac browser", "https://www.google.com/search?q=minimal%20mac%20browser")
     ])
     func resolves(input: String, expected: String) {

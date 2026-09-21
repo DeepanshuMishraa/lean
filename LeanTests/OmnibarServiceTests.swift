@@ -23,6 +23,35 @@ struct OmnibarServiceTests {
         #expect(suggestions.first?.secondaryText == "officecommun.com")
     }
 
+    @Test("Direct localhost suggestion uses http and suppresses search")
+    func localhostSuppressesSearch() {
+        for query in ["localhost:3000", "http://localhost:3000", "127.0.0.1:3000", "http://127.0.0.1:3000"] {
+            let suggestions = OmnibarService.shared.suggestions(for: query)
+            #expect(!suggestions.isEmpty, "expected suggestions for \(query)")
+            let direct = suggestions.first
+            #expect(direct?.isSearch == false, "first suggestion for \(query) should navigate, got \(String(describing: direct))")
+            #expect(direct?.targetURL.scheme == "http", "expected http for \(query), got \(String(describing: direct?.targetURL))")
+            #expect(suggestions.allSatisfy { !$0.isSearch }, "no search suggestion expected for \(query)")
+        }
+    }
+
+    @Test("Loopback query hides non-loopback history like past engine searches")
+    func localhostHidesSearchEngineHistory() {
+        let pollutedHistory = [
+            (url: URL(string: "https://duckduckgo.com/?q=http%3A%2F%2Flocalhost%3A3000")!, title: "http://localhost:3000 at DuckDuckGo"),
+            (url: URL(string: "http://localhost:3000/")!, title: "localhost:3000 · My App"),
+        ]
+        let suggestions = OmnibarService.shared.suggestions(for: "localhost:3000", history: pollutedHistory)
+        #expect(suggestions.allSatisfy { !$0.isSearch })
+        #expect(!suggestions.contains { $0.targetURL.host == "duckduckgo.com" })
+        #expect(suggestions.contains { $0.targetURL.absoluteString == "http://localhost:3000/" })
+        #expect(suggestions.first?.targetURL.scheme == "http")
+    }
+    @Test("Non-loopback domains still offer search")
+    func domainKeepsSearch() {
+        let suggestions = OmnibarService.shared.suggestions(for: "officecommun.com")
+        #expect(suggestions.contains { $0.isSearch })
+    }
     @Test("Does not invent a dot-com URL for plain search text")
     func doesNotInventDotComURL() {
         let suggestions = OmnibarService.shared.suggestions(for: "hello")

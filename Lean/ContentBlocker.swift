@@ -3,11 +3,9 @@ import WebKit
 
 /// Built-in tracker & ad filtering backed by uBlock Origin filter lists.
 ///
-/// Helium bundles the full uBlock Origin extension because Chromium can run it.
-/// Lean is a WebKit browser, so extensions can't run here; instead the same
-/// upstream lists (EasyList, EasyPrivacy, uBlock filters, Peter Lowe's) are
-/// fetched weekly, converted to `WKContentRuleList` JSON with
-/// `AdBlockFilterConverter`, and attached to every tab.
+/// The same upstream lists power both engines. WebKit receives compiled
+/// `WKContentRuleList` rules; Chromium receives precompiled native network and
+/// cosmetic rules through the CEF bridge. Lists refresh weekly.
 @MainActor
 enum ContentBlocker {
     struct FilterSource: Sendable {
@@ -38,6 +36,21 @@ enum ContentBlocker {
             minBytes: 1_000
         ),
         FilterSource(
+            id: "ublock-privacy",
+            url: URL(string: "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt")!,
+            minBytes: 1_000
+        ),
+        FilterSource(
+            id: "ublock-unbreak",
+            url: URL(string: "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/unbreak.txt")!,
+            minBytes: 1_000
+        ),
+        FilterSource(
+            id: "ublock-quick-fixes",
+            url: URL(string: "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt")!,
+            minBytes: 500
+        ),
+        FilterSource(
             id: "peter-lowe",
             url: URL(string: "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=0&mimetype=plaintext")!,
             minBytes: 1_000
@@ -54,6 +67,7 @@ enum ContentBlocker {
 
     private static var cachedRuleLists: [WKContentRuleList] = []
     private static var loadTask: Task<[WKContentRuleList], Never>?
+    private static var chromiumRuleTask: Task<ChromiumAdBlockRules, Never>?
     private static var refreshTask: Task<Void, Never>?
 
     /// Compiled rule lists, from WebKit's store or the offline fallback.
@@ -93,11 +107,31 @@ enum ContentBlocker {
         await ruleLists().first
     }
 
+    static let fallbackChromiumRules = ChromiumAdBlockRuleCompiler.compile([fallbackFilterText])
+
+    static func chromiumRules() async -> ChromiumAdBlockRules {
+        if let chromiumRuleTask {
+            return await chromiumRuleTask.value
+        }
+        let texts = loadCachedFilterTexts()
+        let orderedTexts = filterSources.compactMap { texts[$0.id] }
+        let input = orderedTexts.isEmpty ? [fallbackFilterText] : orderedTexts
+        let task = Task.detached(priority: .utility) {
+            ChromiumAdBlockRuleCompiler.compile(input)
+        }
+        chromiumRuleTask = task
+        return await task.value
+    }
+
     /// Fetch fresh lists when the cache is older than `updateInterval`.
     static func refreshIfNeeded() {
         guard refreshTask == nil else { return }
         let lastUpdated = lastUpdatedDate
-        if let lastUpdated, Date().timeIntervalSince(lastUpdated) < updateInterval {
+        let cached = loadCachedFilterTexts()
+        let hasEverySource = filterSources.allSatisfy { cached[$0.id] != nil }
+        if hasEverySource,
+           let lastUpdated,
+           Date().timeIntervalSince(lastUpdated) < updateInterval {
             return
         }
         refreshTask = Task {
@@ -149,6 +183,7 @@ enum ContentBlocker {
         guard !compiled.isEmpty else { return nil }
 
         cachedRuleLists = compiled
+        chromiumRuleTask = nil
         lastUpdatedDate = Date()
         cachedRuleCount = encoded.keptCount
         NotificationCenter.default.post(name: didUpdateNotification, object: nil)

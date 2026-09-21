@@ -503,12 +503,15 @@ final class LeanStore: ObservableObject {
         deduplicateHistory()
         saveHistory()
 
+        installChromiumAdBlockRules(ContentBlocker.fallbackChromiumRules)
+        refreshChromiumAdBlockRules()
         adBlockUpdateObserver = NotificationCenter.default.addObserver(
             forName: ContentBlocker.didUpdateNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
+                self?.refreshChromiumAdBlockRules()
                 self?.updateAllTabsAdBlocking()
             }
         }
@@ -710,6 +713,27 @@ final class LeanStore: ObservableObject {
 
     func updateAllTabsAdBlocking() {
         for tab in tabs {
+            tab.applyAdBlocking(adBlockingEnabled)
+        }
+    }
+
+    private func refreshChromiumAdBlockRules() {
+        Task { [weak self] in
+            let rules = await ContentBlocker.chromiumRules()
+            self?.installChromiumAdBlockRules(rules)
+        }
+    }
+
+    private func installChromiumAdBlockRules(_ rules: ChromiumAdBlockRules) {
+        CEFBrowserHost.configureAdBlocker(
+            blockedDomains: rules.blockedDomains,
+            allowedDomains: rules.allowedDomains,
+            blockedPatterns: rules.blockedPatterns,
+            allowedPatterns: rules.allowedPatterns,
+            globalSelectors: rules.globalSelectors,
+            domainSelectors: rules.domainSelectors
+        )
+        for tab in tabs where tab.engineKind == .cef {
             tab.applyAdBlocking(adBlockingEnabled)
         }
     }

@@ -178,11 +178,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             }
         ]
 
-        applyAdBlocking(adBlockingEnabled)
-
         if engineKind == .cef, CEFIntegration.canRender() {
             setupCEFHost()
         }
+        applyAdBlocking(adBlockingEnabled)
 
         if let initialURL {
             self.load(initialURL)
@@ -191,6 +190,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     func applyAdBlocking(_ enabled: Bool) {
         adBlockingEnabled = enabled
+        if engineKind == .cef {
+            cefHost?.setAdBlockingEnabled(enabled)
+            return
+        }
         Task { [weak self] in
             let ruleLists = await ContentBlocker.ruleLists()
             guard let self, self.adBlockingEnabled == enabled else { return }

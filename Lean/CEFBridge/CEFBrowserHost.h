@@ -8,6 +8,14 @@ NS_ASSUME_NONNULL_BEGIN
 /// every method is a no-op and creation returns NO.
 @interface CEFBrowserHost : NSObject
 
++ (void)configureAdBlockerWithBlockedDomains:(NSArray<NSString *> *)blockedDomains
+                              allowedDomains:(NSArray<NSString *> *)allowedDomains
+                             blockedPatterns:(NSArray<NSString *> *)blockedPatterns
+                             allowedPatterns:(NSArray<NSString *> *)allowedPatterns
+                             globalSelectors:(NSArray<NSString *> *)globalSelectors
+                             domainSelectors:(NSDictionary<NSString *, NSArray<NSString *> *> *)domainSelectors
+    NS_SWIFT_NAME(configureAdBlocker(blockedDomains:allowedDomains:blockedPatterns:allowedPatterns:globalSelectors:domainSelectors:));
+
 /// Fired once the underlying CefBrowser exists.
 @property (nonatomic, copy, nullable) void (^onCreated)(void);
 @property (nonatomic, copy, nullable) void (^onTitle)(NSString *title);
@@ -51,6 +59,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)zoomOut;
 - (void)resetZoom;
 - (void)focus;
+- (void)setAdBlockingEnabled:(BOOL)enabled NS_SWIFT_NAME(setAdBlockingEnabled(_:));
 
 /// Captures the visible page through Chromium's compositor.
 - (void)captureSnapshotWithCompletion:(void (^)(NSData *_Nullable imageData))completion

@@ -126,6 +126,7 @@
 		42C74018F93CEB5FD56B852A /* browser_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = 1952FFD86BC0A78C47BE9CF2 /* browser_ctocpp.cc */; };
 		4367B7831D8BC6F71ABF462A /* post_data_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = FE27E9458C20FFF6BC1FE618 /* post_data_ctocpp.cc */; };
 		43C4BCA2FAAAC53882569F76 /* preference_manager_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = A989556241E311CBC8421B61 /* preference_manager_ctocpp.cc */; };
+		444842C109732B81D404935F /* ChromiumAdBlockRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1739AFDD209CE1758588529 /* ChromiumAdBlockRules.swift */; };
 		4532113F2C8ED25DFFADBB73 /* cef_thread_checker_impl.cc in Sources */ = {isa = PBXBuildFile; fileRef = 69DF59F092DD20A956EFA56F /* cef_thread_checker_impl.cc */; };
 		45838857E745EACCF9FAD3D5 /* preference_registrar_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = 5DA5908DFF863789CCD482BE /* preference_registrar_ctocpp.cc */; };
 		46477538EF4E87C338B5973F /* media_sink_device_info_callback_cpptoc.cc in Sources */ = {isa = PBXBuildFile; fileRef = 134EEE4B0073537D6AC0AEFC /* media_sink_device_info_callback_cpptoc.cc */; };
@@ -186,6 +187,7 @@
 		60D4BC2DA22051A477CFB208 /* TopBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55ACE65E20A203180C11BDDD /* TopBarView.swift */; };
 		610BD40897A486B9AF4AD9A7 /* sslstatus_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = A63355BDEE06A2E8A91E29DC /* sslstatus_ctocpp.cc */; };
 		63286672A02DFB3F995B7950 /* set_cookie_callback_cpptoc.cc in Sources */ = {isa = PBXBuildFile; fileRef = 9845F1FD7B50C7A6BAEC5378 /* set_cookie_callback_cpptoc.cc */; };
+		639289B85773D0776CB9BFA3 /* ChromiumAdBlockRuleCompilerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D037AE55F78642E8FDCF942 /* ChromiumAdBlockRuleCompilerTests.swift */; };
 		63BE5F8E480E3E09C35CBE61 /* waitable_event_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = CA2B2C665C11D881F1D32840 /* waitable_event_ctocpp.cc */; };
 		64005BFB1798C1F74AD53D61 /* write_handler_cpptoc.cc in Sources */ = {isa = PBXBuildFile; fileRef = A087E5974873A6C6A79C8896 /* write_handler_cpptoc.cc */; };
 		650463D6457652E914351E7E /* scheme_registrar_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = E662FF8EEE33B11E625755E8 /* scheme_registrar_ctocpp.cc */; };
@@ -634,6 +636,7 @@
 		6BA3B4164C18CB169B5E4065 /* string_visitor_cpptoc.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = string_visitor_cpptoc.cc; sourceTree = "<group>"; };
 		6C27601CE622B32A2A89E5D0 /* test_server_handler_cpptoc.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = test_server_handler_cpptoc.cc; sourceTree = "<group>"; };
 		6CEC6AFD29A4D7396C04F878 /* context_menu_handler_cpptoc.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = context_menu_handler_cpptoc.cc; sourceTree = "<group>"; };
+		6D037AE55F78642E8FDCF942 /* ChromiumAdBlockRuleCompilerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromiumAdBlockRuleCompilerTests.swift; sourceTree = "<group>"; };
 		6D936105658B32F32178BBF8 /* libcef_dll_wrapper.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = libcef_dll_wrapper.cc; sourceTree = "<group>"; };
 		6E49F6C2F52DCAC2859FF99E /* domvisitor_cpptoc.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = domvisitor_cpptoc.cc; sourceTree = "<group>"; };
 		6E77360D10ACD1A5D4909F84 /* LeanTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LeanTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -753,6 +756,7 @@
 		DF5C597AD0B526F51DD0DC2A /* scheme_handler_factory_cpptoc.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = scheme_handler_factory_cpptoc.cc; sourceTree = "<group>"; };
 		E111DF43F845FBA32A7B95E9 /* overlay_controller_ctocpp.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = overlay_controller_ctocpp.cc; sourceTree = "<group>"; };
 		E135D38DF7B03B6A2D0E335F /* cef_lock.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = cef_lock.cc; sourceTree = "<group>"; };
+		E1739AFDD209CE1758588529 /* ChromiumAdBlockRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromiumAdBlockRules.swift; sourceTree = "<group>"; };
 		E1EEA1114614B46B489A4C2F /* cef_message_router_utils.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = cef_message_router_utils.cc; sourceTree = "<group>"; };
 		E27A095DD12C9E2EF78CA7F7 /* button_delegate_cpptoc.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = button_delegate_cpptoc.cc; sourceTree = "<group>"; };
 		E27E39E8EC01E1CBF84564E4 /* menu_button_delegate_cpptoc.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = menu_button_delegate_cpptoc.cc; sourceTree = "<group>"; };
@@ -1080,6 +1084,7 @@
 				1EDDD317B7AF50A826865F77 /* AppDatabase.swift */,
 				D5268449F35E5A41542EEF02 /* AppUpdater.swift */,
 				370121C843A50B90912ACDC3 /* BrowserEngine.swift */,
+				E1739AFDD209CE1758588529 /* ChromiumAdBlockRules.swift */,
 				14191AAB2D796CC5DE1EA6CB /* ContentBlocker.swift */,
 				E566A9FFD9A3DA622E49EC68 /* CustomShortcuts.swift */,
 				F27EC5E6F10DEA6F39123642 /* DotMatrixLoader.swift */,
@@ -1205,6 +1210,7 @@
 				329359943D08761604195E40 /* AddressResolverTests.swift */,
 				0658473FF4694836C4819D30 /* AppDatabaseTests.swift */,
 				E4C21F7166EFDC562F18D1C2 /* BrowserEngineTests.swift */,
+				6D037AE55F78642E8FDCF942 /* ChromiumAdBlockRuleCompilerTests.swift */,
 				0E245A44DB008A4A9C0E6A77 /* DownloadsTests.swift */,
 				CF6FE4814030CDFDD5C840C3 /* DropdownMenuTests.swift */,
 				7B6255463FA3D1604089AAF5 /* FontSettingsTests.swift */,
@@ -1594,6 +1600,7 @@
 				6082FA83A361BE568DBBD304 /* AddressResolverTests.swift in Sources */,
 				259D7F72A1115CC3CF9EF155 /* AppDatabaseTests.swift in Sources */,
 				488C92CB33753FC9936A6E92 /* BrowserEngineTests.swift in Sources */,
+				639289B85773D0776CB9BFA3 /* ChromiumAdBlockRuleCompilerTests.swift in Sources */,
 				58D83A3CC4AF7B1A83D97E2A /* DownloadsTests.swift in Sources */,
 				70FD8F5BEAB6A6AA09E92CDF /* DropdownMenuTests.swift in Sources */,
 				B2BE76A97BB55360B3E12B92 /* FontSettingsTests.swift in Sources */,
@@ -1622,6 +1629,7 @@
 				17A73DBDB3C358AE52132BF9 /* CEFBrowserHost.mm in Sources */,
 				1D2B841BBA7042C34956D337 /* CEFEngineView.swift in Sources */,
 				46CF472104CEC91CB9F3ABD8 /* CEFManager.mm in Sources */,
+				444842C109732B81D404935F /* ChromiumAdBlockRules.swift in Sources */,
 				099C3F07574FA15E03AB213A /* ContentBlocker.swift in Sources */,
 				8513BF00B4CABA9ED98F67DE /* CustomShortcuts.swift in Sources */,
 				5A638900363577A489504B7F /* DotMatrixLoader.swift in Sources */,

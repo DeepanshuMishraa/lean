@@ -1454,7 +1454,7 @@ private struct PrivacySection: View {
 
                     CustomToggleRow(
                         title: "Tracker & ad filtering",
-                        subtitle: "Built-in blocking powered by uBlock Origin filter lists (EasyList, EasyPrivacy, uBlock filters).",
+                        subtitle: "Built-in network and cosmetic blocking powered by EasyList, EasyPrivacy, and uBlock filters.",
                         isOn: $store.adBlockingEnabled,
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont

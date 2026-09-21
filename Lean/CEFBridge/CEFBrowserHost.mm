@@ -2,10 +2,16 @@
 
 #if __has_include("include/cef_app.h")
 #define LEAN_HAS_CEF 1
+#include <atomic>
 #include <cmath>
 #include <functional>
 #include <map>
+#include <memory>
+#include <queue>
 #include <string>
+#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "include/cef_app.h"
@@ -18,8 +24,10 @@
 #include "include/cef_jsdialog_handler.h"
 #include "include/cef_life_span_handler.h"
 #include "include/cef_load_handler.h"
+#include "include/cef_parser.h"
 #include "include/cef_permission_handler.h"
 #include "include/cef_request_handler.h"
+#include "include/cef_resource_request_handler.h"
 #include "include/cef_task.h"
 
 // Internal bookkeeping used by LeanCefClient. A category at global scope
@@ -44,6 +52,8 @@
                  success:(bool)success
                   result:(const void *)result
                     size:(size_t)resultSize;
+- (BOOL)shouldBlockURL:(const CefString &)url isMainNavigation:(BOOL)isMainNavigation;
+- (std::string)cosmeticScriptForURL:(const CefString &)url;
 @end
 
 namespace {
@@ -83,6 +93,166 @@ void PostToMain(dispatch_block_t block) {
   }
 }
 
+std::string LowerASCII(std::string value) {
+  for (char &c : value) {
+    if (c >= 'A' && c <= 'Z') {
+      c += 'a' - 'A';
+    }
+  }
+  return value;
+}
+
+std::string HostFromURL(const CefString &url) {
+  CefURLParts parts;
+  if (!CefParseURL(url, parts)) {
+    return {};
+  }
+  return LowerASCII(CefString(&parts.host).ToString());
+}
+
+bool MatchesDomain(const std::unordered_set<std::string> &domains,
+                   const std::string &host) {
+  if (host.empty()) {
+    return false;
+  }
+  std::string_view suffix = host;
+  while (true) {
+    if (domains.contains(std::string(suffix))) {
+      return true;
+    }
+    size_t dot = suffix.find('.');
+    if (dot == std::string_view::npos) {
+      return false;
+    }
+    suffix.remove_prefix(dot + 1);
+  }
+}
+
+class PatternMatcher {
+ public:
+  PatternMatcher() : nodes_(1) {}
+
+  explicit PatternMatcher(NSArray<NSString *> *patterns) : nodes_(1) {
+    for (NSString *pattern in patterns) {
+      Add(LowerASCII(pattern.UTF8String ?: ""));
+    }
+    Build();
+  }
+
+  bool Matches(std::string_view text) const {
+    size_t state = 0;
+    for (unsigned char c : text) {
+      while (state != 0 && !nodes_[state].next.contains(c)) {
+        state = nodes_[state].failure;
+      }
+      auto edge = nodes_[state].next.find(c);
+      if (edge != nodes_[state].next.end()) {
+        state = edge->second;
+      }
+      if (nodes_[state].terminal) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+ private:
+  struct Node {
+    std::unordered_map<unsigned char, size_t> next;
+    size_t failure = 0;
+    bool terminal = false;
+  };
+
+  void Add(const std::string &pattern) {
+    if (pattern.empty()) {
+      return;
+    }
+    size_t state = 0;
+    for (unsigned char c : pattern) {
+      auto edge = nodes_[state].next.find(c);
+      if (edge != nodes_[state].next.end()) {
+        state = edge->second;
+        continue;
+      }
+      size_t child = nodes_.size();
+      nodes_[state].next.emplace(c, child);
+      nodes_.emplace_back();
+      state = child;
+    }
+    nodes_[state].terminal = true;
+  }
+
+  void Build() {
+    std::queue<size_t> pending;
+    for (const auto &[_, child] : nodes_[0].next) {
+      pending.push(child);
+    }
+    while (!pending.empty()) {
+      size_t parent = pending.front();
+      pending.pop();
+      for (const auto &[c, child] : nodes_[parent].next) {
+        size_t fallback = nodes_[parent].failure;
+        while (fallback != 0 && !nodes_[fallback].next.contains(c)) {
+          fallback = nodes_[fallback].failure;
+        }
+        auto edge = nodes_[fallback].next.find(c);
+        if (edge != nodes_[fallback].next.end() && edge->second != child) {
+          nodes_[child].failure = edge->second;
+        }
+        nodes_[child].terminal = nodes_[child].terminal ||
+                                 nodes_[nodes_[child].failure].terminal;
+        pending.push(child);
+      }
+    }
+  }
+
+  std::vector<Node> nodes_;
+};
+
+std::string CSSForSelectors(NSArray<NSString *> *selectors) {
+  std::string css;
+  constexpr NSUInteger kSelectorsPerRule = 400;
+  for (NSUInteger start = 0; start < selectors.count; start += kSelectorsPerRule) {
+    NSUInteger end = std::min(selectors.count, start + kSelectorsPerRule);
+    css += ":where(";
+    for (NSUInteger index = start; index < end; ++index) {
+      if (index > start) {
+        css += ',';
+      }
+      css += [selectors[index] UTF8String] ?: "";
+    }
+    css += "){display:none!important;}\n";
+  }
+  return css;
+}
+
+std::string EscapeJavaScriptString(std::string_view value) {
+  std::string escaped;
+  escaped.reserve(value.size() + 32);
+  for (unsigned char c : value) {
+    switch (c) {
+      case '\\': escaped += "\\\\"; break;
+      case '\"': escaped += "\\\""; break;
+      case '\n': escaped += "\\n"; break;
+      case '\r': escaped += "\\r"; break;
+      case '\t': escaped += "\\t"; break;
+      default: escaped += static_cast<char>(c); break;
+    }
+  }
+  return escaped;
+}
+
+struct AdBlockRules {
+  std::unordered_set<std::string> blocked_domains;
+  std::unordered_set<std::string> allowed_domains;
+  PatternMatcher blocked_patterns;
+  PatternMatcher allowed_patterns;
+  std::string global_css;
+  std::unordered_map<std::string, std::string> domain_css;
+};
+
+std::shared_ptr<const AdBlockRules> gAdBlockRules;
+
 class LeanCefClient : public CefClient,
                       public CefDevToolsMessageObserver,
                       public CefDisplayHandler,
@@ -91,7 +261,8 @@ class LeanCefClient : public CefClient,
                       public CefRequestHandler,
                       public CefJSDialogHandler,
                       public CefPermissionHandler,
-                      public CefDownloadHandler {
+                      public CefDownloadHandler,
+                      public CefResourceRequestHandler {
  public:
   explicit LeanCefClient(CEFBrowserHost *owner) : owner_(owner) {}
 
@@ -215,6 +386,30 @@ class LeanCefClient : public CefClient,
   }
 
   // CefLoadHandler
+  void OnLoadStart(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
+                   TransitionType) override {
+    CEFBrowserHost *owner = owner_;
+    if (!owner || !frame || !frame->IsMain()) {
+      return;
+    }
+    std::string script = [owner cosmeticScriptForURL:frame->GetURL()];
+    if (!script.empty()) {
+      frame->ExecuteJavaScript(script, frame->GetURL(), 0);
+    }
+  }
+
+  void OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
+                 int) override {
+    CEFBrowserHost *owner = owner_;
+    if (!owner || !frame || !frame->IsMain()) {
+      return;
+    }
+    std::string script = [owner cosmeticScriptForURL:frame->GetURL()];
+    if (!script.empty()) {
+      frame->ExecuteJavaScript(script, frame->GetURL(), 0);
+    }
+  }
+
   void OnLoadError(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
                    ErrorCode errorCode, const CefString &error_text,
                    const CefString &failed_url) override {
@@ -237,6 +432,26 @@ class LeanCefClient : public CefClient,
   }
 
   // CefRequestHandler
+  CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(
+      CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefRequest>,
+      bool, bool, const CefString &, bool &) override {
+    return this;
+  }
+
+  ReturnValue OnBeforeResourceLoad(CefRefPtr<CefBrowser>,
+                                   CefRefPtr<CefFrame> frame,
+                                   CefRefPtr<CefRequest> request,
+                                   CefRefPtr<CefCallback>) override {
+    CEFBrowserHost *owner = owner_;
+    BOOL isMainNavigation = frame && frame->IsMain() &&
+                            request->GetResourceType() == RT_MAIN_FRAME;
+    if (owner && [owner shouldBlockURL:request->GetURL()
+                         isMainNavigation:isMainNavigation]) {
+      return RV_CANCEL;
+    }
+    return RV_CONTINUE;
+  }
+
   void OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser,
                                  TerminationStatus status, int error_code,
                                  const CefString &error_string) override {
@@ -430,6 +645,7 @@ struct PendingDownload {
   __weak NSView *_parentView;
   std::string _pendingURL;
   double _zoomRatio;
+  std::atomic_bool _adBlockingEnabled;
   int64_t _nextId;
   uint64_t _downloadSeq;
   std::map<int64_t, CefRefPtr<CefJSDialogCallback>> _jsDialogs;
@@ -440,11 +656,37 @@ struct PendingDownload {
   NSMutableDictionary<NSNumber *, void (^)(NSData *_Nullable)> *_snapshotCompletions;
 }
 
++ (void)configureAdBlockerWithBlockedDomains:(NSArray<NSString *> *)blockedDomains
+                              allowedDomains:(NSArray<NSString *> *)allowedDomains
+                             blockedPatterns:(NSArray<NSString *> *)blockedPatterns
+                             allowedPatterns:(NSArray<NSString *> *)allowedPatterns
+                             globalSelectors:(NSArray<NSString *> *)globalSelectors
+                             domainSelectors:(NSDictionary<NSString *, NSArray<NSString *> *> *)domainSelectors {
+  auto rules = std::make_shared<AdBlockRules>();
+  for (NSString *domain in blockedDomains) {
+    rules->blocked_domains.insert(LowerASCII(domain.UTF8String ?: ""));
+  }
+  for (NSString *domain in allowedDomains) {
+    rules->allowed_domains.insert(LowerASCII(domain.UTF8String ?: ""));
+  }
+  rules->blocked_patterns = PatternMatcher(blockedPatterns);
+  rules->allowed_patterns = PatternMatcher(allowedPatterns);
+  rules->global_css = CSSForSelectors(globalSelectors);
+  for (NSString *domain in domainSelectors) {
+    rules->domain_css.emplace(
+        LowerASCII(domain.UTF8String ?: ""),
+        CSSForSelectors(domainSelectors[domain]));
+  }
+  std::atomic_store(&gAdBlockRules,
+                    std::static_pointer_cast<const AdBlockRules>(rules));
+}
+
 - (instancetype)init {
   self = [super init];
   if (self) {
     _client = new LeanCefClient(self);
     _zoomRatio = 1.0;
+    _adBlockingEnabled = false;
     _nextId = 1;
     _downloadSeq = 1;
     _snapshotCompletions = [NSMutableDictionary dictionary];
@@ -541,6 +783,55 @@ struct PendingDownload {
     }
   }
   completion(imageData);
+}
+
+- (BOOL)shouldBlockURL:(const CefString &)url isMainNavigation:(BOOL)isMainNavigation {
+  if (!_adBlockingEnabled.load() || isMainNavigation) {
+    return NO;
+  }
+  auto rules = std::atomic_load(&gAdBlockRules);
+  if (!rules) {
+    return NO;
+  }
+  std::string host = HostFromURL(url);
+  std::string requestURL = LowerASCII(url.ToString());
+  if (MatchesDomain(rules->allowed_domains, host) ||
+      rules->allowed_patterns.Matches(requestURL)) {
+    return NO;
+  }
+  return MatchesDomain(rules->blocked_domains, host) ||
+         rules->blocked_patterns.Matches(requestURL);
+}
+
+- (std::string)cosmeticScriptForURL:(const CefString &)url {
+  if (!_adBlockingEnabled.load()) {
+    return {};
+  }
+  auto rules = std::atomic_load(&gAdBlockRules);
+  if (!rules) {
+    return {};
+  }
+  std::string css = rules->global_css;
+  std::string host = HostFromURL(url);
+  std::string_view suffix = host;
+  while (!suffix.empty()) {
+    auto found = rules->domain_css.find(std::string(suffix));
+    if (found != rules->domain_css.end()) {
+      css += found->second;
+    }
+    size_t dot = suffix.find('.');
+    if (dot == std::string_view::npos) {
+      break;
+    }
+    suffix.remove_prefix(dot + 1);
+  }
+  if (css.empty()) {
+    return {};
+  }
+  return "(()=>{const c=\"" + EscapeJavaScriptString(css) +
+         "\",a=()=>{const r=document.documentElement;if(!r){requestAnimationFrame(a);return;}"
+         "let s=document.getElementById('lean-adblock-css');if(!s){s=document.createElement('style');"
+         "s.id='lean-adblock-css';r.appendChild(s);}s.textContent=c;};a();})();";
 }
 
 // Public API (main thread; hops to CEF UI thread).
@@ -672,6 +963,26 @@ struct PendingDownload {
   PostToUI([selfRef] {
     if (selfRef->_browser) {
       selfRef->_browser->GetHost()->SetFocus(true);
+    }
+  });
+}
+
+- (void)setAdBlockingEnabled:(BOOL)enabled {
+  _adBlockingEnabled.store(enabled);
+  CEFBrowserHost *selfRef = self;
+  PostToUI([selfRef, enabled] {
+    if (!selfRef->_browser) {
+      return;
+    }
+    CefRefPtr<CefFrame> frame = selfRef->_browser->GetMainFrame();
+    if (!frame) {
+      return;
+    }
+    std::string script = enabled
+        ? [selfRef cosmeticScriptForURL:frame->GetURL()]
+        : "document.getElementById('lean-adblock-css')?.remove();";
+    if (!script.empty()) {
+      frame->ExecuteJavaScript(script, frame->GetURL(), 0);
     }
   });
 }
@@ -831,6 +1142,16 @@ struct PendingDownload {
 
 @implementation CEFBrowserHost
 
++ (void)configureAdBlockerWithBlockedDomains:(NSArray<NSString *> *)blockedDomains
+                              allowedDomains:(NSArray<NSString *> *)allowedDomains
+                             blockedPatterns:(NSArray<NSString *> *)blockedPatterns
+                             allowedPatterns:(NSArray<NSString *> *)allowedPatterns
+                             globalSelectors:(NSArray<NSString *> *)globalSelectors
+                             domainSelectors:(NSDictionary<NSString *, NSArray<NSString *> *> *)domainSelectors {
+  (void)blockedDomains; (void)allowedDomains; (void)blockedPatterns;
+  (void)allowedPatterns; (void)globalSelectors; (void)domainSelectors;
+}
+
 - (BOOL)createInView:(NSView *)view initialURL:(nullable NSString *)urlString {
   (void)view;
   (void)urlString;
@@ -849,6 +1170,7 @@ struct PendingDownload {
 - (void)zoomOut {}
 - (void)resetZoom {}
 - (void)focus {}
+- (void)setAdBlockingEnabled:(BOOL)enabled { (void)enabled; }
 - (void)captureSnapshotWithCompletion:(void (^)(NSData *_Nullable))completion {
   completion(nil);
 }

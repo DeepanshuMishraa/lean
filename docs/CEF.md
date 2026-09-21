@@ -74,10 +74,9 @@ display for paint/input/scroll feel.
 ## Deliberate v1 gaps
 
 - Popups cancel into plain new tabs (no `window.opener` handshake); `window.close()` closes the tab.
-- No per-tab CEF snapshot for the tab switcher (falls back to icon/title).
 - Find has no result counts; dismissing the find bar doesn't `StopFinding`.
 - No `CefShutdown` on quit (pump stops; process exit reaps helpers).
-- ContentBlocker rules don't apply to CEF (needs a `CefRequestHandler` port).
+- Chromium blocking supports fast domain/URL network rules and standard CSS cosmetics; uBO scriptlets and procedural cosmetics require a Chromium fork.
 - CEF tabs always create an idle WKWebView alongside (TODO: make lazy).
 - Extensions: CEF exposes only a subset — full extensions need a Chromium fork.
 - Apple Pay / iCloud Passwords stay Safari-only on any engine.

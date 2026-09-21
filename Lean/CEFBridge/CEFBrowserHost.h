@@ -15,6 +15,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) void (^onLoadingState)(BOOL isLoading, BOOL canGoBack, BOOL canGoForward);
 @property (nonatomic, copy, nullable) void (^onFaviconURLs)(NSArray<NSString *> *urls);
 @property (nonatomic, copy, nullable) void (^onLoadError)(NSString *failedURLString, NSString *errorText);
+/// Renderer died (crash, OOM, Cloud failure, or launch failure).
+/// Status is a short string like CRASHED, OOM, WAS_KILLED, LAUNCH_FAILED.
+@property (nonatomic, copy, nullable) void (^onRendererTerminated)(NSString *statusName);
 /// Page called window.close().
 @property (nonatomic, copy, nullable) void (^onClose)(void);
 /// Popup blocked (v1: opened as a plain new tab; window.opener handshake N/A).

@@ -440,8 +440,13 @@ struct LeanView: View {
                     // for both engines; only this content view branches.
                     ZStack(alignment: .topTrailing) {
                         if tab.engineKind == .cef, CEFIntegration.canRender(), tab.cefHost != nil {
-                            CEFEngineView(tab: tab)
-                                .id(tab.id)
+                            if tab.cefCrashed {
+                                CEFCrashedView(tab: tab, store: store)
+                                    .id(tab.id)
+                            } else {
+                                CEFEngineView(tab: tab)
+                                    .id(tab.id)
+                            }
                         } else if tab.engineKind == .cef {
                             CEFUnavailableView(store: store)
                                 .id(tab.id)
@@ -720,6 +725,45 @@ private struct WebView: NSViewRepresentable {
     func updateNSView(_ nsView: WKWebView, context: Context) {
         nsView.wantsLayer = true
         nsView.layer?.drawsAsynchronously = true
+    }
+}
+
+/// In-content notice when a CEF renderer dies: Chromium respawns the
+/// renderer on the next navigation, so Reload recovers instead of leaving
+/// a permanent blank page. Lives inside the web content card only.
+private struct CEFCrashedView: View {
+    @ObservedObject var tab: LeanTab
+    @ObservedObject var store: LeanStore
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 28, weight: .light))
+                .foregroundColor(store.themeColors.secondaryText)
+            Text("This page crashed")
+                .font(store.headingFont(size: 14))
+                .foregroundColor(store.themeColors.omnibarText)
+            Text("The Chromium renderer stopped unexpectedly. Your tabs are intact — reload to continue.")
+                .font(store.bodyFont(size: 12))
+                .foregroundColor(store.themeColors.secondaryText)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+            Button {
+                tab.reload()
+            } label: {
+                Text("Reload page")
+                    .font(store.bodyFont(size: 12))
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(
+                        store.themeColors.omnibarBackground,
+                        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(store.themeColors.windowBackground)
     }
 }
 

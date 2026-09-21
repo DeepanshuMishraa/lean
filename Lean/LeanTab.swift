@@ -28,6 +28,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private var cefContainer: CEFContainerView?
     private var pendingCEFURL: URL?
     private var cefAttached = false
+    /// Set when the renderer dies (crash/OOM/launch failure). The view
+    /// layer swaps the dead page for a notice with Reload instead of a
+    /// permanent blank. Cleared on the next navigation.
+    @Published private(set) var cefCrashed = false
     private var cefDownloadItems: [String: UUID] = [:]
     private var cefDownloadSamples: [UUID: (bytes: Int64, date: Date, speed: Double)] = [:]
 
@@ -296,6 +300,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     func load(_ url: URL) {
         self.url = url
+        cefCrashed = false
         if title == "New Tab" || title.isEmpty {
             self.title = url.host ?? "Loading..."
         }
@@ -352,6 +357,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.goForward()
     }
     func reload() {
+        cefCrashed = false
         if let cef = cefHost {
             isLoading = true
             onStateChange?()
@@ -897,7 +903,6 @@ extension LeanTab {
 
         host.onCreated = { [weak self] in
             guard let self else { return }
-            self.cefContainer?.browserCreated()
             if let pendingCEFURL {
                 self.cefHost?.loadURL(pendingCEFURL.absoluteString)
             }
@@ -929,6 +934,12 @@ extension LeanTab {
         host.onLoadError = { [weak self] _, _ in
             guard let self else { return }
             self.isLoading = false
+            self.onStateChange?()
+        }
+        host.onRendererTerminated = { [weak self] _ in
+            guard let self else { return }
+            self.isLoading = false
+            self.cefCrashed = true
             self.onStateChange?()
         }
         host.onClose = { [weak self] in

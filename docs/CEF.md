@@ -63,6 +63,13 @@ display for paint/input/scroll feel.
     `scripts/embed-cef.sh` clones these from the base helper; never delete
     that step. Diagnose via `OnRenderProcessTerminated` logging in
     `CEFBrowserHost.mm` (`LEAN_CEF_DEBUG=1` adds child command lines).
+11. **Shim `isHandlingSendEvent` on the NSApplication class.** CEF's nested
+    event pump (inside `CefDoMessageLoopWork`) calls this private AppKit
+    method, which no longer exists on macOS 27 — and never did on SwiftUI's
+    `AppKitApplication` subclass. First nested pump = instant
+    `unrecognized selector` crash. `CEFManager` installs a `NO`-returning
+    implementation at init (only when absent) — see `LeanInstallEventPumpShim`.
+    If input/event dispatch ever acts strangely, look here first.
 
 ## Deliberate v1 gaps
 

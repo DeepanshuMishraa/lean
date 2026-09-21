@@ -222,6 +222,7 @@ class LeanCefClient : public CefClient,
   void OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser,
                                  TerminationStatus status, int error_code,
                                  const CefString &error_string) override {
+    CEFBrowserHost *owner = owner_;
     const char *name = "unknown";
     switch (status) {
       case TS_ABNORMAL_TERMINATION: name = "ABNORMAL_TERMINATION"; break;
@@ -233,6 +234,12 @@ class LeanCefClient : public CefClient,
     }
     NSLog(@"CEF renderer terminated: %s code=%d text=%@ browser=%p", name,
           error_code, NSStringFromCef(error_string), browser.get());
+    NSString *statusName = [NSString stringWithUTF8String:name];
+    PostToMain(^{
+      if (owner.onRendererTerminated) {
+        owner.onRendererTerminated(statusName);
+      }
+    });
     (void)browser;
   }
 

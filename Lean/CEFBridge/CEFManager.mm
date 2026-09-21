@@ -1,4 +1,6 @@
 #import "CEFManager.h"
+#import <AppKit/AppKit.h>
+#import <objc/runtime.h>
 
 #if __has_include("include/cef_app.h")
 #define LEAN_HAS_CEF 1
@@ -10,6 +12,22 @@
 #include "include/wrapper/cef_library_loader.h"
 
 namespace {
+// CEF's nested event pump (inside CefDoMessageLoopWork) calls the private
+// AppKit method -[NSApplication isHandlingSendEvent] to decide whether it
+// may dispatch events directly. That method no longer exists on macOS 27 —
+// and never did on SwiftUI's AppKitApplication subclass — so the first
+// nested pump kills the app with "unrecognized selector". Provide it when
+// absent. NO matches the real implementation's common-case value (not
+// inside -sendEvent:) and tells CEF direct dispatch is safe.
+BOOL LeanIsHandlingSendEvent(id, SEL) { return NO; }
+
+void LeanInstallEventPumpShim(void) {
+  SEL sel = @selector(isHandlingSendEvent);
+  if (![[NSApplication class] instancesRespondToSelector:sel]) {
+    class_addMethod([NSApplication class], sel,
+                    (IMP)LeanIsHandlingSendEvent, "c@:");
+  }
+}
 class LeanCefApp : public CefApp, public CefBrowserProcessHandler {
  public:
   LeanCefApp() = default;
@@ -92,6 +110,7 @@ static BOOL gCEFInitialized = NO;
   if (gCEFInitialized) {
     return YES;
   }
+  LeanInstallEventPumpShim();
   // All wrapper calls route through function pointers that are only filled
   // by loading the framework explicitly. Without this, the first CefString
   // assignment jumps to NULL. The loader is intentionally leaked: its

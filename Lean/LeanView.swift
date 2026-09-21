@@ -63,7 +63,8 @@ struct LeanView: View {
                 }
             }
             hideTopBarWorkItem = item
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: item)
+            let delay = store.selectedTab?.engineKind == .cef ? 0.45 : 0.18
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
         }
     }
 
@@ -119,6 +120,27 @@ struct LeanView: View {
                             .zIndex(40)
                     }
                 }
+            } else if store.enableZenMode && store.selectedTab?.engineKind == .cef {
+                ZStack(alignment: .top) {
+                    // Keep Chromium at a stable size. Moving the card preserves
+                    // the Zen transition without feeding spring-sized viewports
+                    // into CEF.
+                    mainContentCard
+                        .offset(y: isTopBarVisible ? (store.enableWindowBorder ? 34 : 36) : 0)
+
+                    if isTopBarVisible {
+                        TopBarView(store: store)
+                            .onHover { hovering in
+                                setZenHoverState(isHoveringTop: hovering)
+                            }
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .top).combined(with: .opacity),
+                                removal: .move(edge: .top).combined(with: .opacity)
+                            ))
+                            .zIndex(20)
+                    }
+                }
+                .clipped()
             } else {
                 VStack(spacing: 0) {
                     // Top Bar - In Zen mode, disappears and reveals on hover
@@ -384,7 +406,8 @@ struct LeanView: View {
     // MARK: - Main Content Card & Spacing
     private var cardTopPadding: CGFloat {
         if !store.enableWindowBorder { return 0 }
-        if store.tabLayout == .sidebar {
+        if store.tabLayout == .sidebar
+            || (store.enableZenMode && store.selectedTab?.engineKind == .cef) {
             return store.windowBorderWidth
         }
         return isTopBarVisible ? 2 : store.windowBorderWidth

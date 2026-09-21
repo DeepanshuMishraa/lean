@@ -13,21 +13,6 @@ import SwiftUI
 /// and layout identical to WebKit tabs.
 final class CEFContainerView: NSView {
     weak var tab: LeanTab?
-
-    override func layout() {
-        super.layout()
-        tab?.cefHost?.notifyParentResized()
-    }
-
-    override func setFrameSize(_ newSize: NSSize) {
-        super.setFrameSize(newSize)
-        tab?.cefHost?.notifyParentResized()
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        tab?.cefHost?.notifyParentResized()
-    }
 }
 
 struct CEFEngineView: NSViewRepresentable {

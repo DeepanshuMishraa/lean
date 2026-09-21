@@ -18,6 +18,14 @@ class LeanCefApp : public CefApp, public CefBrowserProcessHandler {
     return this;
   }
 
+  void OnBeforeChildProcessLaunch(
+      CefRefPtr<CefCommandLine> command_line) override {
+    if (getenv("LEAN_CEF_DEBUG") != nullptr) {
+      NSLog(@"CEF child launch: %s",
+            command_line->GetCommandLineString().ToString().c_str());
+    }
+  }
+
   void OnBeforeCommandLineProcessing(
       const CefString &process_type,
       CefRefPtr<CefCommandLine> command_line) override {
@@ -25,6 +33,16 @@ class LeanCefApp : public CefApp, public CefBrowserProcessHandler {
       // The GPU process cannot nest Chromium's sandbox inside Lean's App
       // Sandbox; run it without the inner sandbox (it still inherits ours).
       command_line->AppendSwitch("disable-gpu-sandbox");
+#if DEBUG
+      // Debug only: DevTools + CDP screenshot harness (scripts/cef-shot.sh).
+      // Never ship open (no auth on the port).
+      command_line->AppendSwitchWithValue("remote-debugging-port", "9222");
+      command_line->AppendSwitchWithValue("remote-allow-origins", "*");
+      if (getenv("LEAN_CEF_DEBUG") != nullptr) {
+        command_line->AppendSwitch("enable-logging");
+        command_line->AppendSwitchWithValue("v", "1");
+      }
+#endif
     }
   }
 
@@ -124,7 +142,9 @@ static BOOL gCEFInitialized = NO;
   // Single-threaded loop with an external pump (see startMessagePump).
   // multi_threaded_message_loop=true fails to init under App Sandbox.
   settings.multi_threaded_message_loop = false;
-  settings.log_severity = LOGSEVERITY_WARNING;
+  settings.log_severity = getenv("LEAN_CEF_DEBUG") != nullptr
+      ? LOGSEVERITY_INFO
+      : LOGSEVERITY_WARNING;
   CefString(&settings.cache_path) = [cachePath UTF8String];
   CefString(&settings.root_cache_path) = [cachePath UTF8String];
   CefString(&settings.browser_subprocess_path) = [subprocessPath UTF8String];
@@ -166,9 +186,20 @@ static NSTimer *gPumpTimer = nil;
   if (gPumpTimer) {
     return;
   }
+  static BOOL debugPump = NO;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    debugPump = getenv("LEAN_CEF_DEBUG") != nullptr;
+  });
+  __block uint64_t ticks = 0;
   gPumpTimer = [NSTimer scheduledTimerWithTimeInterval:(1.0 / 60.0)
                                                repeats:YES
                                                  block:^(NSTimer *_) {
+                                                   ticks++;
+                                                   if (debugPump && (ticks % 60) == 0) {
+                                                     NSLog(@"CEF pump alive: %llu ticks",
+                                                           (unsigned long long)ticks);
+                                                   }
                                                    CefDoMessageLoopWork();
                                                  }];
 #endif

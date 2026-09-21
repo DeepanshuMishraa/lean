@@ -34,15 +34,46 @@ fi
 
 HELPER_SRC="${BUILT_PRODUCTS_DIR}/Lean Helper.app"
 HELPER_DST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/Lean Helper.app"
-if [ -d "$HELPER_SRC" ]; then
-  rm -rf "$HELPER_DST"
-  cp -R "$HELPER_SRC" "$HELPER_DST"
+HELPER_ENTITLEMENTS="${SRCROOT}/Lean/Helper/LeanHelper.entitlements"
+sign_helper() {
   # Enforce inherit-only entitlements: Xcode may inject Debug extras
   # (get-task-allow, testmanagerd) that break sandbox inheritance and kill
   # every CEF child process. Re-sign ad-hoc with exactly our two keys.
-  if [ -f "${SRCROOT}/Lean/Helper/LeanHelper.entitlements" ]; then
+  if [ -f "$HELPER_ENTITLEMENTS" ]; then
     /usr/bin/codesign --force --sign - --timestamp=none \
-      --entitlements "${SRCROOT}/Lean/Helper/LeanHelper.entitlements" \
-      "$HELPER_DST" || true
+      --entitlements "$HELPER_ENTITLEMENTS" \
+      "$1" || true
   fi
+}
+if [ -d "$HELPER_SRC" ]; then
+  rm -rf "$HELPER_DST"
+  cp -R "$HELPER_SRC" "$HELPER_DST"
+  sign_helper "$HELPER_DST"
+
+  # Chromium on macOS does NOT run every child type from
+  # browser_subprocess_path: renderers, the GPU process, and the macOS
+  # notification provider each demand a sibling bundle named
+  # "Lean Helper (<Variant>).app" next to the base helper. A missing
+  # Renderer variant fails every page load (TS_LAUNCH_FAILED → blank page),
+  # so clone the base helper per variant with a patched Info.plist.
+  for variant in Renderer GPU Alerts; do
+    case "$variant" in
+      Renderer) SUFFIX="renderer" ;;
+      GPU) SUFFIX="gpu" ;;
+      Alerts) SUFFIX="alerts" ;;
+    esac
+    VARIANT_NAME="Lean Helper ($variant).app"
+    VARIANT_DST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/$VARIANT_NAME"
+    rm -rf "$VARIANT_DST"
+    cp -R "$HELPER_DST" "$VARIANT_DST"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Lean Helper ($variant)" \
+      "$VARIANT_DST/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleName Lean Helper ($variant)" \
+      "$VARIANT_DST/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.dipxsy.lean.helper.$SUFFIX" \
+      "$VARIANT_DST/Contents/Info.plist"
+    mv "$VARIANT_DST/Contents/MacOS/Lean Helper" \
+      "$VARIANT_DST/Contents/MacOS/Lean Helper ($variant)"
+    sign_helper "$VARIANT_DST"
+  done
 fi

@@ -175,7 +175,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
         applyAdBlocking(adBlockingEnabled)
 
-        if engineKind == .cef, CEFIntegration.isAvailable() {
+        if engineKind == .cef, CEFIntegration.canRender() {
             setupCEFHost()
         }
 
@@ -895,6 +895,13 @@ extension LeanTab {
         let host = CEFBrowserHost()
         cefHost = host
 
+        host.onCreated = { [weak self] in
+            guard let self else { return }
+            self.cefContainer?.browserCreated()
+            if let pendingCEFURL {
+                self.cefHost?.loadURL(pendingCEFURL.absoluteString)
+            }
+        }
         host.onTitle = { [weak self] title in
             guard let self else { return }
             let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -984,6 +991,9 @@ extension LeanTab {
     func attachCEF(to view: NSView) {
         guard let host = cefHost, !cefAttached else { return }
         cefAttached = true
+        if ProcessInfo.processInfo.environment["LEAN_CEF_DEBUG"] == "1" {
+            NSLog("CEF attach: container %.0f x %.0f", view.bounds.width, view.bounds.height)
+        }
         // Only flush a pending URL that still matches the tab; a stale one
         // (e.g. from before a settings navigation) must not resurrect.
         let initial: URL?

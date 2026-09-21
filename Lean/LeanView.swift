@@ -439,7 +439,7 @@ struct LeanView: View {
                     // Web Page Loaded — engine slot. Shell chrome is identical
                     // for both engines; only this content view branches.
                     ZStack(alignment: .topTrailing) {
-                        if tab.engineKind == .cef, CEFIntegration.isAvailable(), tab.cefHost != nil {
+                        if tab.engineKind == .cef, CEFIntegration.canRender(), tab.cefHost != nil {
                             CEFEngineView(tab: tab)
                                 .id(tab.id)
                         } else if tab.engineKind == .cef {
@@ -723,21 +723,29 @@ private struct WebView: NSViewRepresentable {
     }
 }
 
-/// In-content notice for CEF tabs when the framework is not bundled.
+/// In-content notice for CEF tabs that cannot render here: either the
+/// framework isn't bundled, or the app runs from DerivedData (the sandbox
+/// blocks the CEF helper there, so every page would stay blank).
 /// Lives inside the web content card only — top bar, sidebar, omnibar,
 /// and settings chrome are untouched.
 private struct CEFUnavailableView: View {
     @ObservedObject var store: LeanStore
+
+    private var isDerivedDataLaunch: Bool {
+        CEFIntegration.isAvailable() && CEFIntegration.isRunningFromDerivedData()
+    }
 
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: "cpu")
                 .font(.system(size: 28, weight: .light))
                 .foregroundColor(store.themeColors.secondaryText)
-            Text("Chromium engine not installed")
+            Text(isDerivedDataLaunch ? "Chromium can't render from here" : "Chromium engine not installed")
                 .font(store.headingFont(size: 14))
                 .foregroundColor(store.themeColors.omnibarText)
-            Text("This tab asked for CEF, but the Chromium framework isn't bundled with this build. New tabs keep using WebKit until CEF lands — see docs/CEF.md.")
+            Text(isDerivedDataLaunch
+                ? "Xcode builds run from DerivedData, where the sandbox blocks the Chromium helper — pages would stay blank. Relaunch from an installed copy: scripts/run-cef-dev.sh."
+                : "This tab asked for CEF, but the Chromium framework isn't bundled with this build. New tabs keep using WebKit until CEF lands — see docs/CEF.md.")
                 .font(store.bodyFont(size: 12))
                 .foregroundColor(store.themeColors.secondaryText)
                 .multilineTextAlignment(.center)

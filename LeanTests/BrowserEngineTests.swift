@@ -18,6 +18,8 @@ struct BrowserEngineKindTests {
         let empty = try #require(Bundle(url: emptyDir))
         #expect(!CEFIntegration.isAvailable(bundle: empty))
         #expect(CEFIntegration.frameworkURL(bundle: empty) == nil)
+        #expect(!CEFIntegration.canRender(bundle: empty))
+        #expect(!CEFIntegration.isRunningFromDerivedData(bundle: empty))
     }
 
     @MainActor

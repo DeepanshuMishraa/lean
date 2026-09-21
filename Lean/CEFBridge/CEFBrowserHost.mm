@@ -125,6 +125,10 @@ class LeanCefClient : public CefClient,
   void OnLoadingStateChange(CefRefPtr<CefBrowser> browser, bool is_loading,
                             bool can_go_back, bool can_go_forward) override {
     CEFBrowserHost *owner = owner_;
+    if (getenv("LEAN_CEF_DEBUG") != nullptr) {
+      NSLog(@"CEF loading state: loading=%d back=%d fwd=%d", (int)is_loading,
+            (int)can_go_back, (int)can_go_forward);
+    }
     PostToMain(^{
       if (owner.onLoadingState) {
         owner.onLoadingState(is_loading ? YES : NO, can_go_back ? YES : NO,
@@ -194,10 +198,14 @@ class LeanCefClient : public CefClient,
 
   // CefLoadHandler
   void OnLoadError(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
-                   ErrorCode, const CefString &error_text,
+                   ErrorCode errorCode, const CefString &error_text,
                    const CefString &failed_url) override {
     if (!frame->IsMain()) {
       return;
+    }
+    if (getenv("LEAN_CEF_DEBUG") != nullptr) {
+      NSLog(@"CEF load error: %@ code=%d text=%@", NSStringFromCef(failed_url),
+            (int)errorCode, NSStringFromCef(error_text));
     }
     // ERR_ABORTED is routine (stopped loads, new navigations superseding).
     NSString *url = NSStringFromCef(failed_url);
@@ -211,6 +219,23 @@ class LeanCefClient : public CefClient,
   }
 
   // CefRequestHandler
+  void OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser,
+                                 TerminationStatus status, int error_code,
+                                 const CefString &error_string) override {
+    const char *name = "unknown";
+    switch (status) {
+      case TS_ABNORMAL_TERMINATION: name = "ABNORMAL_TERMINATION"; break;
+      case TS_PROCESS_WAS_KILLED: name = "WAS_KILLED"; break;
+      case TS_PROCESS_CRASHED: name = "CRASHED"; break;
+      case TS_PROCESS_OOM: name = "OOM"; break;
+      case TS_LAUNCH_FAILED: name = "LAUNCH_FAILED"; break;
+      case TS_INTEGRITY_FAILURE: name = "INTEGRITY_FAILURE"; break;
+    }
+    NSLog(@"CEF renderer terminated: %s code=%d text=%@ browser=%p", name,
+          error_code, NSStringFromCef(error_string), browser.get());
+    (void)browser;
+  }
+
   bool GetAuthCredentials(CefRefPtr<CefBrowser>, const CefString &,
                           bool, const CefString &host, int,
                           const CefString &realm, const CefString &,
@@ -376,6 +401,7 @@ struct PendingDownload {
 @implementation CEFBrowserHost {
   CefRefPtr<CefBrowser> _browser;
   CefRefPtr<LeanCefClient> _client;
+  __weak NSView *_parentView;
   std::string _pendingURL;
   double _zoomRatio;
   int64_t _nextId;
@@ -453,11 +479,7 @@ struct PendingDownload {
 
 - (void)browserCreated:(CefRefPtr<CefBrowser>)browser {
   _browser = browser;
-  if (!_pendingURL.empty()) {
-    std::string url = _pendingURL;
-    _pendingURL.clear();
-    browser->GetMainFrame()->LoadURL(url);
-  }
+  [self notifyParentResized];
 }
 
 - (void)browserGone {
@@ -467,6 +489,7 @@ struct PendingDownload {
 // Public API (main thread; hops to CEF UI thread).
 
 - (BOOL)createInView:(NSView *)view initialURL:(nullable NSString *)urlString {
+  _parentView = view;
   if (urlString) {
     _pendingURL = [urlString UTF8String];
   }
@@ -478,9 +501,7 @@ struct PendingDownload {
     windowInfo.SetAsChild((__bridge CefWindowHandle)view,
                           CefRect(0, 0, (int)w, (int)h));
     CefBrowserSettings settings;
-    std::string url = selfRef->_pendingURL;
-    selfRef->_pendingURL.clear();
-    CefBrowserHost::CreateBrowser(windowInfo, selfRef->_client, url, settings,
+    CefBrowserHost::CreateBrowser(windowInfo, selfRef->_client, "", settings,
                                   nullptr, nullptr);
   });
   return YES;
@@ -491,6 +512,7 @@ struct PendingDownload {
   CEFBrowserHost *selfRef = self;
   PostToUI([selfRef, url] {
     if (selfRef->_browser) {
+      selfRef->_pendingURL.clear();
       selfRef->_browser->GetMainFrame()->LoadURL(url);
     } else {
       selfRef->_pendingURL = url;
@@ -677,8 +699,24 @@ struct PendingDownload {
 - (void)notifyParentResized {
   CEFBrowserHost *selfRef = self;
   PostToUI([selfRef] {
-    if (selfRef->_browser) {
-      selfRef->_browser->GetHost()->WasResized();
+    if (!selfRef->_browser) {
+      return;
+    }
+    NSView *browserView = (__bridge NSView *)selfRef->_browser->GetHost()->GetWindowHandle();
+    NSView *parentView = selfRef->_parentView;
+    if (!parentView) {
+      return;
+    }
+    if (browserView.superview != parentView) {
+      [browserView removeFromSuperview];
+      [parentView addSubview:browserView];
+    }
+    browserView.frame = parentView.bounds;
+    browserView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    if (getenv("LEAN_CEF_DEBUG") != nullptr) {
+      NSLog(@"CEF native view: %@ frame=%@ parent=%@ window=%@",
+            NSStringFromClass(browserView.class), NSStringFromRect(browserView.frame),
+            NSStringFromRect(parentView.bounds), parentView.window);
     }
   });
 }

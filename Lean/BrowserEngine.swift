@@ -64,4 +64,17 @@ enum CEFIntegration {
     static func isAvailable(bundle: Bundle = .main) -> Bool {
         frameworkURL(bundle: bundle) != nil
     }
+
+    /// True when running from an Xcode DerivedData build. The App Sandbox
+    /// blocks the CEF helper's framework load there, so every renderer dies
+    /// and pages stay blank. CEF requires an installed copy — see
+    /// scripts/run-cef-dev.sh.
+    static func isRunningFromDerivedData(bundle: Bundle = .main) -> Bool {
+        bundle.bundleURL.path.contains("/DerivedData/")
+    }
+
+    /// True when a CEF tab can actually render in this process.
+    static func canRender(bundle: Bundle = .main) -> Bool {
+        isAvailable(bundle: bundle) && !isRunningFromDerivedData(bundle: bundle)
+    }
 }

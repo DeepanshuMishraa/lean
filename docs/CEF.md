@@ -53,6 +53,16 @@ display for paint/input/scroll feel.
 9. **Never launch CEF from DerivedData.** The sandbox blocks the helper's
    framework load there. Copy to /Applications first:
    `scripts/run-cef-dev.sh` (build → copy → open).
+10. **Ship per-type helper bundles.** On macOS Chromium ignores
+    `browser_subprocess_path` for some child types: the renderer, GPU, and
+    macOS notification provider each demand a sibling bundle named
+    `Lean Helper (Renderer|GPU|Alerts).app` next to the base helper, with
+    matching `CFBundleExecutable`/`CFBundleIdentifier` and inherit-only
+    entitlements. A missing Renderer variant fails EVERY page load
+    (`TS_LAUNCH_FAILED` → permanent blank page, no crash log).
+    `scripts/embed-cef.sh` clones these from the base helper; never delete
+    that step. Diagnose via `OnRenderProcessTerminated` logging in
+    `CEFBrowserHost.mm` (`LEAN_CEF_DEBUG=1` adds child command lines).
 
 ## Deliberate v1 gaps
 

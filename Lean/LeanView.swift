@@ -127,7 +127,7 @@ struct LeanView: View {
                     // the Zen transition without feeding spring-sized viewports
                     // into CEF.
                     mainContentCard
-                        .offset(y: isTopBarVisible ? (store.enableWindowBorder ? 34 : 36) : 0)
+                        .offset(y: isTopBarVisible ? store.scaled(store.enableWindowBorder ? 34 : 36) : 0)
 
                     if isTopBarVisible {
                         TopBarView(store: store)
@@ -195,7 +195,7 @@ struct LeanView: View {
             // on the very first press.
             if store.isFloatingOmnibarVisible {
                 VStack(spacing: 0) {
-                    Spacer().frame(height: 72)
+                    Spacer().frame(height: store.scaled(72))
                     OmnibarView(store: store, isFloating: true)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -211,7 +211,7 @@ struct LeanView: View {
             if store.isQuickSettingsPresented {
                 ZStack(alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing) {
                     QuickSettingsPopover(store: store)
-                        .padding(.top, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : 4)))
+                        .padding(.top, store.tabLayout == .sidebar ? 0 : store.scaled(store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : store.scaled(4)))
                         .padding(.trailing, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? store.windowBorderWidth : 0) + 12))
                         .padding(.leading, store.tabLayout == .sidebar ? (store.windowBorderWidth + 12) : 0)
                         .padding(.bottom, store.tabLayout == .sidebar ? (store.windowBorderWidth + 46) : 0)
@@ -229,7 +229,7 @@ struct LeanView: View {
             if store.isDownloadsPresented {
                 ZStack(alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing) {
                     DownloadsPopover(store: store)
-                        .padding(.top, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : 4)))
+                        .padding(.top, store.tabLayout == .sidebar ? 0 : store.scaled(store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : store.scaled(4)))
                         .padding(.trailing, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? store.windowBorderWidth : 0) + 12))
                         .padding(.leading, store.tabLayout == .sidebar ? (store.windowBorderWidth + 12) : 0)
                         .padding(.bottom, store.tabLayout == .sidebar ? (store.windowBorderWidth + 46) : 0)
@@ -273,6 +273,7 @@ struct LeanView: View {
             // Inline URL editing dismiss is owned by the NSEvent mouse monitor
             // below (pass-through, no click swallowing), so no overlay here.
         }
+        .environment(\.browserUIScale, store.browserUIScale)
         .ignoresSafeArea(.all)
         .background(
             store.enableWindowBorder
@@ -398,7 +399,7 @@ struct LeanView: View {
         let basePadding = store.enableWindowBorder ? store.windowBorderWidth : 0
         if store.tabLayout == .sidebar && isSidebarEffectivelyVisible && !store.isSidebarCollapsed && isCurrentTabWebPage {
             let gap = store.enableWindowBorder ? store.windowBorderWidth : 8
-            return basePadding + 256 + gap
+            return basePadding + store.scaled(256) + gap
         }
         return basePadding
     }
@@ -497,7 +498,7 @@ struct LeanView: View {
 
                         VStack(spacing: 0) {
                             if store.isNewTabOmnibarFloating {
-                                Spacer().frame(height: 80)
+                                Spacer().frame(height: store.scaled(80))
                             } else {
                                 Spacer()
                             }

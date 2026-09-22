@@ -996,6 +996,37 @@ private struct AppearanceSection: View {
                 }
             }
 
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel(
+                    "Browser UI",
+                    uiFont: store.leanUIFont,
+                    isDark: store.isDarkMode,
+                    headingWeight: store.uiHeadingWeight,
+                    bodyWeight: store.uiBodyWeight
+                )
+
+                SettingsGroup(isDark: store.isDarkMode) {
+                    SettingsSliderRow(
+                        title: "Interface size",
+                        subtitle: "Scales browser controls, icons, tabs, sidebars, and browser text",
+                        uiFont: store.leanUIFont,
+                        isDark: store.isDarkMode,
+                        headingWeight: store.uiHeadingWeight,
+                        bodyWeight: store.uiBodyWeight
+                    ) {
+                        SettingsValueSlider(
+                            value: $store.browserUIScalePercent,
+                            range: 80...120,
+                            step: 5,
+                            label: "UI",
+                            valueSuffix: "%",
+                            isDark: store.isDarkMode,
+                            uiFont: store.leanUIFont
+                        )
+                    }
+                }
+            }
+
             // Typography
             VStack(alignment: .leading, spacing: 8) {
                 SettingsHeaderLabel(

@@ -41,7 +41,7 @@ struct OmnibarView: View {
                 suggestionsList
             }
         }
-        .frame(width: 580)
+        .frame(width: store.scaled(580))
         .contentShape(Rectangle())
         .onTapGesture {
             if !isFieldFocused {
@@ -103,7 +103,7 @@ struct OmnibarView: View {
         HStack(spacing: 12) {
             Ph.magnifyingGlass.fill
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 14, height: 14)
+                .frame(width: store.scaled(14), height: store.scaled(14))
                 .foregroundColor(store.isDarkMode ? Color.white.opacity(0.4) : Color.black.opacity(0.4))
 
             ZStack(alignment: .leading) {
@@ -141,8 +141,8 @@ struct OmnibarView: View {
             }
             .clipped()
         }
-        .padding(.horizontal, 16)
-        .frame(height: 48)
+        .padding(.horizontal, store.scaled(16))
+        .frame(height: store.scaled(48))
         .contentShape(Rectangle())
         .onTapGesture {
             if !isFieldFocused {

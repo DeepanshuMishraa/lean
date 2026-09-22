@@ -6,6 +6,10 @@ struct TabFaviconView: View {
     let isDark: Bool
     var size: CGFloat = 14
 
+    @Environment(\.browserUIScale) private var browserUIScale
+
+    private var scaledSize: CGFloat { size * browserUIScale }
+
     private var host: String {
         guard let url = tab.url, let host = url.host?.lowercased() else { return "" }
         return host.replacingOccurrences(of: "www.", with: "")
@@ -17,11 +21,11 @@ struct TabFaviconView: View {
                 .resizable()
                 .interpolation(.high)
                 .scaledToFit()
-                .frame(width: size, height: size)
-                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                .frame(width: scaledSize, height: scaledSize)
+                .clipShape(RoundedRectangle(cornerRadius: 3 * browserUIScale, style: .continuous))
         } else {
             fallbackIcon
-                .frame(width: size, height: size)
+                .frame(width: scaledSize, height: scaledSize)
         }
     }
 
@@ -30,15 +34,15 @@ struct TabFaviconView: View {
         if tab.isSettingsPage {
             Ph.gear.fill
                 .aspectRatio(contentMode: .fit)
-                .frame(width: size * 0.85, height: size * 0.85)
+                .frame(width: scaledSize * 0.85, height: scaledSize * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
         } else if tab.url == nil {
             Ph.browser.fill
                 .aspectRatio(contentMode: .fit)
-                .frame(width: size * 0.85, height: size * 0.85)
+                .frame(width: scaledSize * 0.85, height: scaledSize * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
         } else {
-            SiteFallbackGlyph(host: host, isDark: isDark, size: size)
+            SiteFallbackGlyph(host: host, isDark: isDark, size: scaledSize)
         }
     }
 }

@@ -224,7 +224,7 @@ struct TopBarView: View {
 
             Spacer().frame(width: 12)
         }
-        .frame(height: store.enableWindowBorder ? 34 : 36)
+        .frame(height: store.scaled(store.enableWindowBorder ? 34 : 36))
         .background(
             store.enableWindowBorder
                 ? AnyView(Color.clear)
@@ -274,7 +274,7 @@ private struct TopBarTabItem: View {
     var body: some View {
         Button(action: handleTap) {
             tabContent
-                .frame(height: store.enableWindowBorder ? 27 : 26)
+                .frame(height: store.scaled(store.enableWindowBorder ? 27 : 26))
         }
         .buttonStyle(.plain)
         .background(
@@ -396,7 +396,7 @@ private struct TopBarTabItem: View {
         // centered sibling overlay shows the close button in its place.
         TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
             .opacity(shouldShowClose ? 0 : 1)
-            .frame(width: 28, height: 26)
+            .frame(width: store.scaled(28), height: store.scaled(26))
     }
 
     @ViewBuilder
@@ -425,9 +425,9 @@ private struct TopBarTabItem: View {
             Ph.x.bold
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 8, height: 8)
+                .frame(width: store.scaled(8), height: store.scaled(8))
                 .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
-                .frame(width: 18, height: 18)
+                .frame(width: store.scaled(18), height: store.scaled(18))
                 .background(
                     store.adaptiveTheme.tabCloseButtonHoverBackground,
                     in: Circle()
@@ -525,8 +525,8 @@ struct InlineURLBar: View {
             }
         }
         .padding(.horizontal, 9)
-        .frame(height: 26)
-        .frame(minWidth: 260, maxWidth: 440)
+        .frame(height: store.scaled(26))
+        .frame(minWidth: store.scaled(260), maxWidth: store.scaled(440))
         .background(
             GeometryReader { geo in
                 Color.clear
@@ -696,6 +696,8 @@ struct InlineSuggestionRow: View {
 }
 
 struct InteractiveIconButton: View {
+    @Environment(\.browserUIScale) private var browserUIScale
+
     let icon: Ph
     let helpText: String
     let size: CGFloat
@@ -737,9 +739,9 @@ struct InteractiveIconButton: View {
             icon.uiIcon
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
-                .frame(width: iconSize, height: iconSize)
+                .frame(width: iconSize * browserUIScale, height: iconSize * browserUIScale)
                 .foregroundColor(foregroundColor)
-                .frame(width: size, height: size)
+                .frame(width: size * browserUIScale, height: size * browserUIScale)
                 .background(
                     backgroundColor,
                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
@@ -786,6 +788,7 @@ struct DownloadsButtonFrameKey: PreferenceKey {
 // MARK: - Downloads Toolbar Button (sits beside the theme icon)
 struct DownloadToolbarButton: View {
     @ObservedObject var store: LeanStore
+    @Environment(\.browserUIScale) private var browserUIScale
 
     @State private var isHovered = false
     @State private var isPressed = false
@@ -823,9 +826,9 @@ struct DownloadToolbarButton: View {
                 Ph.arrowCircleDown.fill
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: 12, height: 12)
+                    .frame(width: 12 * browserUIScale, height: 12 * browserUIScale)
                     .foregroundColor(foregroundColor)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 24 * browserUIScale, height: 24 * browserUIScale)
                     .background(
                         backgroundColor,
                         in: RoundedRectangle(cornerRadius: 5, style: .continuous)

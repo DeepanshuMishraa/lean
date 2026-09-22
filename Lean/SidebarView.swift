@@ -111,8 +111,8 @@ struct SidebarView: View {
                 Spacer(minLength: 0)
                     .background(WindowDragView())
             }
-            .frame(height: 36)
-            .padding(.top, 4)
+            .frame(height: store.scaled(36))
+            .padding(.top, store.scaled(4))
             .padding(.trailing, 8)
 
             // 2. Full-Width Interactive Omnibar / Address Field
@@ -224,11 +224,11 @@ struct SidebarView: View {
                     store.settingsButtonFrame = frame
                 }
             }
-            .frame(height: 38)
-            .padding(.horizontal, 10)
-            .padding(.bottom, 4)
+            .frame(height: store.scaled(38))
+            .padding(.horizontal, store.scaled(10))
+            .padding(.bottom, store.scaled(4))
         }
-        .frame(width: 256)
+        .frame(width: store.scaled(256))
         .background(sidebarBackground)
     }
 
@@ -410,8 +410,8 @@ private struct SidebarAddressBar: View {
                 .help("Copy Page Link")
             }
         }
-        .padding(.horizontal, 10)
-        .frame(height: 36)
+        .padding(.horizontal, store.scaled(10))
+        .frame(height: store.scaled(36))
         .background(barBackground)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -517,8 +517,8 @@ struct SidebarTabItem: View {
                 // Always reserve close-button width so hover doesn't push text.
                 Color.clear.frame(width: 18, height: 18)
             }
-            .padding(.horizontal, 10)
-            .frame(height: 36)
+            .padding(.horizontal, store.scaled(10))
+            .frame(height: store.scaled(36))
         }
         .buttonStyle(.plain)
         .background(
@@ -543,9 +543,9 @@ struct SidebarTabItem: View {
                     Ph.x.bold
                         .interpolation(.high)
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 8, height: 8)
+                        .frame(width: store.scaled(8), height: store.scaled(8))
                         .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
-                        .frame(width: 20, height: 20)
+                        .frame(width: store.scaled(20), height: store.scaled(20))
                         .background(
                             store.adaptiveTheme.tabCloseButtonHoverBackground,
                             in: Circle()

@@ -816,24 +816,24 @@ struct FrameWidthPickerRow: View {
     }
 }
 
-// MARK: - Bespoke Font Weight Slider (Scrubbable Track Control)
-/// Minimal scrubbable slider control with track fill, thumb handle, property label, and numeric readout.
-struct FontWeightSlider: View {
-    @Binding var weight: LeanFontWeight
+// MARK: - Bespoke Settings Slider (Scrubbable Track Control)
+/// Minimal scrubbable slider reused for discrete numeric settings.
+struct SettingsValueSlider: View {
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    let step: Int
     let label: String
+    var valueSuffix = ""
     let isDark: Bool
     let uiFont: LeanFont
     var width: CGFloat = 215
     var height: CGFloat = 30
 
-    @State private var isDragging: Bool = false
-    @State private var isHovered: Bool = false
-
-    private let minWeight: Double = 100
-    private let maxWeight: Double = 900
+    @State private var isDragging = false
+    @State private var isHovered = false
 
     private var progress: CGFloat {
-        CGFloat((Double(weight.rawValue) - minWeight) / (maxWeight - minWeight))
+        CGFloat(value - range.lowerBound) / CGFloat(range.upperBound - range.lowerBound)
     }
 
     private var emptyTrackColor: Color {
@@ -862,16 +862,14 @@ struct FontWeightSlider: View {
         isDark ? Color.white.opacity(0.92) : Color.black.opacity(0.88)
     }
 
-    private func updateWeight(at x: CGFloat, totalWidth: CGFloat) {
+    private func updateValue(at x: CGFloat, totalWidth: CGFloat) {
         let minThumbX: CGFloat = 16
-        let maxThumbX: CGFloat = totalWidth - 16
+        let maxThumbX = totalWidth - 16
         let clampedX = max(minThumbX, min(x, maxThumbX))
         let fraction = (clampedX - minThumbX) / max(maxThumbX - minThumbX, 1)
-        let targetValue = minWeight + Double(fraction) * (maxWeight - minWeight)
-        let closest = LeanFontWeight(closestTo: targetValue)
-        if weight != closest {
-            weight = closest
-        }
+        let raw = Double(range.lowerBound) + Double(fraction) * Double(range.upperBound - range.lowerBound)
+        let stepped = Int((raw / Double(step)).rounded()) * step
+        value = min(range.upperBound, max(range.lowerBound, stepped))
     }
 
     var body: some View {
@@ -879,29 +877,25 @@ struct FontWeightSlider: View {
             let totalW = geo.size.width
             let totalH = geo.size.height
             let minThumbX: CGFloat = 16
-            let maxThumbX: CGFloat = totalW - 16
+            let maxThumbX = totalW - 16
             let thumbX = minThumbX + progress * (maxThumbX - minThumbX)
             let thumbW: CGFloat = 3.5
             let thumbH: CGFloat = 18
 
             ZStack(alignment: .leading) {
-                // Empty Track Background
                 RoundedRectangle(cornerRadius: 7.5, style: .continuous)
                     .fill(emptyTrackColor)
 
-                // Filled Track (Left to Thumb)
                 Rectangle()
                     .fill(filledTrackColor)
                     .frame(width: max(thumbX + thumbW / 2, 0))
 
-                // Vertical Thumb Bar
                 RoundedRectangle(cornerRadius: 1.75, style: .continuous)
                     .fill(thumbColor)
                     .frame(width: thumbW, height: thumbH)
                     .shadow(color: Color.black.opacity(isDark ? 0.30 : 0.10), radius: isDragging ? 2.5 : 1, y: 0.5)
                     .position(x: thumbX, y: totalH / 2)
 
-                // Left Label & Right Numeric Value Readout
                 HStack {
                     Text(label)
                         .font(uiFont.font(size: 11.5, weight: .medium))
@@ -910,7 +904,7 @@ struct FontWeightSlider: View {
 
                     Spacer()
 
-                    Text("\(weight.rawValue)")
+                    Text("\(value)\(valueSuffix)")
                         .font(uiFont.font(size: 11.5, weight: .medium))
                         .foregroundColor(valueColor)
                         .padding(.trailing, 11)
@@ -931,16 +925,39 @@ struct FontWeightSlider: View {
                 DragGesture(minimumDistance: 0)
                     .onChanged { gesture in
                         isDragging = true
-                        updateWeight(at: gesture.location.x, totalWidth: totalW)
+                        updateValue(at: gesture.location.x, totalWidth: totalW)
                     }
                     .onEnded { gesture in
-                        updateWeight(at: gesture.location.x, totalWidth: totalW)
+                        updateValue(at: gesture.location.x, totalWidth: totalW)
                         isDragging = false
                     }
             )
-            .help("\(weight.name) (\(weight.rawValue))")
+            .help("\(value)\(valueSuffix)")
         }
         .frame(width: width, height: height)
+    }
+}
+
+struct FontWeightSlider: View {
+    @Binding var weight: LeanFontWeight
+    let label: String
+    let isDark: Bool
+    let uiFont: LeanFont
+    var width: CGFloat = 215
+
+    var body: some View {
+        SettingsValueSlider(
+            value: Binding(
+                get: { weight.rawValue },
+                set: { weight = LeanFontWeight(closestTo: Double($0)) }
+            ),
+            range: 100...900,
+            step: 100,
+            label: label,
+            isDark: isDark,
+            uiFont: uiFont,
+            width: width
+        )
     }
 }
 
@@ -955,6 +972,35 @@ struct FontWeightSliderRow: View {
     var headingWeight: LeanFontWeight = .medium
     var bodyWeight: LeanFontWeight = .regular
 
+    var body: some View {
+        SettingsSliderRow(
+            title: title,
+            subtitle: subtitle,
+            uiFont: uiFont,
+            isDark: isDark,
+            headingWeight: headingWeight,
+            bodyWeight: bodyWeight
+        ) {
+            FontWeightSlider(
+                weight: $value,
+                label: label,
+                isDark: isDark,
+                uiFont: uiFont,
+                width: 215
+            )
+        }
+    }
+}
+
+struct SettingsSliderRow<Control: View>: View {
+    let title: String
+    let subtitle: String?
+    let uiFont: LeanFont
+    let isDark: Bool
+    var headingWeight: LeanFontWeight = .medium
+    var bodyWeight: LeanFontWeight = .regular
+    @ViewBuilder let control: () -> Control
+
     @State private var isRowHovered = false
 
     var body: some View {
@@ -964,22 +1010,15 @@ struct FontWeightSliderRow: View {
                     .font(uiFont.font(size: 13, weight: headingWeight.fontWeight))
                     .foregroundColor(isDark ? Color(white: 0.94) : Color(white: 0.12))
 
-                if let subtitle = subtitle {
+                if let subtitle {
                     Text(subtitle)
                         .font(uiFont.font(size: 11.5, weight: bodyWeight.fontWeight))
-                        .foregroundColor(isDark ? Color(white: 0.50) : Color(white: 0.48))
+                        .foregroundColor(isDark ? Color.white.opacity(0.50) : Color.black.opacity(0.48))
                 }
             }
 
             Spacer(minLength: 16)
-
-            FontWeightSlider(
-                weight: $value,
-                label: label,
-                isDark: isDark,
-                uiFont: uiFont,
-                width: 215
-            )
+            control()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

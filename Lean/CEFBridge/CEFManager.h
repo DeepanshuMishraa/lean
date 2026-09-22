@@ -32,6 +32,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// multi_threaded_message_loop=false (the MT loop fails under App Sandbox).
 + (void)startMessagePump;
 
+/// Keeps Chromium painting while AppKit runs the live-resize tracking loop.
+/// Scoped to live resize so ordinary click tracking stays non-reentrant.
++ (void)beginLiveResizeMessagePump;
++ (void)endLiveResizeMessagePump;
+
 /// Stops the message pump. Call at termination; do NOT follow with shutdown
 /// while browsers may still be alive (v1: process exit reaps the rest).
 + (void)stopMessagePump;

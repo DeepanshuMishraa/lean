@@ -232,6 +232,8 @@ static BOOL gCEFInitialized = NO;
 
 #if LEAN_HAS_CEF
 static NSTimer *gPumpTimer = nil;
+static NSTimer *gLiveResizePumpTimer = nil;
+static NSUInteger gLiveResizeDepth = 0;
 #endif
 
 + (void)startMessagePump {
@@ -263,10 +265,41 @@ static NSTimer *gPumpTimer = nil;
 #endif
 }
 
++ (void)beginLiveResizeMessagePump {
+#if LEAN_HAS_CEF
+  if (++gLiveResizeDepth > 1 || gLiveResizePumpTimer) {
+    return;
+  }
+  gLiveResizePumpTimer = [NSTimer timerWithTimeInterval:(1.0 / 60.0)
+                                                repeats:YES
+                                                  block:^(NSTimer *_) {
+                                                    CefDoMessageLoopWork();
+                                                  }];
+  [[NSRunLoop mainRunLoop] addTimer:gLiveResizePumpTimer
+                            forMode:NSEventTrackingRunLoopMode];
+#endif
+}
+
++ (void)endLiveResizeMessagePump {
+#if LEAN_HAS_CEF
+  if (gLiveResizeDepth > 0) {
+    --gLiveResizeDepth;
+  }
+  if (gLiveResizeDepth == 0) {
+    [gLiveResizePumpTimer invalidate];
+    gLiveResizePumpTimer = nil;
+    CefDoMessageLoopWork();
+  }
+#endif
+}
+
 + (void)stopMessagePump {
 #if LEAN_HAS_CEF
   [gPumpTimer invalidate];
   gPumpTimer = nil;
+  [gLiveResizePumpTimer invalidate];
+  gLiveResizePumpTimer = nil;
+  gLiveResizeDepth = 0;
 #endif
 }
 

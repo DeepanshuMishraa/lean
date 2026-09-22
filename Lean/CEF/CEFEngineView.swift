@@ -18,6 +18,21 @@ final class CEFContainerView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         acceptsInput ? super.hitTest(point) : nil
     }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        tab?.cefHost?.notifyParentResized()
+    }
+
+    override func viewWillStartLiveResize() {
+        super.viewWillStartLiveResize()
+        CEFManager.beginLiveResizeMessagePump()
+    }
+
+    override func viewDidEndLiveResize() {
+        CEFManager.endLiveResizeMessagePump()
+        super.viewDidEndLiveResize()
+    }
 }
 
 struct CEFEngineView: NSViewRepresentable {

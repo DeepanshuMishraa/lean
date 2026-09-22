@@ -6,6 +6,13 @@ struct LeanApp: App {
     @StateObject private var store = LeanStore()
     @StateObject private var updater = AppUpdater()
 
+    init() {
+        // Belt & suspenders with `isInspectable`: enables WebKit developer
+        // extras (right-click Inspect Element, Safari remote inspection).
+        // Registered, not persisted — no footprint in user defaults.
+        UserDefaults.standard.register(defaults: ["WebKitDeveloperExtrasEnabled": true])
+    }
+
     var body: some Scene {
         WindowGroup {
             LeanView(store: store, updater: updater)

@@ -80,7 +80,7 @@ Only a paid Developer ID certificate plus notarization removes step 3.
 - Configurable page scrollbars and native scrolling
 - Adjustable interface size (Settings → Appearance → Browser UI)
 - WebKit content blocking (uBlock Origin lists + YouTube ad coverage)
-- Right-click page menu (Open Link in New Tab, View Page Source, Inspect Element)
+- Right-click page menu (Open Link in New Tab, Print, View Page Source, Inspect Element)
 - Native `alert` / `confirm` / `prompt`, HTTP Basic sign-in, external
   (`mailto:`, `tel:`, app schemes) links, and per-site camera/mic prompts
 - Printing via `⌘P` with the system print panel

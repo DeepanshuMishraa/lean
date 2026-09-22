@@ -407,6 +407,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         if !menu.items.isEmpty {
             menu.addItem(.separator())
         }
+        let printItem = NSMenuItem(title: "Print...", action: #selector(pageMenuPrint), keyEquivalent: "")
+        printItem.target = self
+        printItem.isEnabled = !isSettingsPage
+        menu.addItem(printItem)
         let source = NSMenuItem(title: "View Page Source", action: #selector(pageMenuShowSource), keyEquivalent: "")
         source.target = self
         menu.addItem(source)
@@ -418,6 +422,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         onOpenURLInNewTab?(url)
     }
     @objc private func pageMenuShowSource() { showPageSource() }
+    @objc private func pageMenuPrint() { printPage() }
 
     func showPageSource() {
         webView.evaluateJavaScript(

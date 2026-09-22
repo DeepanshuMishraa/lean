@@ -1368,6 +1368,14 @@ private struct BrowsingSection: View {
                     uiFont: store.leanUIFont
                 ) { newId in
                     if let kind = BrowserEngineKind(rawValue: newId) {
+                        // Don't persist Chromium when it can't render here
+                        // (no bundled framework or DerivedData run) — after
+                        // relaunch every tab would show the unavailable-engine
+                        // notice. Stay on WebKit instead.
+                        if kind == .cef, !CEFIntegration.canRender() {
+                            store.requestEngineChange(.webKit)
+                            return
+                        }
                         store.requestEngineChange(kind)
                     }
                 }

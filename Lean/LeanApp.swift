@@ -18,9 +18,20 @@ struct LeanApp: App {
     private static func terminateDuplicates() {
         let me = ProcessInfo.processInfo.processIdentifier
         guard let bundleID = Bundle.main.bundleIdentifier else { return }
-        for app in NSWorkspace.shared.runningApplications
-            where app.bundleIdentifier == bundleID && app.processIdentifier != me {
+        let others = NSWorkspace.shared.runningApplications.filter {
+            $0.bundleIdentifier == bundleID && $0.processIdentifier != me
+        }
+        guard !others.isEmpty else { return }
+        for app in others {
             app.terminate()
+        }
+        // terminate() is async — wait (bounded) for the other instance to
+        // actually exit before LeanStore opens the shared sqlite DB, or both
+        // processes write session/history keys concurrently.
+        let deadline = Date().addingTimeInterval(2.0)
+        while Date() < deadline {
+            if others.allSatisfy(\.isTerminated) { break }
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
         }
     }
 

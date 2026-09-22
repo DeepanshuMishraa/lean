@@ -718,6 +718,9 @@ final class LeanStore: ObservableObject {
     }
 
     private func refreshChromiumAdBlockRules() {
+        // CEF is opt-in and tabs use bootEngineKind: skip the full Chromium
+        // compile on WebKit-only sessions to avoid needless CPU/memory work.
+        guard bootEngineKind == .cef else { return }
         Task { [weak self] in
             let rules = await ContentBlocker.chromiumRules()
             self?.installChromiumAdBlockRules(rules)
@@ -889,7 +892,14 @@ final class LeanStore: ObservableObject {
             return child.webView
         }
         tab.onOpenNewTabURL = { [weak self] url in
-            self?.newTab(url: url)
+            guard let self else { return }
+            let child = self.newTab(url: url)
+            // CEF popups (window.open → plain tab) must be closable via
+            // window.close() like their WebKit counterparts.
+            child.onCloseTab = { [weak self, weak child] in
+                guard let self, let child else { return }
+                self.close(child)
+            }
         }
         tabs.append(tab)
         if select {

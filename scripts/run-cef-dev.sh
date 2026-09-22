@@ -7,7 +7,14 @@ set -eu
 cd "$(dirname "$0")/.."
 
 xcodegen generate >/dev/null
-xcodebuild build -scheme Lean -destination 'platform=macOS' 2>&1 | tail -2
+BUILD_LOG="$(mktemp -t lean-cef-build.XXXXXX)"
+if ! xcodebuild build -scheme Lean -destination 'platform=macOS' >"$BUILD_LOG" 2>&1; then
+  tail -20 "$BUILD_LOG"
+  echo "xcodebuild failed; full log: $BUILD_LOG" >&2
+  exit 1
+fi
+tail -2 "$BUILD_LOG"
+rm -f "$BUILD_LOG"
 
 SRC="$(ls -td "$HOME"/Library/Developer/Xcode/DerivedData/Lean-*/Build/Products/Debug/Lean.app 2>/dev/null | head -1)"
 if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then

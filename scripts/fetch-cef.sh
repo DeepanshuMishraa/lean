@@ -4,13 +4,23 @@
 # Usage: scripts/fetch-cef.sh [--arch arm64|x86_64]
 set -eu
 
-ARCH="${1:-}"; [ "${ARCH:-}" = "" ] && ARCH="$(uname -m)"
+ARCH=""
+if [ "${1:-}" = "--arch" ]; then
+  ARCH="${2:-}"
+elif [ "${1:-}" != "" ]; then
+  # Allow bare `scripts/fetch-cef.sh arm64` as well as `--arch arm64`.
+  case "$1" in
+    --arch=*) ARCH="${1#--arch=}" ;;
+    -*) echo "usage: $0 [--arch arm64|x86_64]" >&2; exit 1 ;;
+    *) ARCH="$1" ;;
+  esac
+fi
+[ -z "$ARCH" ] && ARCH="$(uname -m)"
 case "$ARCH" in
   arm64|aarch64) CEF_ARCH="macosarm64" ;;
   x86_64) CEF_ARCH="macosx64" ;;
   *) echo "usage: $0 [--arch arm64|x86_64]" >&2; exit 1 ;;
 esac
-if [ "${1:-}" = "--arch" ]; then :; fi
 
 CEF_VERSION="152.0.8+g1ce985c+chromium-152.0.7977.134"
 # Pinned sha1 is for the arm64 minimal tarball. x86_64 needs its own pin

@@ -36,13 +36,19 @@ enum ChromiumAdBlockRuleCompiler {
 
         blockedDomains.subtract(allowedDomains)
         blockedPatterns.subtract(allowedPatterns)
-        let exceptedSelectors = cosmeticExceptions.values.reduce(into: Set<String>()) {
-            $0.formUnion($1)
-        }
-        globalSelectors.subtract(exceptedSelectors)
+        // Scoped cosmetic exceptions only unhide their own domain: a
+        // `example.com#@#.ad` exception must not remove `.ad` everywhere.
+        // Global exceptions ("" key) apply to all scopes.
+        let globalExceptions = cosmeticExceptions[""] ?? []
+        globalSelectors.subtract(globalExceptions)
         for domain in domainSelectors.keys {
-            domainSelectors[domain]?.subtract(exceptedSelectors)
+            domainSelectors[domain]?.subtract(globalExceptions)
+            if let scoped = cosmeticExceptions[domain] {
+                domainSelectors[domain]?.subtract(scoped)
+            }
         }
+        // Global selectors also lose domain-scoped exceptions? No — a scoped
+        // exception only affects its domain's bucket, never the global set.
 
         return ChromiumAdBlockRules(
             blockedDomains: blockedDomains.sorted(),
@@ -90,6 +96,18 @@ enum ChromiumAdBlockRuleCompiler {
 
         if let domain = domainAnchor(from: pattern) {
             if isException {
+                // Cosmetic-only exceptions (elemhide/generichide/...) must not
+                // disable network blocking: this native subset can't scope
+                // them, so ignoring them here keeps network protection while
+                // cosmetic handling lives in the stylesheet path.
+                let optionList = options.split(separator: ",").map { $0.lowercased() }
+                let cosmeticOnly: Set<String> = [
+                    "elemhide", "generichide", "genericblock", "specifichide",
+                    "jsinject", "inline-script", "inline-font", "css",
+                ]
+                if !options.isEmpty, optionList.allSatisfy({ cosmeticOnly.contains(String($0)) }) {
+                    return
+                }
                 // Broadly honoring scoped exceptions is safer than breaking a
                 // site when this native subset cannot represent every option.
                 allowedDomains.insert(domain)
@@ -172,11 +190,17 @@ enum ChromiumAdBlockRuleCompiler {
     }
 
     private static func plainSubstring(from pattern: String) -> String? {
+        // Never strip anchor semantics: `|`, `||`, `^`, and path separators
+        // carry host/position meaning. Stripping them turns an anchored or
+        // path-scoped filter into an unrestricted substring that blocks
+        // unrelated URLs — skip these patterns instead.
+        guard !pattern.contains("|"),
+              !pattern.contains("^"),
+              !pattern.contains("*"),
+              !pattern.contains("/")
+        else { return nil }
         var candidate = pattern
-        while candidate.hasPrefix("|") { candidate.removeFirst() }
-        while candidate.hasSuffix("|") { candidate.removeLast() }
         guard candidate.count >= 6,
-              !candidate.contains(where: { "*^".contains($0) }),
               !candidate.contains(" "),
               !candidate.hasPrefix("/")
         else { return nil }

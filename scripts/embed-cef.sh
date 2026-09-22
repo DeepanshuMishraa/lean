@@ -29,12 +29,18 @@ if [ -d "$FW_SRC" ]; then
     ln -sfn "Versions/Current/Libraries" "$FW_DST/Libraries"
   fi
   # Ad-hoc sign so the hardened runtime accepts it without a Team ID.
-  /usr/bin/codesign --force --sign - --timestamp=none "$FW_DST" || true
+  /usr/bin/codesign --force --sign - --timestamp=none "$FW_DST"
 fi
 
 HELPER_SRC="${BUILT_PRODUCTS_DIR}/Lean Helper.app"
 HELPER_DST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/Lean Helper.app"
 HELPER_ENTITLEMENTS="${SRCROOT}/Lean/Helper/LeanHelper.entitlements"
+# Only embed CEF helpers when the CEF framework was actually embedded above.
+# LeanHelper always builds (it has a no-CEF fallback), so without this gate
+# WebKit-only builds gain four dead helper bundles.
+if [ ! -d "$FW_DST" ]; then
+  exit 0
+fi
 sign_helper() {
   # Enforce inherit-only entitlements: Xcode may inject Debug extras
   # (get-task-allow, testmanagerd) that break sandbox inheritance and kill
@@ -42,7 +48,7 @@ sign_helper() {
   if [ -f "$HELPER_ENTITLEMENTS" ]; then
     /usr/bin/codesign --force --sign - --timestamp=none \
       --entitlements "$HELPER_ENTITLEMENTS" \
-      "$1" || true
+      "$1"
   fi
 }
 if [ -d "$HELPER_SRC" ]; then

@@ -61,8 +61,23 @@ enum CEFIntegration {
 
     /// True when the CEF framework is bundled and loadable.
     /// Pure over an injected predicate so it stays unit-testable.
+    /// Checks the framework executable exists — a present-but-hollow
+    /// directory must not advertise CEF as renderable.
     static func isAvailable(bundle: Bundle = .main) -> Bool {
-        frameworkURL(bundle: bundle) != nil
+        guard let url = frameworkURL(bundle: bundle) else { return false }
+        let executable = url.appendingPathComponent(frameworkName.replacingOccurrences(of: ".framework", with: ""))
+        // Flat (un-reshaped) layout keeps the binary at the top level;
+        // reshaped builds move it to Versions/Current.
+        let candidates = [
+            executable.path,
+            url.appendingPathComponent("Versions/Current/\(frameworkName.replacingOccurrences(of: ".framework", with: ""))").path,
+        ]
+        if candidates.contains(where: { FileManager.default.isReadableFile(atPath: $0) }) {
+            return true
+        }
+        // Fall back to directory presence only if neither layout matched
+        // (e.g. unit-test doubles); production probes hit the files above.
+        return false
     }
 
     /// True when running from an Xcode DerivedData build. The App Sandbox
@@ -70,7 +85,12 @@ enum CEFIntegration {
     /// and pages stay blank. CEF requires an installed copy — see
     /// scripts/run-cef-dev.sh.
     static func isRunningFromDerivedData(bundle: Bundle = .main) -> Bool {
-        bundle.bundleURL.path.contains("/DerivedData/")
+        let path = bundle.bundleURL.path
+        // Match any DerivedData segment (custom roots included), not just
+        // the default ~/Library/Developer/Xcode/DerivedData location.
+        return path.contains("/DerivedData/")
+            || path.contains("/Derived Data/")
+            || bundle.bundleURL.lastPathComponent.hasSuffix(".xcodeproj")
     }
 
     /// True when a CEF tab can actually render in this process.

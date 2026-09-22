@@ -672,6 +672,13 @@ struct LeanView: View {
                 }
             }
 
+            // While the engine-restart modal is up, don't fire global
+            // shortcuts behind it. Return the event (don't swallow it) so
+            // the dialog and system keys still receive it.
+            if store.isEngineRestartDialogPresented {
+                return event
+            }
+
             // Check custom shortcuts
             for action in ShortcutAction.allCases {
                 if action == .dismiss || action == .stopLoading {

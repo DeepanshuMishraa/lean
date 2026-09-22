@@ -395,9 +395,11 @@ class LeanCefClient : public CefClient,
   void OnLoadStart(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
                    TransitionType) override {
     CEFBrowserHost *owner = owner_;
-    if (!owner || !frame || !frame->IsMain()) {
+    if (!owner || !frame) {
       return;
     }
+    // Inject for every frame so iframe ads are hidden too — the CSS is
+    // idempotent (single #lean-adblock-css node per document).
     std::string script = [owner cosmeticScriptForURL:frame->GetURL()];
     if (!script.empty()) {
       frame->ExecuteJavaScript(script, frame->GetURL(), 0);
@@ -407,7 +409,7 @@ class LeanCefClient : public CefClient,
   void OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
                  int) override {
     CEFBrowserHost *owner = owner_;
-    if (!owner || !frame || !frame->IsMain()) {
+    if (!owner || !frame) {
       return;
     }
     std::string script = [owner cosmeticScriptForURL:frame->GetURL()];
@@ -497,6 +499,10 @@ class LeanCefClient : public CefClient,
     PostToMain(^{
       if (owner.onAuthChallenge) {
         owner.onAuthChallenge(h, r, id);
+      } else {
+        // No UI handler: fail fast instead of leaving the CEF auth
+        // callback pending forever (page hangs).
+        [owner completeAuth:id username:nil password:nil];
       }
     });
     return true;
@@ -529,14 +535,20 @@ class LeanCefClient : public CefClient,
       if (dialog_type == JSDIALOGTYPE_PROMPT) {
         if (owner.onJSPrompt) {
           owner.onJSPrompt(message, def, id);
+        } else {
+          [owner completeJSDialog:id ok:NO text:nil];
         }
       } else if (dialog_type == JSDIALOGTYPE_CONFIRM) {
         if (owner.onJSConfirm) {
           owner.onJSConfirm(message, id);
+        } else {
+          [owner completeJSDialog:id ok:NO text:nil];
         }
       } else {
         if (owner.onJSAlert) {
           owner.onJSAlert(message, id);
+        } else {
+          [owner completeJSDialog:id ok:YES text:nil];
         }
       }
     });
@@ -558,6 +570,9 @@ class LeanCefClient : public CefClient,
     PostToMain(^{
       if (owner.onMediaPermission) {
         owner.onMediaPermission(url, id);
+      } else {
+        // No UI handler: explicitly deny instead of hanging the request.
+        [owner completeMediaPermission:id allow:NO];
       }
     });
     return true;
@@ -583,6 +598,13 @@ class LeanCefClient : public CefClient,
       if (owner.onDownloadStarted) {
         owner.onDownloadStarted(downloadId, suggested ?: @"download",
                                 source ?: @"", total);
+      } else {
+        // No start handler: continue to a default destination so the
+        // before-download callback never stays pending forever.
+        NSString *name = (suggested.length > 0) ? suggested : @"download";
+        NSString *dest = [NSHomeDirectory()
+            stringByAppendingPathComponent:[@"Downloads" stringByAppendingPathComponent:name]];
+        [owner continueDownload:downloadId path:dest];
       }
     });
     return true;
@@ -792,9 +814,13 @@ struct PendingDownload {
 }
 
 - (BOOL)shouldBlockURL:(const CefString &)url isMainNavigation:(BOOL)isMainNavigation {
-  if (!_adBlockingEnabled.load() || isMainNavigation) {
+  if (!_adBlockingEnabled.load()) {
     return NO;
   }
+  (void)isMainNavigation;
+  // Network filters also enforce top-level matches: a direct navigation to
+  // a blocked domain/URL is cancelled like any subresource. Allow-rules
+  // still win below, so explicit exceptions keep working.
   auto rules = std::atomic_load(&gAdBlockRules);
   if (!rules) {
     return NO;
@@ -855,7 +881,13 @@ struct PendingDownload {
     windowInfo.SetAsChild((__bridge CefWindowHandle)view,
                           CefRect(0, 0, (int)w, (int)h));
     CefBrowserSettings settings;
-    CefBrowserHost::CreateBrowser(windowInfo, selfRef->_client, "", settings,
+    // Honor the public initialURL: without an external onCreated navigation
+    // CreateBrowser with "" opens blank and _pendingURL is only consumed by
+    // browserCreated callers that navigate. Pass it here so the parameter
+    // is never ignored.
+    std::string startURL = selfRef->_pendingURL;
+    selfRef->_pendingURL.clear();
+    CefBrowserHost::CreateBrowser(windowInfo, selfRef->_client, startURL, settings,
                                   nullptr, nullptr);
   });
   return YES;

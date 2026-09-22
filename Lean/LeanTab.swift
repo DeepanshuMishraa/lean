@@ -395,6 +395,13 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         onStateChange?()
     }
 
+    /// Window for modal sheets. CEF tabs mount `CEFContainerView`, not
+    /// `webView`, so `webView.window` is nil there — fall back to the
+    /// container's window before giving up.
+    private var sheetWindow: NSWindow? {
+        cefContainer?.window ?? webView.window
+    }
+
     func destroy() {
         progressObserver?.invalidate()
         progressObserver = nil
@@ -406,6 +413,14 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         onCloseTab = nil
         onOpenNewTabURL = nil
 
+        // Cancel tracked CEF downloads before dropping the mappings so the
+        // CEF item stops and the DownloadManager row is finalized.
+        if !cefDownloadItems.isEmpty {
+            for (cefKey, itemID) in cefDownloadItems {
+                cefHost?.cancelDownload(cefKey)
+                downloadManager?.cancelDownload(id: itemID)
+            }
+        }
         if let cef = cefHost {
             cef.close()
             cefHost = nil
@@ -797,7 +812,7 @@ extension LeanTab: WKUIDelegate {
         defaultText: String? = nil,
         completion: @escaping (Bool, String?) -> Void
     ) {
-        guard let window = webView.window else {
+        guard let window = sheetWindow else {
             completion(false, nil)
             return
         }
@@ -1063,7 +1078,7 @@ extension LeanTab {
     }
 
     private func presentCEFCredentialsSheet(host challengeHost: String, realm: String, id: Int64) {
-        guard let window = webView.window else {
+        guard let window = sheetWindow else {
             cefHost?.completeAuth(id, username: nil, password: nil)
             return
         }
@@ -1105,7 +1120,7 @@ extension LeanTab {
             cefHost?.completeMediaPermission(id, allow: stored)
             return
         }
-        guard let window = webView.window else {
+        guard let window = sheetWindow else {
             cefHost?.completeMediaPermission(id, allow: false)
             return
         }

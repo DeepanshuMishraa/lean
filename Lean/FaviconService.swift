@@ -78,11 +78,16 @@ final class FaviconService {
     }
 
     private func fetchImage(from url: URL, completion: @escaping @Sendable (NSImage?) -> Void) {
+        // Only the Google CDN fallback globe (726 bytes) is rejected, and only
+        // for CDN responses — explicit <link rel="icon"> endpoints served
+        // through this same helper must never be byte-count filtered.
+        let isGoogleCDN = url.host?.lowercased().contains("google.com") == true
+            && url.absoluteString.contains("s2/favicons")
         let task = session.dataTask(with: url) { data, response, error in
             guard let data, error == nil,
                   let httpResponse = response as? HTTPURLResponse,
                   (200...299).contains(httpResponse.statusCode),
-                  data.count != 726, // Reject Google's default fallback globe PNG (726 bytes)
+                  !(isGoogleCDN && data.count == 726),
                   let image = NSImage(data: data) else {
                 completion(nil)
                 return

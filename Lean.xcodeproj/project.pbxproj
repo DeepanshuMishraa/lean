@@ -268,7 +268,6 @@
 		8C0FCF9EB3B06BAF7DE7DE49 /* resource_read_callback_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = 1D5D3A509520F40AACD0FF04 /* resource_read_callback_ctocpp.cc */; };
 		8CE9A5692FE51C464AF89014 /* label_button_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = 976657A7D9592CA958AC2344 /* label_button_ctocpp.cc */; };
 		8D14DBCF7FE6A5186C4A4F37 /* print_dialog_callback_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = 299C019DE54A7000103D829E /* print_dialog_callback_ctocpp.cc */; };
-		8DCF9D1D3D090BC04BEADA66 /* LeanHelper.app in Resources */ = {isa = PBXBuildFile; fileRef = 9E67E44CB964CEF2BE06BE7D /* LeanHelper.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8E27DD487A74F5C309353821 /* libcef_dll_dylib.cc in Sources */ = {isa = PBXBuildFile; fileRef = 537EE7BD99A2FE4ED27D02FF /* libcef_dll_dylib.cc */; };
 		8EAAE7341DA35D34371E80AF /* v8_accessor_cpptoc.cc in Sources */ = {isa = PBXBuildFile; fileRef = A210F951A561F8B2311AAE7D /* v8_accessor_cpptoc.cc */; };
 		8F3E72BDD833D0FB9F97728F /* v8_stack_frame_ctocpp.cc in Sources */ = {isa = PBXBuildFile; fileRef = C9DE53CAC49346966909E2EB /* v8_stack_frame_ctocpp.cc */; };
@@ -1342,7 +1341,6 @@
 			files = (
 				0A40BF2EFA24EAA77D7547E2 /* Info.plist in Resources */,
 				F8412E715FD178DE5C1E643C /* lean.icon in Resources */,
-				8DCF9D1D3D090BC04BEADA66 /* LeanHelper.app in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -33,9 +33,14 @@ enum DownloadPolicy {
         contentDisposition: String?,
         mimeType: String?
     ) -> Bool {
-        if let disposition = contentDisposition?.lowercased(),
-           disposition.contains("attachment") {
-            return true
+        if let disposition = contentDisposition?.lowercased() {
+            // Parse the disposition *type* (before ';') so an inline
+            // filename containing "attachment" doesn't trigger a download.
+            let dispositionType = disposition.split(separator: ";", maxSplits: 1)
+                .first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+            if dispositionType == "attachment" {
+                return true
+            }
         }
         if let mime = mimeType?.lowercased().trimmingCharacters(in: .whitespaces),
            mime == "application/octet-stream" {
@@ -63,11 +68,14 @@ final class MediaPermissionStore: ObservableObject {
         }
     }
 
-    /// Canonical per-origin key: `scheme://host[:port]`. Pure — no isolation.
+    /// Canonical per-origin key: `scheme://host[:port]`, omitting default
+    /// ports so `https://example.com` and `https://example.com:443` share
+    /// one permission entry. Pure — no isolation.
     nonisolated static func originKey(for url: URL) -> String? {
         guard let scheme = url.scheme?.lowercased(),
               let host = url.host?.lowercased(), !host.isEmpty else { return nil }
-        if let port = url.port {
+        if let port = url.port,
+           !((scheme == "http" && port == 80) || (scheme == "https" && port == 443)) {
             return "\(scheme)://\(host):\(port)"
         }
         return "\(scheme)://\(host)"

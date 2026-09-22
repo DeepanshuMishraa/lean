@@ -58,9 +58,17 @@ def ws_recv(s):
 
 def main():
     out_path = sys.argv[1] if len(sys.argv) > 1 else "/tmp/cef_shot.png"
-    want = sys.argv[2] if len(sys.argv) > 2 else ""
+    # argv[2] is the CDP port (scripts/cef-shot.sh passes a unique port).
+    # argv[3] is an optional URL substring filter; empty (default) captures
+    # the first page target so redirects/canonicalization can't deselect it.
+    port = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2].isdigit() else "9222"
+    want = ""
+    if len(sys.argv) > 3:
+        want = sys.argv[3]
+    elif len(sys.argv) > 2 and not sys.argv[2].isdigit():
+        want = sys.argv[2]
 
-    with urllib.request.urlopen("http://127.0.0.1:9222/json", timeout=10) as r:
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/json", timeout=10) as r:
         targets = json.load(r)
     pages = [t for t in targets if t.get("type") == "page"]
     if want:
@@ -71,17 +79,18 @@ def main():
     ws_url = pages[0]["webSocketDebuggerUrl"]
     print("capturing:", pages[0].get("url"), "->", out_path)
 
-    # ws://127.0.0.1:9222/devtools/page/XXX
+    # ws://127.0.0.1:<port>/devtools/page/XXX
     assert ws_url.startswith("ws://")
     host_path = ws_url[5:]
     host_port, path = host_path.split("/", 1)
-    host, port = host_port.split(":")
-    s = socket.create_connection((host, int(port)), timeout=15)
+    # Trust the endpoint returned by our probed port; host/port come from it.
+    host, ws_port = host_port.split(":")
+    s = socket.create_connection((host, int(ws_port)), timeout=15)
     key = base64.b64encode(os.urandom(16)).decode()
     s.sendall(
         (
             f"GET /{path} HTTP/1.1\r\n"
-            f"Host: {host}:{port}\r\n"
+            f"Host: {host}:{ws_port}\r\n"
             "Upgrade: websocket\r\n"
             "Connection: Upgrade\r\n"
             f"Sec-WebSocket-Key: {key}\r\n"

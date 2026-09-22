@@ -129,12 +129,26 @@ final class OmnibarService {
                     urlString = "https://\(trimmed)"
                 }
                 if let url = URL(string: urlString) {
-                    let host = url.host ?? trimmed
+                    // Re-classify by the parsed host so bare loopback forms
+                    // with only a query/fragment (e.g. `localhost?x=1`)
+                    // still select plain HTTP even if the raw-input check missed.
+                    let parsedHost = url.host ?? ""
+                    let isLoopbackHost = AddressResolver.isLoopbackInput(parsedHost)
+                        || AddressResolver.isLoopbackURLString(url.absoluteString)
+                    let finalURL: URL
+                    if isLoopbackHost, url.scheme?.lowercased() == "https",
+                       var comp = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+                        comp.scheme = "http"
+                        finalURL = comp.url ?? url
+                    } else {
+                        finalURL = url
+                    }
+                    let host = finalURL.host ?? trimmed
                     directMatch = OmnibarSuggestion(
                         primaryText: host,
                         secondaryText: host,
                         isSearch: false,
-                        targetURL: url
+                        targetURL: finalURL
                     )
                 }
             }

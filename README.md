@@ -101,7 +101,9 @@ open Lean.xcodeproj
 Select the `Lean` scheme and run.
 
 WebKit is the default engine. Chromium (CEF) is opt-in per Settings →
-Browsing → Rendering Engine and applies to new tabs. Because the App Sandbox
+Browsing → Rendering Engine and takes effect after a restart — the current
+process never mixes engines, so new tabs keep the booted engine until you
+relaunch (see `docs/CEF.md`). Because the App Sandbox
 blocks the CEF helper inside DerivedData, run CEF from an installed copy:
 
 ```sh

@@ -88,8 +88,10 @@ enum AddressResolver {
     /// plain HTTP, so default them to http:// instead of https://.
     static func isLoopbackInput(_ value: String) -> Bool {
         var host = value.lowercased()
-        if let slash = host.firstIndex(of: "/") {
-            host = String(host[..<slash])
+        // Stop at the first path/query/fragment delimiter so
+        // `localhost?x=1` and `localhost#frag` parse their host correctly.
+        if let end = host.firstIndex(where: { $0 == "/" || $0 == "?" || $0 == "#" }) {
+            host = String(host[..<end])
         }
         // Strip userinfo if present.
         if let at = host.lastIndex(of: "@") {
@@ -107,8 +109,23 @@ enum AddressResolver {
         return host == "localhost"
             || host.hasSuffix(".localhost")
             || host == "127.0.0.1"
-            || host.hasPrefix("127.")
+            || isLoopbackIPv4(host)
             || host == "::1"
             || host == "0.0.0.0"
+    }
+
+    /// True only for a numeric 127/8 address (127.0.0.0–127.255.255.255).
+    /// A hostname that merely starts with "127." (e.g. `127.example.com`)
+    /// must not downgrade to HTTP.
+    private static func isLoopbackIPv4(_ host: String) -> Bool {
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4,
+              parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy(\.isNumber) }) else { return false }
+        guard let first = Int(parts[0]), first == 127 else { return false }
+        return parts.dropFirst().allSatisfy { part in
+            guard let octet = Int(part), (0...255).contains(octet) else { return false }
+            // Reject leading-zero octets ("01") to avoid octal ambiguity.
+            return String(octet) == part || (part.hasPrefix("0") == false)
+        }
     }
 }

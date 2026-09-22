@@ -29,14 +29,25 @@ targets:
         buildPhase: resources
       # libcef_dll_wrapper sources compile straight into the target.
       # Missing vendor/cef dir simply matches nothing; WebKit keeps working.
+      # `optional: true` lets XcodeGen tolerate the absent path on fresh
+      # WebKit-only clones (README: "Skip it for a WebKit-only build").
+      # NOTE: clean-checkout releases ship WebKit-only by design — the
+      # Settings picker refuses Chromium when CEFIntegration.canRender() is
+      # false, so no tab can select a missing engine. Run
+      # scripts/fetch-cef.sh before archiving a CEF-enabled release.
       - path: vendor/cef/libcef_dll
+        optional: true
         includes:
           - "**/*.cc"
           - "**/*.mm"
     dependencies:
       - package: Sparkle
       - package: PhosphorSwift
+      # Build ordering only: scripts/embed-cef.sh is the sole helper
+      # embedder (Contents/Frameworks). Embedding here too would stash a
+      # second copy under Contents/Resources.
       - target: LeanHelper
+        embed: false
     settings:
       base:
         PRODUCT_NAME: Lean
@@ -61,6 +72,7 @@ targets:
     sources:
       - Lean/Helper
       - path: vendor/cef/libcef_dll
+        optional: true
         includes:
           - "**/*.cc"
           - "**/*.mm"

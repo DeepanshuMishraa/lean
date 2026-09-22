@@ -68,7 +68,14 @@ enum ContentBlocker {
     private static var cachedRuleLists: [WKContentRuleList] = []
     private static var loadTask: Task<[WKContentRuleList], Never>?
     private static var chromiumRuleTask: Task<ChromiumAdBlockRules, Never>?
+    private static var chromiumGeneration = 0
     private static var refreshTask: Task<Void, Never>?
+
+    /// Sources compiled into the native Chromium set. `ublock-unbreak` is
+    /// WebKit-only for now: its cosmetic-only exceptions can't be scoped by
+    /// the native compiler and would otherwise disable all network blocking
+    /// for affected domains.
+    static let chromiumExcludedSourceIDs: Set<String> = ["ublock-unbreak"]
 
     /// Compiled rule lists, from WebKit's store or the offline fallback.
     /// Call `refreshIfNeeded()` separately (e.g. at launch) to update lists.
@@ -114,13 +121,23 @@ enum ContentBlocker {
             return await chromiumRuleTask.value
         }
         let texts = loadCachedFilterTexts()
-        let orderedTexts = filterSources.compactMap { texts[$0.id] }
+        let orderedTexts = filterSources
+            .filter { !chromiumExcludedSourceIDs.contains($0.id) }
+            .compactMap { texts[$0.id] }
         let input = orderedTexts.isEmpty ? [fallbackFilterText] : orderedTexts
+        // Generation guard: if a refresh invalidates mid-compile, the stale
+        // result is discarded by refreshNow's serial install below.
+        let generation = chromiumGeneration
         let task = Task.detached(priority: .utility) {
             ChromiumAdBlockRuleCompiler.compile(input)
         }
         chromiumRuleTask = task
-        return await task.value
+        let rules = await task.value
+        if generation != chromiumGeneration {
+            // A newer compilation superseded this one; return fresh rules.
+            return await chromiumRules()
+        }
+        return rules
     }
 
     /// Fetch fresh lists when the cache is older than `updateInterval`.
@@ -183,6 +200,9 @@ enum ContentBlocker {
         guard !compiled.isEmpty else { return nil }
 
         cachedRuleLists = compiled
+        // Invalidate any in-flight Chromium compilation so its stale result
+        // can't install after this refresh.
+        chromiumGeneration += 1
         chromiumRuleTask = nil
         lastUpdatedDate = Date()
         cachedRuleCount = encoded.keptCount

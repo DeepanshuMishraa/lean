@@ -80,8 +80,14 @@ class LeanCefApp : public CefApp, public CefBrowserProcessHandler {
       command_line->AppendSwitch("disable-gpu-sandbox");
 #if DEBUG
       // Debug only: DevTools + CDP screenshot harness (scripts/cef-shot.sh).
-      // Never ship open (no auth on the port).
-      command_line->AppendSwitchWithValue("remote-debugging-port", "9222");
+      // Never ship open (no auth on the port). LEAN_CEF_CDP_PORT lets the
+      // harness reserve a unique port so an unrelated localhost:9222 can't
+      // satisfy its readiness check.
+      const char *cdpPort = getenv("LEAN_CEF_CDP_PORT");
+      if (!cdpPort || !*cdpPort) {
+        cdpPort = "9222";
+      }
+      command_line->AppendSwitchWithValue("remote-debugging-port", cdpPort);
       command_line->AppendSwitchWithValue("remote-allow-origins", "*");
       if (getenv("LEAN_CEF_DEBUG") != nullptr) {
         command_line->AppendSwitch("enable-logging");
@@ -140,11 +146,12 @@ static BOOL gCEFInitialized = NO;
   LeanInstallEventPumpShim();
   // All wrapper calls route through function pointers that are only filled
   // by loading the framework explicitly. Without this, the first CefString
-  // assignment jumps to NULL. The loader is intentionally leaked: its
-  // destructor would unload the library at process exit.
-  static std::unique_ptr<CefScopedLibraryLoader> gLoader;
+  // assignment jumps to NULL. The loader is intentionally leaked for process
+  // lifetime: a static unique_ptr would destroy it at teardown and unload
+  // CEF while teardown callbacks still use CEF code.
+  static CefScopedLibraryLoader *gLoader = nullptr;
   if (!gLoader) {
-    gLoader.reset(new CefScopedLibraryLoader);
+    gLoader = new CefScopedLibraryLoader();
   }
   if (!gLoader->LoadInMain()) {
     if (error) {
@@ -239,15 +246,20 @@ static NSTimer *gPumpTimer = nil;
   });
   __block uint64_t ticks = 0;
   gPumpTimer = [NSTimer scheduledTimerWithTimeInterval:(1.0 / 60.0)
-                                               repeats:YES
-                                                 block:^(NSTimer *_) {
-                                                   ticks++;
-                                                   if (debugPump && (ticks % 60) == 0) {
-                                                     NSLog(@"CEF pump alive: %llu ticks",
-                                                           (unsigned long long)ticks);
-                                                   }
-                                                   CefDoMessageLoopWork();
-                                                 }];
+                                                repeats:YES
+                                                  block:^(NSTimer *_) {
+                                                    ticks++;
+                                                    if (debugPump && (ticks % 60) == 0) {
+                                                      NSLog(@"CEF pump alive: %llu ticks",
+                                                            (unsigned long long)ticks);
+                                                    }
+                                                    CefDoMessageLoopWork();
+                                                  }];
+  // DROPPED: adding the pump to NSRunLoopCommonModes. It fires
+  // CefDoMessageLoopWork reentrantly during AppKit event-tracking (the mouse
+  // click/drag path), which ate every chrome click in Chromium mode. WebKit
+  // never starts this pump, which is why only CEF mode broke. CEF pages may
+  // pause during modal tracking — accepted over dead buttons.
 #endif
 }
 

@@ -28,12 +28,29 @@
     <string>public.app-category.productivity</string>
     <key>LSMinimumSystemVersion</key>
     <string>$(MACOSX_DEPLOYMENT_TARGET)</string>
-    <!-- Allow plain-http dev servers on loopback (http://localhost:3000 etc.).
-         External http stays blocked by ATS. -->
+    <!-- Loopback-only cleartext for local dev servers (http://localhost etc.).
+         Narrow per-host exceptions — no NSAllowsLocalNetworking blanket, and
+         external http stays blocked by ATS. (Chromium/CEF ignores ATS and uses
+         its own stack; this governs WebKit.) -->
     <key>NSAppTransportSecurity</key>
     <dict>
-        <key>NSAllowsLocalNetworking</key>
-        <true/>
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>localhost</key>
+            <dict>
+                <key>NSIncludesSubdomains</key>
+                <true/>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+            </dict>
+            <key>127.0.0.1</key>
+            <dict>
+                <key>NSIncludesSubdomains</key>
+                <true/>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+            </dict>
+        </dict>
     </dict>
     <key>NSHighResolutionCapable</key>
     <true/>

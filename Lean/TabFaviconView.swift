@@ -28,7 +28,7 @@ struct TabFaviconView: View {
     @ViewBuilder
     private var fallbackIcon: some View {
         if tab.isSettingsPage {
-            Ph.browser.fill
+            Ph.gear.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
@@ -98,6 +98,14 @@ struct TabFaviconView: View {
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(Color(red: 255/255, green: 69/255, blue: 0))
+        } else if !host.isEmpty {
+            ZStack {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(isDark ? Color.white.opacity(0.16) : Color.black.opacity(0.08))
+                Text(String(host.prefix(1)).uppercased())
+                    .font(.system(size: size * 0.62, weight: .semibold, design: .rounded))
+                    .foregroundColor(isDark ? Color.white.opacity(0.9) : Color.black.opacity(0.75))
+            }
         } else {
             Ph.browser.fill
                 .aspectRatio(contentMode: .fit)
@@ -144,7 +152,7 @@ struct SiteFaviconView: View {
     @ViewBuilder
     private var fallbackIcon: some View {
         if let url = url, url.absoluteString.hasPrefix("lean://settings") {
-            Ph.browser.fill
+            Ph.gear.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
@@ -214,6 +222,14 @@ struct SiteFaviconView: View {
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(Color(red: 255/255, green: 69/255, blue: 0))
+        } else if !host.isEmpty {
+            ZStack {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(isDark ? Color.white.opacity(0.16) : Color.black.opacity(0.08))
+                Text(String(host.prefix(1)).uppercased())
+                    .font(.system(size: size * 0.62, weight: .semibold, design: .rounded))
+                    .foregroundColor(isDark ? Color.white.opacity(0.9) : Color.black.opacity(0.75))
+            }
         } else {
             Ph.browser.fill
                 .aspectRatio(contentMode: .fit)

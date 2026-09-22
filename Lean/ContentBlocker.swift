@@ -69,7 +69,6 @@ enum ContentBlocker {
     static let curatedYouTubeFilters = """
     ||googleads.g.doubleclick.net^
     ||static.doubleclick.net^
-    ||tpc.googlesyndication.com^
     ||youtube.com/api/stats/ads
     ||youtube.com/pagead/
     ||youtube.com/ptracking

@@ -317,13 +317,24 @@ enum PageScripts {
                                             headers: resp.headers
                                         });
                                     }
-                                    var data = origParse(text);
-                                    stripAds(data);
-                                    return new Response(JSON.stringify(data), {
-                                        status: resp.status,
-                                        statusText: resp.statusText,
-                                        headers: resp.headers
-                                    });
+                                    var data;
+                                    try {
+                                        data = origParse(text);
+                                        stripAds(data);
+                                        return new Response(JSON.stringify(data), {
+                                            status: resp.status,
+                                            statusText: resp.statusText,
+                                            headers: resp.headers
+                                        });
+                                    } catch (parseErr) {
+                                        // Unparseable body: pass through untouched
+                                        // rather than rejecting and failing playback.
+                                        return new Response(text, {
+                                            status: resp.status,
+                                            statusText: resp.statusText,
+                                            headers: resp.headers
+                                        });
+                                    }
                                 });
                             } catch (e) { return resp; }
                         });
@@ -387,6 +398,14 @@ enum PageScripts {
                     try {
                         if (!window.__leanYtAdsEnabled) return;
                         var inAd = !!q('.ad-showing');
+                        // Track ad->content transitions: auto-resume below is
+                        // only for the moments right after an ad ends. At all
+                        // other times a paused video is the user's choice.
+                        if (window.__leanYtWasAd && !inAd) {
+                            window.__leanYtLastAdEnd = Date.now();
+                            window.__leanYtUserPaused = false;
+                        }
+                        window.__leanYtWasAd = inAd;
                         var vids = qAll('video');
                         if (!vids || vids.length === 0) return;
                         for (var i = 0; i < vids.length; i++) {
@@ -424,10 +443,15 @@ enum PageScripts {
                                             }
                                             delete v.dataset.leanOrigRate;
                                         }
-                                        // Resume explicitly instead of leaving a
-                                        // paused 0:00 spinner after skipping the ad.
+                                        // Resume only in the seconds after an ad ends,
+                                        // when the player can sit on a paused 0:00
+                                        // spinner. A pause anywhere else belongs
+                                        // to the user — never play over it.
                                         try {
-                                            if (v.paused && !v.ended && v.readyState >= 2) {
+                                            var recentAdEnd = window.__leanYtLastAdEnd &&
+                                                (Date.now() - window.__leanYtLastAdEnd) < 5000;
+                                            if (!window.__leanYtUserPaused && recentAdEnd &&
+                                                v.paused && !v.ended && v.readyState >= 2) {
                                                 var cp = v.play();
                                                 if (cp && cp.catch) { cp.catch(function() {}); }
                                             }
@@ -486,6 +510,17 @@ enum PageScripts {
                                                     try {
                                                         if (window.__leanYtAdsEnabled && q('.ad-showing')) { tame(); }
                                                     } catch (e) {}
+                                                });
+                                                v.addEventListener('pause', function() {
+                                                    try {
+                                                        // Any pause outside ad mode is the
+                                                        // user (or the page) — never
+                                                        // auto-resume over it.
+                                                        if (!q('.ad-showing')) { window.__leanYtUserPaused = true; }
+                                                    } catch (e) {}
+                                                });
+                                                v.addEventListener('playing', function() {
+                                                    try { window.__leanYtUserPaused = false; } catch (e) {}
                                                 });
                                             }
                                         } catch (e) {}

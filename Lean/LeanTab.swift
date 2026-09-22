@@ -4,7 +4,7 @@ import WebKit
 @MainActor
 final class LeanTab: NSObject, ObservableObject, Identifiable {
     let id = UUID()
-    let webView: WKWebView
+    let webView: LeanWebView
 
     @Published private(set) var title = "New Tab"
     @Published private(set) var url: URL?
@@ -28,6 +28,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     var onStateChange: (() -> Void)?
     var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
     var onCloseTab: (() -> Void)?
+    var onOpenSourceTab: ((String, String) -> Void)?
     var downloadManager: DownloadManager?
     var mediaPermissionStore: MediaPermissionStore?
     private var progressObserver: NSKeyValueObservation?
@@ -114,9 +115,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             )
         )
 
-        webView = WKWebView(frame: .zero, configuration: configuration)
+        webView = LeanWebView(frame: .zero, configuration: configuration)
         super.init()
         webView.configuration.userContentController.add(self, name: PageScripts.pageReadyMessageName)
+        webView.contextMenuHook = { [weak self] menu in
+            self?.appendPageMenuItems(to: menu)
+        }
         self.url = initialURL
         if initialURL?.scheme == "lean" && (initialURL?.host == "settings" || initialURL?.absoluteString == "lean://settings") {
             self.title = "Settings"
@@ -141,11 +145,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
 
-        #if DEBUG
+        // Web Inspector is user-facing via the right-click menu's
+        // Inspect Element item, so stay inspectable in all builds.
         if #available(macOS 13.3, *) {
             webView.isInspectable = true
         }
-        #endif
 
         progressObserver = webView.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
             if webView.estimatedProgress >= 0.7 {
@@ -359,6 +363,69 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         onStateChange?()
     }
 
+    // MARK: - Page context menu
+
+    private func appendPageMenuItems(to menu: NSMenu) {
+        if !menu.items.isEmpty {
+            menu.addItem(.separator())
+        }
+        if canGoBack {
+            let back = NSMenuItem(title: "Back", action: #selector(pageMenuGoBack), keyEquivalent: "")
+            back.target = self
+            menu.addItem(back)
+        }
+        if canGoForward {
+            let forward = NSMenuItem(title: "Forward", action: #selector(pageMenuGoForward), keyEquivalent: "")
+            forward.target = self
+            menu.addItem(forward)
+        }
+        let reload = NSMenuItem(title: "Reload Page", action: #selector(pageMenuReload), keyEquivalent: "")
+        reload.target = self
+        menu.addItem(reload)
+        menu.addItem(.separator())
+        let source = NSMenuItem(title: "View Page Source", action: #selector(pageMenuShowSource), keyEquivalent: "")
+        source.target = self
+        menu.addItem(source)
+    }
+
+    @objc private func pageMenuGoBack() { goBack() }
+    @objc private func pageMenuGoForward() { goForward() }
+    @objc private func pageMenuReload() { reload() }
+    @objc private func pageMenuShowSource() { showPageSource() }
+
+    func showPageSource() {
+        webView.evaluateJavaScript(
+            "document.documentElement ? document.documentElement.outerHTML : ''"
+        ) { [weak self] result, _ in
+            guard let self, let html = result as? String, !html.isEmpty else { return }
+            let title = "Source of \(self.webView.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? self.url?.host ?? "page")"
+            self.onOpenSourceTab?(title, html)
+        }
+    }
+
+    /// Presents already-fetched source HTML in this tab.
+    func presentPageSource(title: String, html: String) {
+        self.title = title
+        self.url = nil
+        self.favicon = nil
+        self.isLoading = false
+        let page = """
+        <html><head><meta charset="utf-8"><title>\(Self.escapedHTML(title))</title>\
+        <style>body{background:#fff;color:#222;font:12px/1.5 -apple-system,monospace;margin:16px;white-space:pre-wrap;word-break:break-all}\
+        @media(prefers-color-scheme:dark){body{background:#1e1e1e;color:#d4d4d4}}</style>\
+        </head><body>\(Self.escapedHTML(html))</body></html>
+        """
+        webView.loadHTMLString(page, baseURL: nil)
+        onStateChange?()
+    }
+
+    nonisolated static func escapedHTML(_ string: String) -> String {
+        var escaped = string.replacingOccurrences(of: "&", with: "&amp;")
+        escaped = escaped.replacingOccurrences(of: "<", with: "&lt;")
+        escaped = escaped.replacingOccurrences(of: ">", with: "&gt;")
+        return escaped
+    }
+
     /// Window for modal sheets (alerts, auth, media permission).
     private var sheetWindow: NSWindow? {
         webView.window
@@ -373,6 +440,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         onStateChange = nil
         onOpenNewTab = nil
         onCloseTab = nil
+        onOpenSourceTab = nil
+        webView.contextMenuHook = nil
 
         // 1. Pause and remove all audio/video elements immediately
         let stopMediaJS = """

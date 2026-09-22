@@ -789,7 +789,8 @@ final class LeanStore: ObservableObject {
     func newTab(
         url: URL? = nil,
         select: Bool = true,
-        configuration: WKWebViewConfiguration? = nil
+        configuration: WKWebViewConfiguration? = nil,
+        focusAddress: Bool = true
     ) -> LeanTab {
         let tab = LeanTab(
             dataStore: dataStore,
@@ -822,16 +823,24 @@ final class LeanStore: ObservableObject {
             }
             return child.webView
         }
+        tab.onOpenSourceTab = { [weak self] title, html in
+            self?.openPageSource(title: title, html: html)
+        }
         tabs.append(tab)
         if select {
             selectedID = tab.id
             isNewTabOmnibarFloating = false
-            if url == nil {
+            if url == nil && focusAddress {
                 NotificationCenter.default.post(name: .focusAddress, object: nil)
             }
         }
         saveSession()
         return tab
+    }
+
+        func openPageSource(title: String, html: String) {
+        let tab = newTab(focusAddress: false)
+        tab.presentPageSource(title: title, html: html)
     }
 
     func close(_ tab: LeanTab) {

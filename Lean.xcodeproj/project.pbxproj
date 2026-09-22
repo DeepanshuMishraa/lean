@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		080D2BBC4E6013BEE7B5357F /* AdBlockFilterConverterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A52B464DE485174355D358 /* AdBlockFilterConverterTests.swift */; };
 		099C3F07574FA15E03AB213A /* ContentBlocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14191AAB2D796CC5DE1EA6CB /* ContentBlocker.swift */; };
+		0FA60CB9A14A3C713C1EC473 /* LeanWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 741B4DA4257A50B78DAB7BDA /* LeanWebView.swift */; };
 		14A2E99A6C34753A725F173B /* SmoothScrollingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8236FF60B8280FBD4BFA5233 /* SmoothScrollingTests.swift */; };
 		1D9FED4451F17326C14D6A43 /* OmnibarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE299D40B9F2B4D61F3D41AD /* OmnibarService.swift */; };
 		259D7F72A1115CC3CF9EF155 /* AppDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0658473FF4694836C4819D30 /* AppDatabaseTests.swift */; };
@@ -25,6 +26,7 @@
 		5A95D7EC207A24098228BBF3 /* LeanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CABED7395D472182B5B8279 /* LeanStore.swift */; };
 		6082FA83A361BE568DBBD304 /* AddressResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 329359943D08761604195E40 /* AddressResolverTests.swift */; };
 		60D4BC2DA22051A477CFB208 /* TopBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55ACE65E20A203180C11BDDD /* TopBarView.swift */; };
+		65AC2B49D4EB3CBEA3ECD0A1 /* YouTubeBlockingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1BB4D2B7A2864920D0A7F89 /* YouTubeBlockingTests.swift */; };
 		67450D98E0FF73EAC1CF3B35 /* SettingsPopoverHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B53E2D1FDEBA2B433144566B /* SettingsPopoverHistoryTests.swift */; };
 		69AC4FF3AD87A8C412AB8AA2 /* TabFaviconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E570BC18AD372821AB350BC /* TabFaviconView.swift */; };
 		70FD8F5BEAB6A6AA09E92CDF /* DropdownMenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF6FE4814030CDFDD5C840C3 /* DropdownMenuTests.swift */; };
@@ -91,6 +93,7 @@
 		5F223D3E0E5D21A9B6965446 /* PageLoadingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageLoadingTests.swift; sourceTree = "<group>"; };
 		6AC627B2D3E8E4EB789B7523 /* OmnibarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmnibarView.swift; sourceTree = "<group>"; };
 		6E77360D10ACD1A5D4909F84 /* LeanTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LeanTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		741B4DA4257A50B78DAB7BDA /* LeanWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanWebView.swift; sourceTree = "<group>"; };
 		7B6255463FA3D1604089AAF5 /* FontSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontSettingsTests.swift; sourceTree = "<group>"; };
 		7D34204B30CD8161D2E590DF /* LeanTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanTheme.swift; sourceTree = "<group>"; };
 		8236FF60B8280FBD4BFA5233 /* SmoothScrollingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmoothScrollingTests.swift; sourceTree = "<group>"; };
@@ -111,6 +114,7 @@
 		CFACE78AD721D215A84F3FCD /* LeanTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanTab.swift; sourceTree = "<group>"; };
 		D5268449F35E5A41542EEF02 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
 		DD6B10DFBD20A8F10DF0B9C7 /* AdBlockFilterConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdBlockFilterConverter.swift; sourceTree = "<group>"; };
+		E1BB4D2B7A2864920D0A7F89 /* YouTubeBlockingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeBlockingTests.swift; sourceTree = "<group>"; };
 		E566A9FFD9A3DA622E49EC68 /* CustomShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomShortcuts.swift; sourceTree = "<group>"; };
 		E72942590E49E85581DFAAC5 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 		E79752CAC905E311310040C7 /* OmnibarServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmnibarServiceTests.swift; sourceTree = "<group>"; };
@@ -182,6 +186,7 @@
 				CFACE78AD721D215A84F3FCD /* LeanTab.swift */,
 				7D34204B30CD8161D2E590DF /* LeanTheme.swift */,
 				53149805E8E44A5ECCE884F3 /* LeanView.swift */,
+				741B4DA4257A50B78DAB7BDA /* LeanWebView.swift */,
 				BE299D40B9F2B4D61F3D41AD /* OmnibarService.swift */,
 				4C7FCB01A3F3CCDE9AA9530E /* OmnibarSuggestionRow.swift */,
 				6AC627B2D3E8E4EB789B7523 /* OmnibarView.swift */,
@@ -218,6 +223,7 @@
 				45114A1E37748C7110643D1C /* TabDisplayModeTests.swift */,
 				0A240F0FAABC15EC3C0D230E /* TestHelpers.swift */,
 				45A30DE20D55EF4F746694EB /* WebEngineTests.swift */,
+				E1BB4D2B7A2864920D0A7F89 /* YouTubeBlockingTests.swift */,
 			);
 			path = LeanTests;
 			sourceTree = "<group>";
@@ -335,6 +341,7 @@
 				850717383D672DE296316A1A /* TabDisplayModeTests.swift in Sources */,
 				9189BD1604353EC11AD2E7BB /* TestHelpers.swift in Sources */,
 				A120023EBA9CA774D77FEB55 /* WebEngineTests.swift in Sources */,
+				65AC2B49D4EB3CBEA3ECD0A1 /* YouTubeBlockingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -359,6 +366,7 @@
 				BDA7E266340C8AF371134E07 /* LeanTab.swift in Sources */,
 				571263C8F841874C413F13EB /* LeanTheme.swift in Sources */,
 				EF81104AE976E2079F2656FE /* LeanView.swift in Sources */,
+				0FA60CB9A14A3C713C1EC473 /* LeanWebView.swift in Sources */,
 				1D9FED4451F17326C14D6A43 /* OmnibarService.swift in Sources */,
 				CFA967BA5CF33A8F4C36B321 /* OmnibarSuggestionRow.swift in Sources */,
 				9F7CDF17FBB0540000928EA0 /* OmnibarView.swift in Sources */,

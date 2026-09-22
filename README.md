@@ -46,8 +46,8 @@ missing browser chrome does not provide will not work. Verified by testing:
   high-resolution Netflix/Prime/Spotify playback is Safari-only.
 - **If a bank or SSO page breaks, try disabling ad blocking** in
   Settings before assuming anything else.
-- **No private windows, profiles, or print support.** DevTools
-  inspection is a debug-build feature only.
+- **No private windows, profiles, or print support.** Web Inspector is
+  available via right-click → Inspect Element.
 
 ## Install a release
 
@@ -87,6 +87,7 @@ Only a paid Developer ID certificate plus notarization removes step 3.
 - Configurable page scrollbars and native scrolling
 - Adjustable interface size (Settings → Appearance → Browser UI)
 - WebKit content blocking (uBlock Origin lists + YouTube ad coverage)
+- Right-click page menu (Back, Forward, Reload, View Page Source, Inspect Element)
 
 ## Run
 

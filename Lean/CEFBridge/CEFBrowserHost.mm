@@ -4,7 +4,6 @@
 #define LEAN_HAS_CEF 1
 #include <algorithm>
 #include <atomic>
-#include <cctype>
 #include <cmath>
 #include <functional>
 #include <map>
@@ -28,13 +27,10 @@
 #include "include/cef_load_handler.h"
 #include "include/cef_parser.h"
 #include "include/cef_permission_handler.h"
-#include "include/cef_request_context.h"
+#include "include/cef_process_message.h"
 #include "include/cef_request_handler.h"
-#include "include/cef_resource_handler.h"
 #include "include/cef_resource_request_handler.h"
-#include "include/cef_response.h"
 #include "include/cef_task.h"
-#include "include/cef_urlrequest.h"
 
 // Internal bookkeeping used by LeanCefClient. A category at global scope
 // (not in the public header) because the signatures carry C++ types that
@@ -64,9 +60,6 @@
         isMainNavigation:(BOOL)isMainNavigation;
 - (BOOL)shouldBlockPopupURL:(const CefString &)url
                   openerURL:(const CefString &)openerURL;
-/// Atomic snapshot of the toggle for IO-thread C++ callers (ivar access
-/// is not available outside ObjC methods).
-- (BOOL)adBlockingSnapshot;
 - (std::string)cosmeticScriptForURL:(const CefString &)url;
 @end
 
@@ -413,19 +406,68 @@ bool IsYouTubeHost(const std::string &host) {
   return matches(host, "youtube.com") || matches(host, "youtu.be");
 }
 
-/// In-player ad handling that stylesheets cannot do: click skip buttons the
-/// moment they appear, mute while an ad is showing (restoring afterwards),
-/// and seek past short unskippable ad segments. Guarded re-entry (the
-/// injector runs on both load-start and load-end) and scoped to ad playback
-/// via `.ad-showing` so normal videos are never touched.
+/// In-player ad handling that stylesheets cannot do. Runs entirely in the
+/// renderer (no network re-fetch, no cross-thread work): traps the inline
+/// initial player data before the bootstrap reads it, prunes the ad
+/// schedule out of player/next API responses via fetch + JSON.parse wraps,
+/// and falls back to click-skip/mute/seek for anything that still enters
+/// ad mode. Guarded re-entry (the injector runs on both load-start and
+/// load-end). Mirrors PageScripts.youtubeAds — keep the two in sync.
 std::string YouTubeAdSkipScript() {
-  return "(()=>{if(window.__leanYtSkip)return;window.__leanYtSkip=1;"
+  // Injected only while the toggle is on; still consults
+  // window.__leanYtAdsEnabled everywhere so a live toggle-off (flipped via
+  // the lean-yt-ads process message) silences already-installed hooks, and
+  // wrapped-markers keep re-injection idempotent.
+  return "(()=>{try{if(window.__leanYtAdsEnabled===undefined)"
+         "{window.__leanYtAdsEnabled=true;}}catch(e){}"
+         "const stripS=(o)=>{for(const k of['adPlacements','playerAds','adSlots'])"
+         "{try{if(Object.prototype.hasOwnProperty.call(o,k)){delete o[k];}}catch(e){}}};"
+         "const strip=(o)=>{if(!o||typeof o!=='object')return;stripS(o);"
+         "let lp=false;"
+         "try{lp=!!(o.playabilityStatus||o.streamingData||(o.responseContext&&o.contents));}catch(e){}"
+         "if(!lp)return;"
+         "const st=[o],sn=[];let b=20000;"
+         "while(st.length&&b-->0){const x=st.pop();"
+         "if(!x||typeof x!=='object')continue;"
+         "let dp=false;for(const s of sn){if(s===x){dp=true;break;}}"
+         "if(dp)continue;sn.push(x);stripS(x);"
+         "if(x instanceof Array){for(const v of x){st.push(v);}}"
+         "else{for(const k in x){try{st.push(x[k]);}catch(e){}}}}};"
+         "try{for(const n of['ytInitialPlayerResponse','ytInitialData'])"
+         "{try{let c=window[n];"
+         "try{if(window.__leanYtAdsEnabled){strip(c);}}catch(e){}"
+         "Object.defineProperty(window,n,{configurable:true,"
+         "get:()=>c,"
+         "set:(v)=>{try{if(window.__leanYtAdsEnabled){strip(v);}}catch(e){}c=v;}});}"
+         "catch(e){}}}catch(e){}"
+         "try{if(!JSON.parse.__leanYtWrapped){const p=JSON.parse;"
+         "const w=function(t,r){const v=p.call(this,t,r);"
+         "try{if(window.__leanYtAdsEnabled){strip(v);}}catch(e){}return v;};"
+         "try{w.__leanYtWrapped=true;}catch(e){}"
+         "JSON.parse=w;}}"
+         "catch(e){}"
+         "try{if(window.fetch&&!window.fetch.__leanYtWrapped){const f=window.fetch;"
+         "const w=function(u,o){let s='';"
+         "try{s=typeof u==='string'?u:(u&&u.url)||'';}catch(e){}"
+         "if(s.indexOf('/youtubei/v1/player')===-1&&s.indexOf('/youtubei/v1/next')===-1)"
+         "{return f.apply(this,arguments);}"
+         "return f.apply(this,arguments).then((r)=>{try{"
+         "return r.text().then((t)=>{"
+         "if(!window.__leanYtAdsEnabled||"
+         "(t.indexOf('adPlacements')===-1&&t.indexOf('playerAds')===-1&&t.indexOf('adSlots')===-1))"
+         "{return new Response(t,{status:r.status,statusText:r.statusText,headers:r.headers});}"
+         "const d=JSON.parse(t);strip(d);"
+         "return new Response(JSON.stringify(d),{status:r.status,statusText:r.statusText,headers:r.headers});"
+         "});}catch(e){return r;}});};"
+         "try{w.__leanYtWrapped=true;}catch(e){}"
+         "window.fetch=w;}}catch(e){}"
+         "if(window.__leanYtSkip)return;window.__leanYtSkip=true;"
          "const q=(s)=>document.querySelector(s);"
          "const skipSel='.ytp-skip-ad-button,.ytp-ad-skip-button,.ytp-skip-ad-button-modern';"
          "const clickSkip=()=>{const b=q(skipSel);if(b){b.click();}};"
          "const tame=()=>{const v=q('video');if(!v)return;"
          "if(q('.ad-showing')){"
-         "if(!v.dataset.leanMuted){v.dataset.leanMuted='1';}"
+         "if(!v.muted&&!v.dataset.leanMuted){v.dataset.leanMuted='1';}"
          "v.muted=true;clickSkip();"
          "if(!q(skipSel)&&isFinite(v.duration)&&v.duration>0&&v.duration<180&&"
          "v.currentTime<v.duration-0.5){try{v.currentTime=v.duration-0.2;}catch(e){}}"
@@ -437,348 +479,6 @@ std::string YouTubeAdSkipScript() {
          "start();})();";
 }
 
-/// Advances past one JSON value starting at pos (leading whitespace
-/// skipped). Returns one-past-the-end, or npos when malformed.
-size_t SkipJsonValue(const std::string &s, size_t pos) {
-  while (pos < s.size() && isspace((unsigned char)s[pos])) {
-    ++pos;
-  }
-  if (pos >= s.size()) {
-    return std::string::npos;
-  }
-  char c = s[pos];
-  if (c == '{' || c == '[') {
-    char open = c;
-    char close = (c == '{') ? '}' : ']';
-    int depth = 0;
-    bool in_str = false;
-    for (size_t i = pos; i < s.size(); ++i) {
-      char ch = s[i];
-      if (in_str) {
-        if (ch == '\\') {
-          ++i;
-          continue;
-        }
-        if (ch == '"') {
-          in_str = false;
-        }
-        continue;
-      }
-      if (ch == '"') {
-        in_str = true;
-        continue;
-      }
-      if (ch == open) {
-        ++depth;
-      } else if (ch == close) {
-        if (--depth == 0) {
-          return i + 1;
-        }
-      }
-    }
-    return std::string::npos;
-  }
-  if (c == '"') {
-    for (size_t i = pos + 1; i < s.size(); ++i) {
-      if (s[i] == '\\') {
-        ++i;
-        continue;
-      }
-      if (s[i] == '"') {
-        return i + 1;
-      }
-    }
-    return std::string::npos;
-  }
-  size_t i = pos;
-  while (i < s.size() && s[i] != ',' && s[i] != '}' && s[i] != ']' &&
-         !isspace((unsigned char)s[i])) {
-    ++i;
-  }
-  return (i == pos) ? std::string::npos : i;
-}
-
-/// Strips YouTube ad-schedule fields (`adPlacements`, `playerAds`,
-/// `adSlots`) from a player/next API response body, swallowing one adjacent
-/// comma so the object stays valid. Returns true when modified; on any
-/// malformed input the body is left untouched (caller serves the original).
-bool PruneYouTubePlayerJson(std::string &body) {
-  static const char *const kKeys[] = {"adPlacements", "playerAds", "adSlots"};
-  bool needle = false;
-  for (const char *k : kKeys) {
-    if (body.find(k) != std::string::npos) {
-      needle = true;
-      break;
-    }
-  }
-  if (!needle) {
-    return false;
-  }
-  std::string out = body;
-  bool changed = false;
-  for (const char *k : kKeys) {
-    std::string quoted = std::string("\"") + k + "\"";
-    size_t search = 0;
-    while ((search = out.find(quoted, search)) != std::string::npos) {
-      size_t after = search + quoted.size();
-      size_t colon = after;
-      while (colon < out.size() && isspace((unsigned char)out[colon])) {
-        ++colon;
-      }
-      // Not a key (e.g. the text occurs inside a string value): skip it.
-      if (colon >= out.size() || out[colon] != ':') {
-        search = after;
-        continue;
-      }
-      size_t vend = SkipJsonValue(out, colon + 1);
-      if (vend == std::string::npos) {
-        return false;
-      }
-      size_t fwd = vend;
-      while (fwd < out.size() && isspace((unsigned char)out[fwd])) {
-        ++fwd;
-      }
-      if (fwd < out.size() && out[fwd] == ',') {
-        out.erase(search, fwd - search + 1);
-      } else {
-        size_t back = search;
-        while (back > 0 && isspace((unsigned char)out[back - 1])) {
-          --back;
-        }
-        if (back > 0 && out[back - 1] == ',') {
-          out.erase(back - 1, vend - (back - 1));
-        } else {
-          out.erase(search, vend - search);
-        }
-      }
-      changed = true;
-    }
-  }
-  if (!changed) {
-    return false;
-  }
-  body.swap(out);
-  return true;
-}
-
-// Maximum buffered youtubei response we'll prune (player/next bodies are
-// KBs; anything larger passes through untouched by declining interception).
-constexpr size_t kMaxPruneBytes = 32u * 1024u * 1024u;
-
-/// Re-fetches a youtubei API response in the browser process, prunes the ad
-/// schedule, and serves the rewritten bytes to the renderer. Runs entirely
-/// on the IO thread; the rules snapshot is immutable.
-class PruningResourceHandler : public CefResourceHandler {
- private:
-  class PruningURLClient : public CefURLRequestClient {
-   public:
-    explicit PruningURLClient(PruningResourceHandler *handler) : handler_(handler) {}
-    void OnRequestComplete(CefRefPtr<CefURLRequest> request) override {
-      if (handler_) {
-        handler_->OnFetchComplete(request);
-      }
-    }
-    void OnUploadProgress(CefRefPtr<CefURLRequest>, int64_t, int64_t) override {}
-    void OnDownloadProgress(CefRefPtr<CefURLRequest> request, int64_t, int64_t total) override {
-      if (handler_) {
-        handler_->OnFetchProgress(total);
-      }
-      (void)request;
-    }
-    void OnDownloadData(CefRefPtr<CefURLRequest>, const void *data, size_t data_length) override {
-      if (handler_) {
-        handler_->OnFetchData(data, data_length);
-      }
-    }
-    bool GetAuthCredentials(bool, const CefString &, int, const CefString &, const CefString &,
-                            CefRefPtr<CefAuthCallback>) override {
-      return false;
-    }
-
-   private:
-    CefRefPtr<PruningResourceHandler> handler_;
-    IMPLEMENT_REFCOUNTING(PruningURLClient);
-  };
-
- public:
-  explicit PruningResourceHandler(CefRefPtr<CefBrowser> browser)
-      : browser_(browser), offset_(0), complete_(false), error_(false), status_(200) {}
-
-  bool Open(CefRefPtr<CefRequest> request, bool &handle_request,
-            CefRefPtr<CefCallback> callback) override {
-    handle_request = true;
-    open_callback_ = callback;
-    CefRefPtr<CefRequest> forward = CefRequest::Create();
-    forward->SetURL(request->GetURL());
-    forward->SetMethod(request->GetMethod());
-    CefRequest::HeaderMap headers;
-    request->GetHeaderMap(headers);
-    // Marker so GetResourceHandler lets this inner fetch load normally.
-    headers.insert({ "X-Lean-Prune-Bypass", "1" });
-    forward->SetHeaderMap(headers);
-    if (request->GetPostData()) {
-      forward->SetPostData(request->GetPostData());
-    }
-    forward->SetFlags(request->GetFlags());
-    forward->SetFirstPartyForCookies(request->GetFirstPartyForCookies());
-    CefRefPtr<CefRequestContext> context;
-    if (browser_ && browser_->GetHost()) {
-      context = browser_->GetHost()->GetRequestContext();
-    }
-    client_ = new PruningURLClient(this);
-    url_request_ = CefURLRequest::Create(forward, client_.get(), context.get());
-    if (!url_request_) {
-      error_ = true;
-      CefRefPtr<CefCallback> cb = open_callback_;
-      open_callback_ = nullptr;
-      if (cb) {
-        cb->Continue();
-      }
-    }
-    return true;
-  }
-
-  void GetResponseHeaders(CefRefPtr<CefResponse> response, int64_t &response_length,
-                          CefString &redirectUrl) override {
-    redirectUrl = CefString();
-    if (error_) {
-      response->SetError(ERR_FAILED);
-      response_length = 0;
-      return;
-    }
-    response->SetStatus(status_);
-    response->SetStatusText(status_text_);
-    response->SetMimeType("application/json");
-    CefResponse::HeaderMap headers;
-    for (const auto &kv : resp_headers_) {
-      std::string name = LowerASCII(kv.first.ToString());
-      // Length/encoding are ours now; content-type is set via SetMimeType.
-      if (name == "content-length" || name == "content-encoding" ||
-          name == "transfer-encoding" || name == "content-type") {
-        continue;
-      }
-      headers.insert(kv);
-    }
-    response->SetHeaderMap(headers);
-    response_length = (int64_t)body_.size();
-  }
-
-  bool Skip(int64_t bytes_to_skip, int64_t &bytes_skipped,
-            CefRefPtr<CefResourceSkipCallback>) override {
-    if (error_) {
-      bytes_skipped = -2;
-      return false;
-    }
-    size_t avail = body_.size() > offset_ ? body_.size() - offset_ : 0;
-    int64_t n = std::min<int64_t>(bytes_to_skip, (int64_t)avail);
-    offset_ += (size_t)n;
-    bytes_skipped = n;
-    return true;
-  }
-
-  bool Read(void *data_out, int bytes_to_read, int &bytes_read,
-            CefRefPtr<CefResourceReadCallback>) override {
-    if (error_) {
-      bytes_read = -2;
-      return false;
-    }
-    size_t avail = body_.size() > offset_ ? body_.size() - offset_ : 0;
-    size_t n = std::min<size_t>(avail, (size_t)bytes_to_read);
-    if (n == 0) {
-      bytes_read = 0;
-      return false;
-    }
-    memcpy(data_out, body_.data() + offset_, n);
-    offset_ += n;
-    bytes_read = (int)n;
-    return true;
-  }
-
-  void Cancel() override {
-    if (url_request_) {
-      url_request_->Cancel();
-    }
-    open_callback_ = nullptr;
-    client_ = nullptr;
-    url_request_ = nullptr;
-  }
-
-  void OnFetchData(const void *data, size_t data_length) {
-    if (complete_ || error_) {
-      return;
-    }
-    if (buffer_.size() + data_length > kMaxPruneBytes) {
-      if (url_request_) {
-        url_request_->Cancel();
-      }
-      OnFetchError();
-      return;
-    }
-    buffer_.append((const char *)data, data_length);
-  }
-
-  void OnFetchProgress(int64_t total) {
-    if (total > 0 && (uint64_t)total > kMaxPruneBytes && url_request_) {
-      url_request_->Cancel();
-      OnFetchError();
-    }
-  }
-
-  void OnFetchComplete(CefRefPtr<CefURLRequest> url_request) {
-    if (complete_ || error_) {
-      return;
-    }
-    complete_ = true;
-    if (url_request->GetRequestStatus() == UR_SUCCESS) {
-      CefRefPtr<CefResponse> orig = url_request->GetResponse();
-      if (orig) {
-        status_ = orig->GetStatus();
-        status_text_ = orig->GetStatusText().ToString();
-        orig->GetHeaderMap(resp_headers_);
-      }
-      std::string body = std::move(buffer_);
-      PruneYouTubePlayerJson(body);
-      body_ = std::move(body);
-    } else {
-      error_ = true;
-    }
-    CefRefPtr<CefCallback> cb = open_callback_;
-    open_callback_ = nullptr;
-    client_ = nullptr;
-    url_request_ = nullptr;
-    if (cb) {
-      cb->Continue();
-    }
-  }
-
-  void OnFetchError() {
-    if (complete_ || error_) {
-      return;
-    }
-    error_ = true;
-    CefRefPtr<CefCallback> cb = open_callback_;
-    open_callback_ = nullptr;
-    client_ = nullptr;
-    url_request_ = nullptr;
-    if (cb) {
-      cb->Continue();
-    }
-  }
-
-  CefRefPtr<CefBrowser> browser_;
-  CefRefPtr<CefURLRequest> url_request_;
-  CefRefPtr<PruningURLClient> client_;
-  CefRefPtr<CefCallback> open_callback_;
-  std::string buffer_;
-  std::string body_;
-  size_t offset_;
-  bool complete_;
-  bool error_;
-  int status_;
-  std::string status_text_;
-  CefResponse::HeaderMap resp_headers_;
-  IMPLEMENT_REFCOUNTING(PruningResourceHandler);
-};
 
 std::string CSSForSelectors(NSArray<NSString *> *selectors) {
   std::string css;
@@ -1024,25 +724,6 @@ class LeanCefClient : public CefClient,
       CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefRequest>,
       bool, bool, const CefString &, bool &) override {
     return this;
-  }
-
-  CefRefPtr<CefResourceHandler> GetResourceHandler(
-      CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>,
-      CefRefPtr<CefRequest> request) override {
-    CEFBrowserHost *owner = owner_;
-    if (!owner || ![owner adBlockingSnapshot]) {
-      return nullptr;
-    }
-    // Never intercept our own re-issued fetch (see PruningResourceHandler).
-    if (!request->GetHeaderByName("X-Lean-Prune-Bypass").empty()) {
-      return nullptr;
-    }
-    std::string url = LowerASCII(request->GetURL().ToString());
-    if (url.find("youtubei/v1/player") == std::string::npos &&
-        url.find("youtubei/v1/next") == std::string::npos) {
-      return nullptr;
-    }
-    return new PruningResourceHandler(browser);
   }
 
   ReturnValue OnBeforeResourceLoad(CefRefPtr<CefBrowser>,
@@ -1433,7 +1114,24 @@ struct PendingDownload {
 - (void)browserCreated:(CefRefPtr<CefBrowser>)browser {
   _browser = browser;
   _devToolsRegistration = browser->GetHost()->AddDevToolsMessageObserver(_client);
+  [self pushYouTubeAdsToggleToRenderer];
   [self notifyParentResized];
+}
+
+/// Pushes the adblock toggle to renderers so the context-creation patch
+/// (Helper's LeanRenderApp, which bakes the flag) and live pages stay in
+/// sync. Must run on the CEF UI thread.
+- (void)pushYouTubeAdsToggleToRenderer {
+  if (!_browser) {
+    return;
+  }
+  CefRefPtr<CefFrame> frame = _browser->GetMainFrame();
+  if (!frame) {
+    return;
+  }
+  CefRefPtr<CefProcessMessage> message = CefProcessMessage::Create("lean-yt-ads");
+  message->GetArgumentList()->SetBool(0, _adBlockingEnabled.load());
+  frame->SendProcessMessage(PID_RENDERER, message);
 }
 
 - (void)browserGone {
@@ -1532,10 +1230,15 @@ struct PendingDownload {
       if (rule.exclude_popup) {
         continue;
       }
-      if (!rule.popup_only && rule.types != 0) {
-        // Kind-constrained network rules (e.g. `$script`) don't judge popup
-        // navigations; `$popup` and unconstrained rules do.
-        continue;
+      if (!rule.popup_only) {
+        // General rules judge popups only by host: kind-constrained rules
+        // (e.g. `$script`) don't apply to navigations, and bare path
+        // substrings are too fuzzy here — a legit popup whose URL merely
+        // contains an ad-ish substring (SSO, checkout, docs) must still
+        // open. `$popup` rules of any kind still apply below.
+        if (rule.types != 0 || !rule.is_domain) {
+          continue;
+        }
       }
     } else if (rule.popup_only) {
       continue;
@@ -1611,8 +1314,10 @@ struct PendingDownload {
   }
   std::string requestURL = LowerASCII(url.ToString());
   std::string openerHost = HostFromURL(openerURL);
-  const bool fastBlock = MatchesDomain(rules->blocked_domains, host) ||
-                         rules->blocked_patterns.Matches(requestURL);
+  // Fail-open asymmetry on purpose: blocks judge by host only (a bare path
+  // substring must not swallow a legit popup), while allow-rules of any
+  // shape still rescue one.
+  const bool fastBlock = MatchesDomain(rules->blocked_domains, host);
   const bool fastException = MatchesDomain(rules->allowed_domains, host) ||
                              rules->allowed_patterns.Matches(requestURL);
   bool scopedHit[4];
@@ -1803,14 +1508,11 @@ struct PendingDownload {
   });
 }
 
-- (BOOL)adBlockingSnapshot {
-  return _adBlockingEnabled.load();
-}
-
 - (void)setAdBlockingEnabled:(BOOL)enabled {
   _adBlockingEnabled.store(enabled);
   CEFBrowserHost *selfRef = self;
   PostToUI([selfRef, enabled] {
+    [selfRef pushYouTubeAdsToggleToRenderer];
     if (!selfRef->_browser) {
       return;
     }

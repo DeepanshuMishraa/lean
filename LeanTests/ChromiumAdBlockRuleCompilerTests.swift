@@ -124,6 +124,17 @@ struct ChromiumAdBlockRuleCompilerTests {
         #expect(exception.important)
     }
 
+    @Test("Websocket-only rules are dropped, mixed rules keep other kinds")
+    func websocketRulesHandledSafely() {
+        let lone = ChromiumAdBlockRuleCompiler.compile(["||sock.example^$websocket"])
+        #expect(lone.blockedDomains.isEmpty)
+        #expect(lone.networkRules.isEmpty)
+
+        let mixed = ChromiumAdBlockRuleCompiler.compile(["||sock.example^$script,websocket"])
+        #expect(mixed.networkRules.count == 1)
+        #expect(mixed.networkRules.first?.types == ["script"])
+    }
+
     @Test("Cosmetic-only exceptions never become network allows")
     func cosmeticOnlyExceptionsStayDropped() {
         let rules = ChromiumAdBlockRuleCompiler.compile([
@@ -137,6 +148,44 @@ struct ChromiumAdBlockRuleCompilerTests {
         #expect(rules.networkRules.isEmpty)
     }
 
+    @Test("Drops match-case rules the case-insensitive matcher cannot honor")
+    func dropsMatchCase() {
+        let rules = ChromiumAdBlockRuleCompiler.compile([
+            """
+            ||ads.example^$match-case
+            ||cdn.example/ads.js$third-party,match-case
+            """
+        ])
+
+        #expect(rules.blockedDomains.isEmpty)
+        #expect(rules.blockedPatterns.isEmpty)
+        #expect(rules.networkRules.isEmpty)
+    }
+
+    @Test("Drops strict party rules while keeping plain party scoping")
+    func dropsStrictParty() throws {
+        let dropped = ChromiumAdBlockRuleCompiler.compile([
+            """
+            ||strict3.example^$strict3p
+            ||strict1.example^$strict1p
+            """
+        ])
+        #expect(dropped.blockedDomains.isEmpty)
+        #expect(dropped.networkRules.isEmpty)
+
+        let kept = ChromiumAdBlockRuleCompiler.compile([
+            """
+            ||ads.example^$third-party
+            ||first.example^$first-party
+            """
+        ])
+        #expect(kept.networkRules.count == 2)
+        let third = try #require(kept.networkRules.first { $0.value == "ads.example" })
+        #expect(third.thirdParty == 1)
+        let first = try #require(kept.networkRules.first { $0.value == "first.example" })
+        #expect(first.thirdParty == 0)
+    }
+
     @Test("Curated YouTube text compiles to network and cosmetic rules")
     func youtubeTextCompiles() {
         let rules = ChromiumAdBlockRuleCompiler.compile([
@@ -148,6 +197,23 @@ struct ChromiumAdBlockRuleCompilerTests {
         #expect(rules.domainSelectors["youtube.com"]?.contains(".ytp-ad-module") == true)
     }
 
+    @Test("Path-scoped anchors never become whole-domain blocks")
+    func pathScopedAnchorsStayScoped() {
+        // Regression: `||x.com^*/log.json` once compiled to a bare `x.com`
+        // domain block, blanking the entire site.
+        let rules = ChromiumAdBlockRuleCompiler.compile([
+            """
+            ||x.com^*/log.json
+            ||twitter.com^*/log.json
+            ||ads.example^
+            """
+        ])
+
+        #expect(!rules.blockedDomains.contains("x.com"))
+        #expect(!rules.blockedDomains.contains("twitter.com"))
+        #expect(rules.blockedDomains.contains("ads.example"))
+    }
+
     @Test("YouTube scriptlet prunes when enabled and is inert otherwise")
     func youtubeScriptlet() {
         let on = PageScripts.youtubeAds(enabled: true)
@@ -156,6 +222,7 @@ struct ChromiumAdBlockRuleCompilerTests {
         #expect(on.contains("playerAds"))
         #expect(on.contains("youtubei/v1/player"))
         #expect(on.contains("JSON.parse"))
+        #expect(on.contains("ytInitialPlayerResponse"))
         #expect(on.contains("ytp-skip-ad-button"))
 
         let off = PageScripts.youtubeAds(enabled: false)

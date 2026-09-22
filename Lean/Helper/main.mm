@@ -1,10 +1,150 @@
 #import <Cocoa/Cocoa.h>
 
 #if __has_include("include/cef_app.h")
+#include <string>
 #include "include/cef_app.h"
+#include "include/cef_process_message.h"
+#include "include/cef_render_process_handler.h"
+#include "include/cef_v8.h"
 #include "include/wrapper/cef_library_loader.h"
 #define LEAN_HAS_CEF 1
-#endif
+
+namespace {
+
+// Current adblock toggle, pushed from the browser process ("lean-yt-ads"
+// message). Baked into every fresh context; live pages are flipped via
+// ExecuteJavaScript in OnProcessMessageReceived.
+bool gYtAdsEnabled = true;
+
+// Timing-critical half of the YouTube adblock: inline-data traps plus
+// fetch/JSON.parse pruning plus the skip fallback. Runs at V8 context
+// creation — before any page script, including inline
+// ytInitialPlayerResponse — which browser-process injection
+// (OnLoadStart) can never guarantee. The fuller browser-side copy in
+// CEFBrowserHost.mm (YouTubeAdSkipScript) and PageScripts.youtubeAds stay
+// as fallback/primary for WebKit; keep the three in sync.
+std::string YtEarlyPatch(bool enabled) {
+  return "(()=>{try{window.__leanYtAdsEnabled=" +
+         std::string(enabled ? "true" : "false") +
+         ";}catch(e){}"
+         "try{var h='';try{h=location.hostname||'';}catch(e){}"
+         "if(!/(^|\\.)youtube\\.com$|(^|\\.)youtu\\.be$/.test(h))return;}catch(e){return;}"
+         "const stripS=(o)=>{for(const k of['adPlacements','playerAds','adSlots'])"
+         "{try{if(Object.prototype.hasOwnProperty.call(o,k)){delete o[k];}}catch(e){}}};"
+         "const strip=(o)=>{if(!o||typeof o!=='object')return;stripS(o);"
+         "let lp=false;"
+         "try{lp=!!(o.playabilityStatus||o.streamingData||(o.responseContext&&o.contents));}catch(e){}"
+         "if(!lp)return;"
+         "const st=[o],sn=[];let b=20000;"
+         "while(st.length&&b-->0){const x=st.pop();"
+         "if(!x||typeof x!=='object')continue;"
+         "let dp=false;for(const s of sn){if(s===x){dp=true;break;}}"
+         "if(dp)continue;sn.push(x);stripS(x);"
+         "if(x instanceof Array){for(const v of x){st.push(v);}}"
+         "else{for(const k in x){try{st.push(x[k]);}catch(e){}}}}};"
+         "try{for(const n of['ytInitialPlayerResponse','ytInitialData'])"
+         "{try{let c=window[n];"
+         "try{if(window.__leanYtAdsEnabled){strip(c);}}catch(e){}"
+         "Object.defineProperty(window,n,{configurable:true,"
+         "get:()=>c,"
+         "set:(v)=>{try{if(window.__leanYtAdsEnabled){strip(v);}}catch(e){}c=v;}});}"
+         "catch(e){}}}catch(e){}"
+         "try{if(!window.__leanYtFetchPatched){"
+         "try{window.__leanYtOrigFetch=window.fetch;}catch(e){}"
+         "const p=JSON.parse;"
+         "try{window.__leanYtOrigParse=p;}catch(e){}"
+         "JSON.parse=function(t,r){const v=p.call(this,t,r);"
+         "try{if(window.__leanYtAdsEnabled){strip(v);}}catch(e){}return v;};"
+         "if(window.fetch){const f=window.fetch;"
+         "window.fetch=function(u,o){let s='';"
+         "try{s=typeof u==='string'?u:(u&&u.url)||'';}catch(e){}"
+         "if(s.indexOf('/youtubei/v1/player')===-1&&s.indexOf('/youtubei/v1/next')===-1)"
+         "{return f.apply(this,arguments);}"
+         "return f.apply(this,arguments).then((r)=>{try{"
+         "return r.text().then((t)=>{"
+         "if(!window.__leanYtAdsEnabled||"
+         "(t.indexOf('adPlacements')===-1&&t.indexOf('playerAds')===-1&&t.indexOf('adSlots')===-1))"
+         "{return new Response(t,{status:r.status,statusText:r.statusText,headers:r.headers});}"
+         "const d=JSON.parse(t);strip(d);"
+         "return new Response(JSON.stringify(d),{status:r.status,statusText:r.statusText,headers:r.headers});"
+         "});}catch(e){return r;}});};}"
+         "try{window.__leanYtFetchPatched=true;}catch(e){}}}catch(e){}"
+         "try{if(window.__leanYtSkip)return;window.__leanYtSkip=true;"
+         "const q=(s)=>{try{return document.querySelector(s);}catch(e){return null;}};"
+         "const skipSel='.ytp-skip-ad-button,.ytp-ad-skip-button,.ytp-skip-ad-button-modern';"
+         "const clickSkip=()=>{try{const b=q(skipSel);if(b){b.click();}}catch(e){}};"
+         "const tame=()=>{try{"
+         "if(!window.__leanYtAdsEnabled)return;"
+         "const v=q('video');if(!v)return;"
+         "if(q('.ad-showing')){"
+         "if(!v.muted&&!v.dataset.leanMuted){v.dataset.leanMuted='1';}"
+         "v.muted=true;clickSkip();"
+         "if(!q(skipSel)&&isFinite(v.duration)&&v.duration>0&&v.duration<180&&"
+         "v.currentTime<v.duration-0.5){try{v.currentTime=v.duration-0.2;}catch(e){}}"
+         "}else if(v.dataset.leanMuted){v.muted=false;delete v.dataset.leanMuted;}"
+         "}catch(e){}};"
+         "const start=()=>{try{"
+         "if(!window.__leanYtAdsEnabled)return;"
+         "if(!document.documentElement){requestAnimationFrame(start);return;}"
+         "setInterval(tame,500);"
+         "new MutationObserver(()=>{try{"
+         "if(!window.__leanYtAdsEnabled)return;"
+         "if(q(skipSel)){clickSkip();}}catch(e){}})"
+         ".observe(document.documentElement,{childList:true,subtree:true});tame();"
+         "}catch(e){}};"
+         "start();}catch(e){}"
+         "})();";
+}
+
+class LeanRenderApp : public CefApp, public CefRenderProcessHandler {
+ public:
+  LeanRenderApp() = default;
+
+  CefRefPtr<CefRenderProcessHandler> GetRenderProcessHandler() override {
+    return this;
+  }
+
+  void OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                        CefRefPtr<CefV8Context> context) override {
+    // Earliest deterministic hook: the fresh main-world context, before any
+    // page script (inline or external) runs in it.
+    CefRefPtr<CefV8Value> ignored;
+    CefRefPtr<CefV8Exception> exception;
+    context->Eval(YtEarlyPatch(gYtAdsEnabled), CefString(), 0, ignored, exception);
+    (void)browser;
+    (void)frame;
+  }
+
+  bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>,
+                                CefProcessId source_process,
+                                CefRefPtr<CefProcessMessage> message) override {
+    if (source_process != PID_BROWSER) {
+      return false;
+    }
+    if (message->GetName().ToString() != "lean-yt-ads") {
+      return false;
+    }
+    gYtAdsEnabled = message->GetArgumentList()->GetBool(0);
+    // Flip live pages: new contexts bake the flag, existing ones need it set.
+    std::string flip = std::string("try{window.__leanYtAdsEnabled=") +
+                       (gYtAdsEnabled ? "true" : "false") + ";}catch(e){}";
+    std::vector<CefString> ids;
+    browser->GetFrameIdentifiers(ids);
+    for (const CefString &id : ids) {
+      CefRefPtr<CefFrame> frame = browser->GetFrameByIdentifier(id);
+      if (frame) {
+        frame->ExecuteJavaScript(flip, frame->GetURL(), 0);
+      }
+    }
+    return true;
+  }
+
+ private:
+  IMPLEMENT_REFCOUNTING(LeanRenderApp);
+};
+
+}  // namespace
+#endif  // __has_include("include/cef_app.h")
 
 /// Subprocess entry point: every CEF renderer/GPU/plugin process re-enters
 /// here via the browser_subprocess_path executable (Lean Helper.app).
@@ -16,7 +156,8 @@ int main(int argc, char *argv[]) {
     if (!loader.LoadInHelper()) {
       return 1;
     }
-    return CefExecuteProcess(main_args, nullptr, nullptr);
+    CefRefPtr<LeanRenderApp> app(new LeanRenderApp);
+    return CefExecuteProcess(main_args, app.get(), nullptr);
   }
 #else
   (void)argc;

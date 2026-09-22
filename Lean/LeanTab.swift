@@ -212,7 +212,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         // Rebuild re-registers every script with the fresh flag (including
         // the YouTube scriptlet, whose content is baked in at registration)
         // and re-syncs the rule lists. Idempotent; safe to call on toggles.
+        // User scripts only affect future navigations, so also patch the
+        // live page: install/uninstall the YouTube hooks in place.
         rebuildUserScripts()
+        webView.evaluateJavaScript(PageScripts.youtubeAdsLive(enabled: enabled)) { _, _ in }
     }
 
     /// Adds/removes the compiled content-rule lists without touching scripts.
@@ -289,6 +292,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     func applyScrollbarStyle(_ style: ScrollbarStyle) {
         self.scrollbarStyle = style
+        if engineKind == .cef {
+            // CEF has no persistent user-script store: inject into the live
+            // page now; navigations re-apply via onLoadingState below.
+            cefHost?.executeJavaScript(PageScripts.scrollbar(style))
+            return
+        }
         rebuildUserScripts()
         let script = PageScripts.scrollbar(style)
         webView.evaluateJavaScript(script) { _, _ in }
@@ -1031,10 +1040,12 @@ extension LeanTab {
             self.canGoForward = forward
             self.onStateChange?()
             if !loading {
-                // Fresh documents drop injected styles: restore font smoothing.
+                // Fresh documents drop injected styles: restore font
+                // smoothing and the scrollbar style.
                 if self.fontSmoothingEnabled {
                     self.cefHost?.executeJavaScript(PageScripts.fontSmoothing(enabled: true))
                 }
+                self.cefHost?.executeJavaScript(PageScripts.scrollbar(self.scrollbarStyle))
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                     self?.captureSnapshot()
                 }

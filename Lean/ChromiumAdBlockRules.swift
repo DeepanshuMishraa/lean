@@ -171,17 +171,20 @@ enum ChromiumAdBlockRuleCompiler {
     ]
 
     /// Options with no native representation: the rule is dropped rather
-    /// than broadened.
+    /// than broadened. `match-case` needs case-sensitive matching the CEF
+    /// matcher cannot preserve (it lowercases patterns and URLs), and
+    /// `strict1p`/`strict3p` are stricter than the loose third-party flag.
     private static let unsupportedOptions: Set<String> = [
         "badfilter", "csp", "cookie", "header", "removeheader", "permissions",
         "referrerpolicy", "proxy", "method", "ipaddress", "jsonprune", "hls",
         "networkredirect", "urlskip", "replace", "denyallow", "urlblock",
+        "match-case", "strict1p", "strict3p",
     ]
 
     /// Options accepted and ignored: they don't narrow matching in ways the
     /// native matcher must enforce.
     private static let harmlessOptions: Set<String> = [
-        "important", "empty", "mp4", "match-case",
+        "important", "empty", "mp4",
     ]
 
     private static func parseNetworkRule(
@@ -263,6 +266,11 @@ enum ChromiumAdBlockRuleCompiler {
         var types: [String] = []
         var popupOnly = false
         var excludePopup = false
+        // CEF exposes no websocket resource type: mapping `$websocket` to
+        // the generic subresource bucket would over-block ordinary page
+        // resources, so websocket-only rules are dropped and mixed rules
+        // lose just that kind.
+        var sawWebsocket = false
 
         for token in options {
             let pieces = token.split(separator: "=", maxSplits: 1).map(String.init)
@@ -270,15 +278,15 @@ enum ChromiumAdBlockRuleCompiler {
             let value = pieces.count == 2 ? pieces[1] : nil
 
             switch name {
-            case "third-party", "3p", "~first-party", "~1p", "strict3p":
+            case "third-party", "3p", "~first-party", "~1p":
                 thirdPartyVote = true
-            case "first-party", "1p", "~third-party", "~3p", "strict1p":
+            case "first-party", "1p", "~third-party", "~3p":
                 firstPartyVote = true
             case "popup":
                 popupOnly = true
             case "~popup":
                 excludePopup = true
-            case "important", "empty", "mp4", "match-case":
+            case "important", "empty", "mp4":
                 break
             case "domain", "from", "to":
                 guard let value else { return nil }
@@ -293,6 +301,8 @@ enum ChromiumAdBlockRuleCompiler {
                 }
             case "css", "stylesheet", "style":
                 types.append("stylesheet")
+            case "websocket":
+                sawWebsocket = true
             case "xmlhttprequest":
                 types.append("xhr")
             case "beacon":
@@ -317,6 +327,10 @@ enum ChromiumAdBlockRuleCompiler {
                     return nil
                 }
             }
+        }
+
+        if types.isEmpty, sawWebsocket {
+            return nil
         }
 
         // `first-party,third-party` together constrain nothing; the doubly
@@ -418,7 +432,16 @@ enum ChromiumAdBlockRuleCompiler {
         guard pattern.hasPrefix("||") else { return nil }
         let remainder = pattern.dropFirst(2)
         let end = remainder.firstIndex(where: { "^/*|?".contains($0) }) ?? remainder.endIndex
-        guard end == remainder.endIndex || remainder[end] == "^" else { return nil }
+        // A bare anchor only: `||host^*/path` is path-scoped and must NOT
+        // become a whole-domain block (it once blocked all of x.com via
+        // `||x.com^*/log.json`). Anything after the `^` falls through to
+        // the substring path, which drops what it cannot express.
+        if end == remainder.endIndex {
+            return normalizedDomain(String(remainder[..<end]))
+        }
+        guard remainder[end] == "^",
+              remainder.index(after: end) == remainder.endIndex
+        else { return nil }
         return normalizedDomain(String(remainder[..<end]))
     }
 

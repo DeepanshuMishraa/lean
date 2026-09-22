@@ -72,7 +72,6 @@ enum ContentBlocker {
     ||youtube.com/pagead/
     ||youtube.com/ptracking
     ||s.youtube.com^
-    ||googlevideo.com/videoplayback?adformat
     youtube.com##.ytp-ad-module
     youtube.com##.ytp-ad-player-overlay
     youtube.com##.ytp-ad-text
@@ -100,7 +99,7 @@ enum ContentBlocker {
     /// semantics) so existing installs recompile once instead of waiting
     /// for the weekly refresh.
     private static let schemaVersionKey = "adBlockFiltersSchemaVersion"
-    private static let currentSchemaVersion = 2
+    private static let currentSchemaVersion = 3
     private static let maxStoredLists = 8
 
     private static var cachedRuleLists: [WKContentRuleList] = []

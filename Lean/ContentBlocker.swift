@@ -3,11 +3,11 @@ import WebKit
 
 /// Built-in tracker & ad filtering backed by uBlock Origin filter lists.
 ///
-/// Helium bundles the full uBlock Origin extension because Chromium can run it.
 /// Lean is a WebKit browser, so extensions can't run here; instead the same
-/// upstream lists (EasyList, EasyPrivacy, uBlock filters, Peter Lowe's) are
-/// fetched weekly, converted to `WKContentRuleList` JSON with
-/// `AdBlockFilterConverter`, and attached to every tab.
+/// upstream lists (EasyList, EasyPrivacy, uBlock filters incl. privacy,
+/// unbreak and quick-fixes, Peter Lowe's) are fetched weekly, converted to
+/// `WKContentRuleList` JSON with `AdBlockFilterConverter`, and attached to
+/// every tab.
 @MainActor
 enum ContentBlocker {
     struct FilterSource: Sendable {
@@ -38,11 +38,58 @@ enum ContentBlocker {
             minBytes: 1_000
         ),
         FilterSource(
+            id: "ublock-privacy",
+            url: URL(string: "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt")!,
+            minBytes: 1_000
+        ),
+        FilterSource(
+            id: "ublock-unbreak",
+            url: URL(string: "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/unbreak.txt")!,
+            minBytes: 1_000
+        ),
+        FilterSource(
+            id: "ublock-quick-fixes",
+            url: URL(string: "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt")!,
+            minBytes: 500
+        ),
+        FilterSource(
             id: "peter-lowe",
             url: URL(string: "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=0&mimetype=plaintext")!,
             minBytes: 1_000
         ),
     ]
+
+    /// Curated YouTube coverage. In-stream ads are same-origin
+    /// (`youtube.com`, `googlevideo.com`) with dynamic paths and JS-injected
+    /// creatives, so generic list rules structurally miss them: uBO handles
+    /// this with scriptlets/redirects, which WebKit cannot run natively.
+    /// These endpoint blocks + ad-slot cosmetics cover the observable ad
+    /// surface; the player-response pruning scriptlet keeps the player out
+    /// of ad mode entirely.
+    static let curatedYouTubeFilters = """
+    ||googleads.g.doubleclick.net^
+    ||static.doubleclick.net^
+    ||tpc.googlesyndication.com^
+    ||youtube.com/api/stats/ads
+    ||youtube.com/pagead/
+    ||youtube.com/ptracking
+    ||s.youtube.com^
+    youtube.com##.ytp-ad-module
+    youtube.com##.ytp-ad-player-overlay
+    youtube.com##.ytp-ad-text
+    youtube.com##.ytp-ad-message-container
+    youtube.com##.ytp-ad-image-overlay
+    youtube.com###player-ads
+    youtube.com##ytd-ad-slot-renderer
+    youtube.com##ytd-display-ad-renderer
+    youtube.com##ytd-promoted-sparkles-web-renderer
+    youtube.com##ytd-in-feed-ad-layout-renderer
+    youtube.com###masthead-ad
+    youtube.com##ytd-search-pyv-renderer
+    youtube.com##ytd-companion-slot-renderer
+    youtube.com##.ytp-ad-overlay-container
+    youtube.com##.ytp-featured-product
+    """
 
     static let updateInterval: TimeInterval = 7 * 24 * 60 * 60
     static let didUpdateNotification = Notification.Name("LeanAdBlockFiltersUpdated")
@@ -50,6 +97,11 @@ enum ContentBlocker {
     private static let listIdentifierPrefix = "com.dipxsy.lean.blocker"
     private static let lastUpdatedKey = "adBlockFiltersLastUpdated"
     private static let ruleCountKey = "adBlockFiltersRuleCount"
+    /// Bump when the bundled input changes (curated lists, converter
+    /// semantics) so existing installs recompile once instead of waiting
+    /// for the weekly refresh.
+    private static let schemaVersionKey = "adBlockFiltersSchemaVersion"
+    private static let currentSchemaVersion = 3
     private static let maxStoredLists = 8
 
     private static var cachedRuleLists: [WKContentRuleList] = []
@@ -74,12 +126,12 @@ enum ContentBlocker {
 
             let texts = loadCachedFilterTexts()
             if !texts.isEmpty {
-                let compiled = await compile(texts: Array(texts.values))
+                let compiled = await compile(texts: Array(texts.values) + [curatedYouTubeFilters])
                 if !compiled.isEmpty {
                     return compiled
                 }
             }
-            return await compile(texts: [fallbackFilterText])
+            return await compile(texts: [fallbackFilterText, curatedYouTubeFilters])
         }
         loadTask = task
         let lists = await task.value
@@ -96,9 +148,16 @@ enum ContentBlocker {
     /// Fetch fresh lists when the cache is older than `updateInterval`.
     static func refreshIfNeeded() {
         guard refreshTask == nil else { return }
-        let lastUpdated = lastUpdatedDate
-        if let lastUpdated, Date().timeIntervalSince(lastUpdated) < updateInterval {
-            return
+        let schemaVersion = UserDefaults.standard.integer(forKey: schemaVersionKey)
+        if schemaVersion >= currentSchemaVersion {
+            let lastUpdated = lastUpdatedDate
+            let cached = loadCachedFilterTexts()
+            let hasEverySource = filterSources.allSatisfy { cached[$0.id] != nil }
+            if hasEverySource,
+               let lastUpdated,
+               Date().timeIntervalSince(lastUpdated) < updateInterval {
+                return
+            }
         }
         refreshTask = Task {
             defer { refreshTask = nil }
@@ -149,6 +208,7 @@ enum ContentBlocker {
         guard !compiled.isEmpty else { return nil }
 
         cachedRuleLists = compiled
+        UserDefaults.standard.set(currentSchemaVersion, forKey: schemaVersionKey)
         lastUpdatedDate = Date()
         cachedRuleCount = encoded.keptCount
         NotificationCenter.default.post(name: didUpdateNotification, object: nil)

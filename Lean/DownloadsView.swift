@@ -59,8 +59,9 @@ struct DownloadsPopover: View {
 
             if downloads.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 22, weight: .light))
+                    Ph.arrowCircleDown.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 24, height: 24)
                         .foregroundColor(store.adaptiveTheme.secondaryText.opacity(0.7))
                     Text("No downloads yet")
                         .font(store.headingFont(size: 12))
@@ -96,13 +97,15 @@ struct DownloadsPopover: View {
                 store.openSettings(category: .downloads)
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 11, weight: .medium))
+                    Ph.arrowCircleDown.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
                     Text("Show All Downloads...")
                         .font(store.headingFont(size: 12))
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
+                    Ph.caretRight.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 8, height: 8)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
                 }
                 .foregroundColor(store.adaptiveTheme.primaryText)
@@ -180,8 +183,9 @@ private struct DownloadPopoverRow: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            Image(systemName: DownloadFormat.systemImage(for: item.fileName))
-                .font(.system(size: 13, weight: .regular))
+            DownloadFormat.icon(for: item.fileName).fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 13, height: 13)
                 .foregroundColor(store.adaptiveTheme.secondaryText)
                 .frame(width: 22, height: 22)
                 .background(
@@ -197,18 +201,10 @@ private struct DownloadPopoverRow: View {
                     .truncationMode(.middle)
 
                 if item.state == .downloading {
-                    // Thin live progress track
-                    GeometryReader { geo in
-                        Capsule()
-                            .fill(store.isDarkMode ? Color.white.opacity(0.10) : Color.black.opacity(0.08))
-                            .frame(height: 3)
-                            .overlay(alignment: .leading) {
-                                Capsule()
-                                    .fill(store.isDarkMode ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
-                                    .frame(width: geo.size.width * CGFloat(item.fractionCompleted), height: 3)
-                            }
-                    }
-                    .frame(height: 3)
+                    DownloadProgressBar(
+                        fraction: item.fractionCompleted,
+                        isDark: store.isDarkMode
+                    )
 
                     Text(downloadingSubtitle)
                         .font(store.bodyFont(size: 10.5))
@@ -232,12 +228,12 @@ private struct DownloadPopoverRow: View {
                 if item.state == .downloading {
                     // % stays put; Cancel fades in beside it without shifting layout.
                     if item.totalBytes > 0 {
-                        Text("\(Int((item.fractionCompleted * 100).rounded()))%")
+                        Text(percentText)
                             .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
                             .foregroundColor(store.adaptiveTheme.secondaryText)
                     }
                     HoverIconButton(
-                        systemImage: "xmark",
+                        icon: .x,
                         help: "Cancel download",
                         store: store
                     ) {
@@ -247,7 +243,7 @@ private struct DownloadPopoverRow: View {
                     .disabled(!showHoverActions)
                 } else if showHoverActions {
                     HoverIconButton(
-                        systemImage: "folder",
+                        icon: .folder,
                         help: "Show in Finder",
                         store: store
                     ) {
@@ -255,7 +251,7 @@ private struct DownloadPopoverRow: View {
                     }
                     if item.state == .completed {
                         HoverIconButton(
-                            systemImage: "arrow.up.forward",
+                            icon: .arrowUpRight,
                             help: "Open file",
                             store: store
                         ) {
@@ -263,7 +259,7 @@ private struct DownloadPopoverRow: View {
                         }
                     }
                     HoverIconButton(
-                        systemImage: "trash",
+                        icon: .trash,
                         help: "Remove from list",
                         store: store
                     ) {
@@ -273,15 +269,15 @@ private struct DownloadPopoverRow: View {
                     }
                 }
             }
-            .frame(minWidth: 56, alignment: .trailing)
+            .frame(minWidth: 50, alignment: .trailing)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 7)
+        .padding(.vertical, 6)
         .background(
             isHovered
-                ? (store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.035))
+                ? (store.isDarkMode ? Color.white.opacity(0.04) : Color.black.opacity(0.03))
                 : Color.clear,
-            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
         )
         .contentShape(Rectangle())
         .onHover(perform: setHovered)
@@ -290,8 +286,6 @@ private struct DownloadPopoverRow: View {
             if item.state == .completed {
                 store.openDownload(item)
             } else {
-                // Active or failed: reveal the (possibly partial) file so a
-                // double-click harmlessly shows it instead of hitting Cancel.
                 store.revealDownload(item)
             }
         }
@@ -299,6 +293,11 @@ private struct DownloadPopoverRow: View {
             hoverWorkItem?.cancel()
             hoverWorkItem = nil
         }
+    }
+
+    private var percentText: String {
+        let pct = Int((item.fractionCompleted * 100).rounded())
+        return "\(pct)%"
     }
 
     private var downloadingSubtitle: String {
@@ -329,8 +328,27 @@ private struct DownloadPopoverRow: View {
     }
 }
 
+private struct DownloadProgressBar: View {
+    let fraction: Double
+    let isDark: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            Capsule()
+                .fill(isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08))
+                .frame(height: 3)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(isDark ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
+                        .frame(width: max(0, min(geo.size.width, geo.size.width * CGFloat(fraction))), height: 3)
+                }
+        }
+        .frame(height: 3)
+    }
+}
+
 private struct HoverIconButton: View {
-    let systemImage: String
+    let icon: Ph
     let help: String
     @ObservedObject var store: LeanStore
     let action: () -> Void
@@ -338,8 +356,9 @@ private struct HoverIconButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 10.5, weight: .medium))
+            icon.uiIcon
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 11, height: 11)
                 .foregroundColor(
                     isHovered ? store.adaptiveTheme.primaryText : store.adaptiveTheme.secondaryText
                 )
@@ -350,8 +369,10 @@ private struct HoverIconButton: View {
                         : Color.clear,
                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                 )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .help(help)
         .onHover { isHovered = $0 }
     }

@@ -37,6 +37,7 @@
 		9E43DF834EFD61D237BC05DA /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5268449F35E5A41542EEF02 /* AppUpdater.swift */; };
 		9F7CDF17FBB0540000928EA0 /* OmnibarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AC627B2D3E8E4EB789B7523 /* OmnibarView.swift */; };
 		A120023EBA9CA774D77FEB55 /* WebEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A30DE20D55EF4F746694EB /* WebEngineTests.swift */; };
+		A5364002E14974BBC303C3E6 /* LeanIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1041DE954306C249A5B9F938 /* LeanIcons.swift */; };
 		ACF15006217CE98EFFA1FE21 /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B68D79B10CF72FD177F0AC81 /* DownloadsView.swift */; };
 		B0F0B41EACFCFE4F5B932665 /* LeanApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E216B57DF202061DC88FE6D /* LeanApp.swift */; };
 		B2BE76A97BB55360B3E12B92 /* FontSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B6255463FA3D1604089AAF5 /* FontSettingsTests.swift */; };
@@ -72,6 +73,7 @@
 		0E216B57DF202061DC88FE6D /* LeanApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanApp.swift; sourceTree = "<group>"; };
 		0E245A44DB008A4A9C0E6A77 /* DownloadsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsTests.swift; sourceTree = "<group>"; };
 		0FFFAF344F05056E843A70F1 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		1041DE954306C249A5B9F938 /* LeanIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanIcons.swift; sourceTree = "<group>"; };
 		14191AAB2D796CC5DE1EA6CB /* ContentBlocker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentBlocker.swift; sourceTree = "<group>"; };
 		169383803BA6823BA5839E0D /* FaviconService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconService.swift; sourceTree = "<group>"; };
 		1EDDD317B7AF50A826865F77 /* AppDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabase.swift; sourceTree = "<group>"; };
@@ -173,6 +175,7 @@
 				FB880C0CDF8C1F10386A2F57 /* Lean.entitlements */,
 				0E216B57DF202061DC88FE6D /* LeanApp.swift */,
 				0848E1405C94F6D577AC6C4F /* LeanCommands.swift */,
+				1041DE954306C249A5B9F938 /* LeanIcons.swift */,
 				3CABED7395D472182B5B8279 /* LeanStore.swift */,
 				CFACE78AD721D215A84F3FCD /* LeanTab.swift */,
 				7D34204B30CD8161D2E590DF /* LeanTheme.swift */,
@@ -347,6 +350,7 @@
 				2B6C54991EBAF1358B5B6F5F /* FaviconService.swift in Sources */,
 				B0F0B41EACFCFE4F5B932665 /* LeanApp.swift in Sources */,
 				F8F072CF63D139768651B686 /* LeanCommands.swift in Sources */,
+				A5364002E14974BBC303C3E6 /* LeanIcons.swift in Sources */,
 				5A95D7EC207A24098228BBF3 /* LeanStore.swift in Sources */,
 				BDA7E266340C8AF371134E07 /* LeanTab.swift in Sources */,
 				571263C8F841874C413F13EB /* LeanTheme.swift in Sources */,

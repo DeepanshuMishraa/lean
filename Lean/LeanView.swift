@@ -166,20 +166,16 @@ struct LeanView: View {
                     .zIndex(50)
             }
             // Floating Omnibar Overlay (Cmd+T / Cmd+L / Active Tab Pill Click)
+            // NOTE: no full-screen tap catcher here on purpose. Outside-click
+            // dismiss is owned by the NSEvent mouse monitor below, which does
+            // not swallow the click, so the underlying toolbar button fires
+            // on the very first press.
             if store.isFloatingOmnibarVisible {
-                ZStack(alignment: .top) {
-                    Color.black.opacity(0.0001)
-                        .contentShape(Rectangle())
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            store.dismissFloatingOmnibar()
-                        }
-
-                    VStack(spacing: 0) {
-                        Spacer().frame(height: 72)
-                        OmnibarView(store: store, isFloating: true)
-                    }
+                VStack(spacing: 0) {
+                    Spacer().frame(height: store.scaled(72))
+                    OmnibarView(store: store, isFloating: true)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .transition(.asymmetric(
                     insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .top)),
                     removal: .opacity
@@ -191,52 +187,36 @@ struct LeanView: View {
             // Bespoke Quick Settings Overlay
             if store.isQuickSettingsPresented {
                 ZStack(alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing) {
-                    Color.black.opacity(0.0001)
-                        .contentShape(Rectangle())
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                                store.isQuickSettingsPresented = false
-                            }
-                        }
-
                     QuickSettingsPopover(store: store)
-                        .padding(.top, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : 4)))
+                        .padding(.top, store.tabLayout == .sidebar ? 0 : store.scaled(store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : store.scaled(4)))
                         .padding(.trailing, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? store.windowBorderWidth : 0) + 12))
                         .padding(.leading, store.tabLayout == .sidebar ? (store.windowBorderWidth + 12) : 0)
                         .padding(.bottom, store.tabLayout == .sidebar ? (store.windowBorderWidth + 46) : 0)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing)
                 .transition(.asymmetric(
-                    insertion: .scale(scale: 0.94, anchor: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing).combined(with: .opacity),
-                    removal: .scale(scale: 0.96, anchor: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing).combined(with: .opacity)
+                    insertion: .opacity,
+                    removal: .opacity
                 ))
-                .animation(.spring(response: 0.22, dampingFraction: 0.82), value: store.isQuickSettingsPresented)
+                .animation(.easeOut(duration: 0.12), value: store.isQuickSettingsPresented)
                 .zIndex(190)
             }
 
             // Bespoke Downloads Overlay
             if store.isDownloadsPresented {
                 ZStack(alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing) {
-                    Color.black.opacity(0.0001)
-                        .contentShape(Rectangle())
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                                store.isDownloadsPresented = false
-                            }
-                        }
-
                     DownloadsPopover(store: store)
-                        .padding(.top, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : 4)))
+                        .padding(.top, store.tabLayout == .sidebar ? 0 : store.scaled(store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : store.scaled(4)))
                         .padding(.trailing, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? store.windowBorderWidth : 0) + 12))
                         .padding(.leading, store.tabLayout == .sidebar ? (store.windowBorderWidth + 12) : 0)
                         .padding(.bottom, store.tabLayout == .sidebar ? (store.windowBorderWidth + 46) : 0)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing)
                 .transition(.asymmetric(
-                    insertion: .scale(scale: 0.94, anchor: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing).combined(with: .opacity),
-                    removal: .scale(scale: 0.96, anchor: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing).combined(with: .opacity)
+                    insertion: .opacity,
+                    removal: .opacity
                 ))
-                .animation(.spring(response: 0.22, dampingFraction: 0.82), value: store.isDownloadsPresented)
+                .animation(.easeOut(duration: 0.12), value: store.isDownloadsPresented)
                 .zIndex(190)
             }
 
@@ -251,17 +231,10 @@ struct LeanView: View {
                     .zIndex(100)
             }
 
-            // When inline URL bar is being edited, clicking anywhere in the content area collapses it
-            if store.isInlineURLEditing {
-                Color.black.opacity(0.0001)
-                    .contentShape(Rectangle())
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        store.dismissInlineURLEditing()
-                    }
-                    .zIndex(15)
-            }
+            // Inline URL editing dismiss is owned by the NSEvent mouse monitor
+            // below (pass-through, no click swallowing), so no overlay here.
         }
+        .environment(\.browserUIScale, store.browserUIScale)
         .ignoresSafeArea(.all)
         .background(
             store.enableWindowBorder
@@ -386,7 +359,7 @@ struct LeanView: View {
         let basePadding = store.enableWindowBorder ? store.windowBorderWidth : 0
         if store.tabLayout == .sidebar && isSidebarEffectivelyVisible && !store.isSidebarCollapsed && isCurrentTabWebPage {
             let gap = store.enableWindowBorder ? store.windowBorderWidth : 8
-            return basePadding + 256 + gap
+            return basePadding + store.scaled(256) + gap
         }
         return basePadding
     }
@@ -460,7 +433,7 @@ struct LeanView: View {
 
                         VStack(spacing: 0) {
                             if store.isNewTabOmnibarFloating {
-                                Spacer().frame(height: 80)
+                                Spacer().frame(height: store.scaled(80))
                             } else {
                                 Spacer()
                             }
@@ -509,30 +482,27 @@ struct LeanView: View {
             let swiftUIPoint = CGPoint(x: clickLocation.x, y: windowHeight - clickLocation.y)
 
             // When Quick Settings popover is open, dismiss when clicking outside its bounds (and the gear button)
+            // Pass-through: return event so the clicked toolbar control still fires on the first press.
             if store.isQuickSettingsPresented {
-                let popoverFrame = store.quickSettingsPopoverFrame
-                let submenuFrame = store.quickSettingsSubmenuFrame
-                let buttonFrame = store.settingsButtonFrame
-                let isInsidePopover = popoverFrame.width > 0 && popoverFrame.contains(swiftUIPoint)
-                let isInsideSubmenu = submenuFrame.width > 0 && submenuFrame.contains(swiftUIPoint)
-                let isInsideButton = buttonFrame.width > 0 && buttonFrame.contains(swiftUIPoint)
+                let popoverFrame = store.quickSettingsPopoverFrame.insetBy(dx: -8, dy: -8)
+                let submenuFrame = store.quickSettingsSubmenuFrame.insetBy(dx: -8, dy: -8)
+                let buttonFrame = store.settingsButtonFrame.insetBy(dx: -4, dy: -4)
+                let isInsidePopover = store.quickSettingsPopoverFrame.width > 0 && popoverFrame.contains(swiftUIPoint)
+                let isInsideSubmenu = store.quickSettingsSubmenuFrame.width > 0 && submenuFrame.contains(swiftUIPoint)
+                let isInsideButton = store.settingsButtonFrame.width > 0 && buttonFrame.contains(swiftUIPoint)
                 if !isInsidePopover && !isInsideSubmenu && !isInsideButton {
-                    withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
-                        store.isQuickSettingsPresented = false
-                    }
+                    store.isQuickSettingsPresented = false
                 }
             }
 
             // When Downloads popover is open, dismiss when clicking outside its bounds (and the button)
             if store.isDownloadsPresented {
-                let popoverFrame = store.downloadsPopoverFrame
-                let buttonFrame = store.downloadsButtonFrame
-                let isInsidePopover = popoverFrame.width > 0 && popoverFrame.contains(swiftUIPoint)
-                let isInsideButton = buttonFrame.width > 0 && buttonFrame.contains(swiftUIPoint)
+                let popoverFrame = store.downloadsPopoverFrame.insetBy(dx: -8, dy: -8)
+                let buttonFrame = store.downloadsButtonFrame.insetBy(dx: -4, dy: -4)
+                let isInsidePopover = store.downloadsPopoverFrame.width > 0 && popoverFrame.contains(swiftUIPoint)
+                let isInsideButton = store.downloadsButtonFrame.width > 0 && buttonFrame.contains(swiftUIPoint)
                 if !isInsidePopover && !isInsideButton {
-                    withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
-                        store.isDownloadsPresented = false
-                    }
+                    store.isDownloadsPresented = false
                 }
             }
 
@@ -564,8 +534,10 @@ struct LeanView: View {
             if effectivePaletteFrame.contains(swiftUIPoint) {
                 return event
             } else {
+                // Dismiss but let the click pass through so toolbar
+                // buttons work on the first press, not the second.
                 store.dismissFloatingOmnibar()
-                return nil
+                return event
             }
         }
 
@@ -629,8 +601,9 @@ struct LeanView: View {
 
     private var floatingFindBar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 12))
+            Ph.magnifyingGlass.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 12, height: 12)
                 .foregroundColor(store.themeColors.secondaryText)
 
             TextField("Find on page", text: $findQuery)
@@ -643,8 +616,9 @@ struct LeanView: View {
             Button {
                 store.selectedTab?.find(findQuery)
             } label: {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                Ph.caretDown.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 10, height: 10)
                     .foregroundColor(store.themeColors.secondaryText)
             }
             .buttonStyle(.plain)
@@ -654,8 +628,9 @@ struct LeanView: View {
                 store.showsFindBar = false
                 findQuery = ""
             } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .semibold))
+                Ph.x.bold
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 10, height: 10)
                     .foregroundColor(store.themeColors.secondaryText)
             }
             .buttonStyle(.plain)
@@ -718,7 +693,12 @@ private struct WindowConfigurator: NSViewRepresentable {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.styleMask.insert(.fullSizeContentView)
-        window.isMovableByWindowBackground = true
+        // Never use window-wide background dragging: with fullSizeContentView
+        // it makes AppKit treat presses on SwiftUI controls as potential
+        // window drags, so every button needs unnaturally still, repeated
+        // clicks to fire. Dragging is owned explicitly by WindowDragView
+        // surfaces behind the top bar / sidebar empty areas instead.
+        window.isMovableByWindowBackground = false
         window.isReleasedWhenClosed = false
         window.backgroundColor = store.enableWindowBorder
             ? NSColor(store.effectiveZenColor)

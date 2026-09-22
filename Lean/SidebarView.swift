@@ -21,10 +21,10 @@ struct SidebarView: View {
                 Spacer().frame(width: 12)
 
                 InteractiveIconButton(
-                    systemImage: "sidebar.left",
+                    icon: .sidebar,
                     helpText: store.isSidebarCollapsed ? "Pin Sidebar (Always Expanded) (⌘S)" : "Enable Auto-hide (⌘S)",
                     size: 24,
-                    iconSize: 13,
+                    iconSize: 12,
                     color: store.isSidebarCollapsed ? store.adaptiveTheme.secondaryText : store.adaptiveTheme.primaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
                     hoverBackground: store.adaptiveTheme.iconHoverBackground,
@@ -39,7 +39,7 @@ struct SidebarView: View {
                 Spacer().frame(width: 4)
 
                 InteractiveIconButton(
-                    systemImage: "arrow.left",
+                    icon: .arrowLeft,
                     helpText: "Back (⌘[)",
                     size: 24,
                     iconSize: 12,
@@ -57,7 +57,7 @@ struct SidebarView: View {
                 Spacer().frame(width: 4)
 
                 InteractiveIconButton(
-                    systemImage: "arrow.right",
+                    icon: .arrowRight,
                     helpText: "Forward (⌘])",
                     size: 24,
                     iconSize: 12,
@@ -76,7 +76,7 @@ struct SidebarView: View {
 
                 if store.selectedTab?.isLoading == true {
                     InteractiveIconButton(
-                        systemImage: "xmark",
+                        icon: .x,
                         helpText: "Stop Loading (Esc)",
                         size: 24,
                         iconSize: 12,
@@ -91,7 +91,7 @@ struct SidebarView: View {
                     }
                 } else {
                     InteractiveIconButton(
-                        systemImage: "arrow.clockwise",
+                        icon: .arrowClockwise,
                         helpText: "Reload (⌘R)",
                         size: 24,
                         iconSize: 12,
@@ -108,11 +108,11 @@ struct SidebarView: View {
                 }
 
                 Spacer(minLength: 0)
+                    .background(WindowDragView())
             }
-            .frame(height: 36)
-            .padding(.top, 4)
+            .frame(height: store.scaled(36))
+            .padding(.top, store.scaled(4))
             .padding(.trailing, 8)
-            .background(WindowDragView())
 
             // 2. Full-Width Interactive Omnibar / Address Field
             SidebarAddressBar(store: store)
@@ -132,10 +132,10 @@ struct SidebarView: View {
                 Spacer()
 
                 InteractiveIconButton(
-                    systemImage: "plus",
+                    icon: .plus,
                     helpText: "New Tab (⌘T)",
-                    size: 22,
-                    iconSize: 11,
+                    size: 24,
+                    iconSize: 12,
                     color: store.adaptiveTheme.secondaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
                     hoverBackground: store.adaptiveTheme.iconHoverBackground,
@@ -185,10 +185,10 @@ struct SidebarView: View {
                 Spacer()
 
                 InteractiveIconButton(
-                    systemImage: store.isDarkMode ? "sun.max.fill" : "moon.fill",
+                    icon: store.isDarkMode ? .sun : .moon,
                     helpText: store.isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
                     size: 24,
-                    iconSize: 11.5,
+                    iconSize: 12,
                     color: store.adaptiveTheme.secondaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
                     hoverBackground: store.adaptiveTheme.iconHoverBackground,
@@ -201,19 +201,17 @@ struct SidebarView: View {
                 }
 
                 InteractiveIconButton(
-                    systemImage: "gearshape",
+                    icon: .gear,
                     helpText: "Settings (⌘,)",
                     size: 24,
-                    iconSize: 11.5,
+                    iconSize: 12,
                     color: store.isQuickSettingsPresented ? store.adaptiveTheme.primaryText : store.adaptiveTheme.secondaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
                     hoverBackground: store.adaptiveTheme.iconHoverBackground,
                     pressedBackground: store.adaptiveTheme.iconPressedBackground,
                     isDark: store.adaptiveTheme.effectiveIsDark
                 ) {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                        store.isQuickSettingsPresented.toggle()
-                    }
+                    store.isQuickSettingsPresented.toggle()
                 }
                 .background(
                     GeometryReader { proxy in
@@ -225,11 +223,11 @@ struct SidebarView: View {
                     store.settingsButtonFrame = frame
                 }
             }
-            .frame(height: 38)
-            .padding(.horizontal, 10)
-            .padding(.bottom, 4)
+            .frame(height: store.scaled(38))
+            .padding(.horizontal, store.scaled(10))
+            .padding(.bottom, store.scaled(4))
         }
-        .frame(width: 256)
+        .frame(width: store.scaled(256))
         .background(sidebarBackground)
     }
 
@@ -316,8 +314,9 @@ private struct SidebarAddressBar: View {
             VStack(spacing: 2) {
                 ForEach(Array(suggestions.prefix(6).enumerated()), id: \.element.id) { index, match in
                     HStack(spacing: 8) {
-                        Image(systemName: match.isSearch ? "magnifyingglass" : (match.isSwitchToTab ? "arrow.right.circle" : "globe"))
-                            .font(.system(size: 10.5))
+                        (match.isSearch ? Ph.magnifyingGlass.fill : (match.isSwitchToTab ? Ph.arrowCircleRight.fill : Ph.browser.fill))
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 12, height: 12)
                             .foregroundColor(store.adaptiveTheme.secondaryText)
                             .frame(width: 14)
 
@@ -364,8 +363,9 @@ private struct SidebarAddressBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11, weight: .medium))
+            Ph.magnifyingGlass.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 12, height: 12)
                 .foregroundColor(store.adaptiveTheme.secondaryText)
 
             addressField
@@ -376,11 +376,15 @@ private struct SidebarAddressBar: View {
                 Button {
                     text = ""
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
+                    Ph.xCircle.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 11, height: 11)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
             } else if store.selectedTab?.url != nil {
                 // Copy link button
                 Button {
@@ -393,17 +397,20 @@ private struct SidebarAddressBar: View {
                         }
                     }
                 } label: {
-                    Image(systemName: didCopyLink ? "checkmark" : "link")
-                        .font(.system(size: 11.5, weight: .medium))
+                    (didCopyLink ? Ph.check.bold : Ph.copy.fill)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
                         .foregroundColor(didCopyLink ? Color.green : store.adaptiveTheme.secondaryText)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
                 .help("Copy Page Link")
             }
         }
-        .padding(.horizontal, 10)
-        .frame(height: 36)
+        .padding(.horizontal, store.scaled(10))
+        .frame(height: store.scaled(36))
         .background(barBackground)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -486,44 +493,33 @@ struct SidebarTabItem: View {
 
     @State private var isHovered = false
 
+    private var showsClose: Bool {
+        isHovered || isSelected
+    }
+
     var body: some View {
-        HStack(spacing: 8) {
-            TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
+        Button(action: onSelect) {
+            HStack(spacing: 8) {
+                TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
 
-            Text(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
-                .font(store.headingFont(size: 13))
-                .foregroundColor(
-                    isSelected
-                        ? store.adaptiveTheme.activeTabText
-                        : (isHovered ? store.adaptiveTheme.primaryText : store.adaptiveTheme.inactiveTabText)
-                )
-                .lineLimit(1)
-                .truncationMode(.tail)
+                Text(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
+                    .font(store.headingFont(size: 13))
+                    .foregroundColor(
+                        isSelected
+                            ? store.adaptiveTheme.activeTabText
+                            : (isHovered ? store.adaptiveTheme.primaryText : store.adaptiveTheme.inactiveTabText)
+                    )
+                    .lineLimit(1)
+                    .truncationMode(.tail)
 
-            Spacer(minLength: 4)
-
-            if isHovered || isSelected {
-                Button(action: {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
-                        onClose()
-                    }
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8.5, weight: .bold))
-                        .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
-                        .frame(width: 16, height: 16)
-                        .background(
-                            isHovered ? store.adaptiveTheme.tabCloseButtonHoverBackground : Color.clear,
-                            in: Circle()
-                        )
-                }
-                .buttonStyle(.plain)
-                .help("Close Tab (⌘W)")
-                .transition(.scale.combined(with: .opacity))
+                Spacer(minLength: 4)
+                // Always reserve close-button width so hover doesn't push text.
+                Color.clear.frame(width: 18, height: 18)
             }
+            .padding(.horizontal, store.scaled(10))
+            .frame(height: store.scaled(36))
         }
-        .padding(.horizontal, 10)
-        .frame(height: 36)
+        .buttonStyle(.plain)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(
@@ -539,14 +535,26 @@ struct SidebarTabItem: View {
                 )
         )
         .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                onSelect()
-            }
-        }
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.12)) {
-                isHovered = hovering
+        .onHover { isHovered = $0 }
+        .overlay(alignment: .trailing) {
+            if showsClose {
+                Button(action: onClose) {
+                    Ph.x.bold
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: store.scaled(8), height: store.scaled(8))
+                        .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
+                        .frame(width: store.scaled(20), height: store.scaled(20))
+                        .background(
+                            store.adaptiveTheme.tabCloseButtonHoverBackground,
+                            in: Circle()
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .help("Close Tab (⌘W)")
+                .padding(.trailing, 8)
             }
         }
         .contextMenu {
@@ -589,7 +597,7 @@ private struct SidebarTrafficLights: View {
             TrafficLightButton(
                 color: Color(red: 255/255, green: 95/255, blue: 87/255),
                 strokeColor: Color(red: 224/255, green: 68/255, blue: 62/255, opacity: 0.9),
-                symbol: "xmark",
+                symbol: .x,
                 symbolSize: 6,
                 isHoveringGroup: isHoveringAll,
                 isActive: isWindowActive,
@@ -604,7 +612,7 @@ private struct SidebarTrafficLights: View {
             TrafficLightButton(
                 color: Color(red: 255/255, green: 189/255, blue: 46/255),
                 strokeColor: Color(red: 222/255, green: 161/255, blue: 35/255, opacity: 0.9),
-                symbol: "minus",
+                symbol: .minus,
                 symbolSize: 6.5,
                 isHoveringGroup: isHoveringAll,
                 isActive: isWindowActive,
@@ -619,7 +627,7 @@ private struct SidebarTrafficLights: View {
             TrafficLightButton(
                 color: Color(red: 39/255, green: 201/255, blue: 63/255),
                 strokeColor: Color(red: 26/255, green: 171/255, blue: 41/255, opacity: 0.9),
-                symbol: "arrow.up.left.and.arrow.down.right",
+                symbol: .arrowsOutSimple,
                 symbolSize: 5.5,
                 isHoveringGroup: isHoveringAll,
                 isActive: isWindowActive,
@@ -649,7 +657,7 @@ private struct SidebarTrafficLights: View {
 private struct TrafficLightButton: View {
     let color: Color
     let strokeColor: Color
-    let symbol: String
+    let symbol: Ph
     let symbolSize: CGFloat
     let isHoveringGroup: Bool
     let isActive: Bool
@@ -684,8 +692,9 @@ private struct TrafficLightButton: View {
                     )
 
                 if isHoveringGroup && isActive {
-                    Image(systemName: symbol)
-                        .font(.system(size: symbolSize, weight: .bold))
+                    symbol.bold
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: symbolSize, height: symbolSize)
                         .foregroundColor(Color.black.opacity(0.65))
                 }
             }
@@ -701,8 +710,10 @@ private struct TrafficLightButton: View {
     }
 }
 
-// MARK: - Window Drag Bridge
-private struct WindowDragView: NSViewRepresentable {
+// MARK: - Window Drag Bridge (shared with TopBarView: empty chrome areas
+// fall through to this view so the window stays draggable without the
+// window-wide isMovableByWindowBackground behavior that steals button clicks)
+struct WindowDragView: NSViewRepresentable {
     func makeNSView(context: Context) -> DragNSView {
         DragNSView()
     }

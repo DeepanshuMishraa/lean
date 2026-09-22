@@ -30,6 +30,10 @@
     <string>$(MACOSX_DEPLOYMENT_TARGET)</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSCameraUsageDescription</key>
+    <string>Lean needs camera access for video calls (e.g. Google Meet) when you choose to allow it per site.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Lean needs microphone access for calls and voice input when you choose to allow it per site.</string>
     <!-- Sparkle update authentication (Ed25519). The per-architecture feed
          URL is provided at runtime by AppUpdater; see Lean/AppUpdater.swift. -->
     <key>SUPublicEDKey</key>

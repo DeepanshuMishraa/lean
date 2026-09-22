@@ -86,6 +86,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             forMainFrameOnly: false
         )
         configuration.userContentController.addUserScript(smoothScript)
+        let youtubeAdsScript = WKUserScript(
+            source: PageScripts.youtubeAds(enabled: adBlockingEnabled),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        configuration.userContentController.addUserScript(youtubeAdsScript)
         configuration.userContentController.addUserScript(
             WKUserScript(
                 source: PageScripts.pageReady,
@@ -162,6 +168,18 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     func applyAdBlocking(_ enabled: Bool) {
         adBlockingEnabled = enabled
+        // Rebuild re-registers every script with the fresh flag (including
+        // the YouTube scriptlet, whose content is baked in at registration)
+        // and re-syncs the rule lists. Idempotent; safe to call on toggles.
+        // User scripts only affect future navigations, so also patch the
+        // live page: install/uninstall the YouTube hooks in place.
+        rebuildUserScripts()
+        webView.evaluateJavaScript(PageScripts.youtubeAdsLive(enabled: enabled)) { _, _ in }
+    }
+
+    /// Adds/removes the compiled content-rule lists without touching scripts.
+    private func syncContentRuleLists() {
+        let enabled = adBlockingEnabled
         Task { [weak self] in
             let ruleLists = await ContentBlocker.ruleLists()
             guard let self, self.adBlockingEnabled == enabled else { return }
@@ -208,6 +226,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             forMainFrameOnly: false
         )
         webView.configuration.userContentController.addUserScript(smoothScript)
+        let youtubeAdsScript = WKUserScript(
+            source: PageScripts.youtubeAds(enabled: adBlockingEnabled),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        webView.configuration.userContentController.addUserScript(youtubeAdsScript)
         webView.configuration.userContentController.addUserScript(
             WKUserScript(
                 source: PageScripts.pageReady,
@@ -216,7 +240,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             )
         )
 
-        applyAdBlocking(adBlockingEnabled)
+        syncContentRuleLists()
     }
 
     func applyScrollbarStyle(_ style: ScrollbarStyle) {
@@ -586,7 +610,11 @@ extension LeanTab: WKUIDelegate {
         for navigationAction: WKNavigationAction,
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
-        guard let url = navigationAction.request.url else { return nil }
+        // Some OAuth/SSO flows open a blank popup and navigate it via JS
+        // after `window.open` returns. Never block the popup for a missing
+        // URL: the store lets WebKit drive the load through the returned
+        // web view, so a placeholder is enough here.
+        let url = navigationAction.request.url ?? URL(string: "about:blank")!
         return onOpenNewTab?(url, configuration)
     }
 

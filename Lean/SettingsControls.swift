@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 // MARK: - Settings Group Container
 /// A continuous, quiet surface that groups related settings with subtle hairline borders and dividers.
@@ -149,8 +149,9 @@ struct SearchEngineBadgeView: View {
         case .duckDuckGo:
             ZStack {
                 Circle().fill(Color(red: 222/255, green: 88/255, blue: 51/255))
-                Image(systemName: "shield.fill")
-                    .font(.system(size: size * 0.55, weight: .bold))
+                Ph.shield.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size * 0.55, height: size * 0.55)
                     .foregroundColor(.white)
             }
         case .bing:
@@ -163,15 +164,17 @@ struct SearchEngineBadgeView: View {
         case .brave:
             ZStack {
                 Circle().fill(Color(red: 251/255, green: 84/255, blue: 43/255))
-                Image(systemName: "flame.fill")
-                    .font(.system(size: size * 0.55, weight: .bold))
+                Ph.fire.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size * 0.55, height: size * 0.55)
                     .foregroundColor(.white)
             }
         case .ecosia:
             ZStack {
                 Circle().fill(Color(red: 0/255, green: 138/255, blue: 94/255))
-                Image(systemName: "leaf.fill")
-                    .font(.system(size: size * 0.55, weight: .bold))
+                Ph.leaf.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size * 0.55, height: size * 0.55)
                     .foregroundColor(.white)
             }
         case .yahoo:
@@ -225,8 +228,9 @@ struct CustomDropdownButton<Leading: View>: View {
                     .font(font)
                     .foregroundColor(isDark ? Color(white: 0.94) : Color(white: 0.12))
 
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8.5, weight: .semibold))
+                Ph.caretDown.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 9, height: 9)
                     .foregroundColor(isDark ? Color.white.opacity(0.50) : Color.black.opacity(0.45))
                     .rotationEffect(.degrees(isPresented ? 180 : 0))
             }
@@ -238,7 +242,7 @@ struct CustomDropdownButton<Leading: View>: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6.5, style: .continuous)
-                    .stroke(buttonBorder, lineWidth: 0.5)
+                    .stroke(buttonBorder, lineWidth: 0.75)
             )
         }
         .buttonStyle(.plain)
@@ -327,8 +331,9 @@ struct CustomDropdownItemRow<Leading: View>: View {
                 Spacer(minLength: 8)
 
                 if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 9.5, weight: .bold))
+                    Ph.check.bold
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 10, height: 10)
                         .foregroundColor(isDark ? Color.white : Color.black)
                 }
             }
@@ -515,9 +520,9 @@ struct FontPickerRow: View {
 struct SegmentOption: Identifiable {
     let id: String
     let label: String
-    let icon: String?
+    let icon: Ph?
 
-    init(id: String, label: String, icon: String? = nil) {
+    init(id: String, label: String, icon: Ph? = nil) {
         self.id = id
         self.label = label
         self.icon = icon
@@ -531,75 +536,22 @@ struct CustomSegmentedPicker: View {
     let uiFont: LeanFont
     let onSelect: (String) -> Void
 
-    @Namespace private var segmentAnimation
     @State private var hoveredId: String? = nil
-
-    private func textColor(isSelected: Bool, isHovered: Bool) -> Color {
-        if isSelected {
-            return isDark ? Color.white : Color(white: 0.08)
-        } else if isHovered {
-            return isDark ? Color.white.opacity(0.80) : Color.black.opacity(0.75)
-        } else {
-            return isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.42)
-        }
-    }
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(options) { opt in
-                let isSelected = opt.id == selectedId
-                let isHovered = opt.id == hoveredId
-
-                Button {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                        onSelect(opt.id)
+                SegmentButton(
+                    option: opt,
+                    isSelected: opt.id == selectedId,
+                    isHovered: opt.id == hoveredId,
+                    isDark: isDark,
+                    uiFont: uiFont,
+                    onSelect: { onSelect(opt.id) },
+                    onHover: { h in
+                        hoveredId = h ? opt.id : (hoveredId == opt.id ? nil : hoveredId)
                     }
-                } label: {
-                    HStack(spacing: 6) {
-                        if let icon = opt.icon {
-                            Image(systemName: icon)
-                                .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
-                        }
-                        Text(opt.label)
-                            .font(uiFont.font(size: 12, weight: isSelected ? .semibold : .medium))
-                    }
-                    .foregroundColor(textColor(isSelected: isSelected, isHovered: isHovered))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 27)
-                    .background {
-                        if isSelected {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(
-                                    isDark
-                                        ? Color(white: 0.17)
-                                        : Color.white
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .stroke(
-                                            isDark
-                                                ? Color.white.opacity(0.12)
-                                                : Color.black.opacity(0.06),
-                                            lineWidth: 0.5
-                                        )
-                                )
-                                .shadow(
-                                    color: isDark ? Color.black.opacity(0.32) : Color.black.opacity(0.06),
-                                    radius: isDark ? 2 : 2.5,
-                                    y: 1
-                                )
-                                .matchedGeometryEffect(id: "activeSegment", in: segmentAnimation)
-                        } else if isHovered {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.025))
-                        }
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .onHover { h in
-                    hoveredId = h ? opt.id : (hoveredId == opt.id ? nil : hoveredId)
-                }
+                )
             }
         }
         .padding(2.5)
@@ -612,6 +564,72 @@ struct CustomSegmentedPicker: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.05), lineWidth: 0.5)
         )
+    }
+}
+
+private struct SegmentButton: View {
+    let option: SegmentOption
+    let isSelected: Bool
+    let isHovered: Bool
+    let isDark: Bool
+    let uiFont: LeanFont
+    let onSelect: () -> Void
+    let onHover: (Bool) -> Void
+
+    private var textColor: Color {
+        if isSelected { return isDark ? Color.white : Color(white: 0.08) }
+        if isHovered { return isDark ? Color.white.opacity(0.80) : Color.black.opacity(0.75) }
+        return isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.42)
+    }
+
+    private var fill: Color {
+        if isSelected { return isDark ? Color(white: 0.17) : Color.white }
+        if isHovered { return isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.025) }
+        return Color.clear
+    }
+
+    private var stroke: Color? {
+        guard isSelected else { return nil }
+        return isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.06)
+    }
+
+    private var shadow: Color {
+        guard isSelected else { return Color.clear }
+        return isDark ? Color.black.opacity(0.32) : Color.black.opacity(0.06)
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 6) {
+                if let icon = option.icon {
+                    icon.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
+                }
+                Text(option.label)
+                    .font(uiFont.font(size: 12, weight: isSelected ? .semibold : .medium))
+            }
+            .foregroundColor(textColor)
+            .frame(maxWidth: .infinity)
+            .frame(height: 27)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(fill)
+                    .overlay(
+                        Group {
+                            if let stroke {
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(stroke, lineWidth: 0.5)
+                            }
+                        }
+                    )
+                    .shadow(color: shadow, radius: 2, y: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .onHover(perform: onHover)
     }
 }
 
@@ -715,7 +733,6 @@ struct FrameWidthPickerRow: View {
     let isDark: Bool
     let uiFont: LeanFont
 
-    @Namespace private var frameWidthAnimation
     @State private var hoveredWidth: CGFloat? = nil
 
     private let widths: [(label: String, width: CGFloat, previewLine: CGFloat)] = [
@@ -753,9 +770,7 @@ struct FrameWidthPickerRow: View {
                     let isHovered = hoveredWidth == item.width
 
                     Button {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                            store.windowBorderWidth = item.width
-                        }
+                        store.windowBorderWidth = item.width
                     } label: {
                         HStack(spacing: 5) {
                             Capsule()
@@ -768,28 +783,18 @@ struct FrameWidthPickerRow: View {
                         .foregroundColor(textColor(isSelected: isSelected, isHovered: isHovered))
                         .padding(.horizontal, 10)
                         .frame(height: 26)
-                        .background {
-                            if isSelected {
-                                RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                                    .fill(isDark ? Color(white: 0.17) : Color.white)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                                            .stroke(isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.06), lineWidth: 0.5)
-                                    )
-                                    .shadow(
-                                        color: isDark ? Color.black.opacity(0.3) : Color.black.opacity(0.06),
-                                        radius: 2,
-                                        y: 1
-                                    )
-                                    .matchedGeometryEffect(id: "activeFrameWidth", in: frameWidthAnimation)
-                            } else if isHovered {
-                                RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                                    .fill(isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.025))
-                            }
-                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 5.5, style: .continuous)
+                                .fill(
+                                    isSelected
+                                        ? (isDark ? Color(white: 0.17) : Color.white)
+                                        : (isHovered ? (isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.025)) : Color.clear)
+                                )
+                        )
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
                     .onHover { h in
                         hoveredWidth = h ? item.width : (hoveredWidth == item.width ? nil : hoveredWidth)
                     }
@@ -810,24 +815,24 @@ struct FrameWidthPickerRow: View {
     }
 }
 
-// MARK: - Bespoke Font Weight Slider (Scrubbable Track Control)
-/// Minimal scrubbable slider control with track fill, thumb handle, property label, and numeric readout.
-struct FontWeightSlider: View {
-    @Binding var weight: LeanFontWeight
+// MARK: - Bespoke Settings Slider (Scrubbable Track Control)
+/// Minimal scrubbable slider reused for discrete numeric settings.
+struct SettingsValueSlider: View {
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    let step: Int
     let label: String
+    var valueSuffix = ""
     let isDark: Bool
     let uiFont: LeanFont
     var width: CGFloat = 215
     var height: CGFloat = 30
 
-    @State private var isDragging: Bool = false
-    @State private var isHovered: Bool = false
-
-    private let minWeight: Double = 100
-    private let maxWeight: Double = 900
+    @State private var isDragging = false
+    @State private var isHovered = false
 
     private var progress: CGFloat {
-        CGFloat((Double(weight.rawValue) - minWeight) / (maxWeight - minWeight))
+        CGFloat(value - range.lowerBound) / CGFloat(range.upperBound - range.lowerBound)
     }
 
     private var emptyTrackColor: Color {
@@ -856,16 +861,14 @@ struct FontWeightSlider: View {
         isDark ? Color.white.opacity(0.92) : Color.black.opacity(0.88)
     }
 
-    private func updateWeight(at x: CGFloat, totalWidth: CGFloat) {
+    private func updateValue(at x: CGFloat, totalWidth: CGFloat) {
         let minThumbX: CGFloat = 16
-        let maxThumbX: CGFloat = totalWidth - 16
+        let maxThumbX = totalWidth - 16
         let clampedX = max(minThumbX, min(x, maxThumbX))
         let fraction = (clampedX - minThumbX) / max(maxThumbX - minThumbX, 1)
-        let targetValue = minWeight + Double(fraction) * (maxWeight - minWeight)
-        let closest = LeanFontWeight(closestTo: targetValue)
-        if weight != closest {
-            weight = closest
-        }
+        let raw = Double(range.lowerBound) + Double(fraction) * Double(range.upperBound - range.lowerBound)
+        let stepped = Int((raw / Double(step)).rounded()) * step
+        value = min(range.upperBound, max(range.lowerBound, stepped))
     }
 
     var body: some View {
@@ -873,29 +876,25 @@ struct FontWeightSlider: View {
             let totalW = geo.size.width
             let totalH = geo.size.height
             let minThumbX: CGFloat = 16
-            let maxThumbX: CGFloat = totalW - 16
+            let maxThumbX = totalW - 16
             let thumbX = minThumbX + progress * (maxThumbX - minThumbX)
             let thumbW: CGFloat = 3.5
             let thumbH: CGFloat = 18
 
             ZStack(alignment: .leading) {
-                // Empty Track Background
                 RoundedRectangle(cornerRadius: 7.5, style: .continuous)
                     .fill(emptyTrackColor)
 
-                // Filled Track (Left to Thumb)
                 Rectangle()
                     .fill(filledTrackColor)
                     .frame(width: max(thumbX + thumbW / 2, 0))
 
-                // Vertical Thumb Bar
                 RoundedRectangle(cornerRadius: 1.75, style: .continuous)
                     .fill(thumbColor)
                     .frame(width: thumbW, height: thumbH)
                     .shadow(color: Color.black.opacity(isDark ? 0.30 : 0.10), radius: isDragging ? 2.5 : 1, y: 0.5)
                     .position(x: thumbX, y: totalH / 2)
 
-                // Left Label & Right Numeric Value Readout
                 HStack {
                     Text(label)
                         .font(uiFont.font(size: 11.5, weight: .medium))
@@ -904,7 +903,7 @@ struct FontWeightSlider: View {
 
                     Spacer()
 
-                    Text("\(weight.rawValue)")
+                    Text("\(value)\(valueSuffix)")
                         .font(uiFont.font(size: 11.5, weight: .medium))
                         .foregroundColor(valueColor)
                         .padding(.trailing, 11)
@@ -925,16 +924,39 @@ struct FontWeightSlider: View {
                 DragGesture(minimumDistance: 0)
                     .onChanged { gesture in
                         isDragging = true
-                        updateWeight(at: gesture.location.x, totalWidth: totalW)
+                        updateValue(at: gesture.location.x, totalWidth: totalW)
                     }
                     .onEnded { gesture in
-                        updateWeight(at: gesture.location.x, totalWidth: totalW)
+                        updateValue(at: gesture.location.x, totalWidth: totalW)
                         isDragging = false
                     }
             )
-            .help("\(weight.name) (\(weight.rawValue))")
+            .help("\(value)\(valueSuffix)")
         }
         .frame(width: width, height: height)
+    }
+}
+
+struct FontWeightSlider: View {
+    @Binding var weight: LeanFontWeight
+    let label: String
+    let isDark: Bool
+    let uiFont: LeanFont
+    var width: CGFloat = 215
+
+    var body: some View {
+        SettingsValueSlider(
+            value: Binding(
+                get: { weight.rawValue },
+                set: { weight = LeanFontWeight(closestTo: Double($0)) }
+            ),
+            range: 100...900,
+            step: 100,
+            label: label,
+            isDark: isDark,
+            uiFont: uiFont,
+            width: width
+        )
     }
 }
 
@@ -949,6 +971,35 @@ struct FontWeightSliderRow: View {
     var headingWeight: LeanFontWeight = .medium
     var bodyWeight: LeanFontWeight = .regular
 
+    var body: some View {
+        SettingsSliderRow(
+            title: title,
+            subtitle: subtitle,
+            uiFont: uiFont,
+            isDark: isDark,
+            headingWeight: headingWeight,
+            bodyWeight: bodyWeight
+        ) {
+            FontWeightSlider(
+                weight: $value,
+                label: label,
+                isDark: isDark,
+                uiFont: uiFont,
+                width: 215
+            )
+        }
+    }
+}
+
+struct SettingsSliderRow<Control: View>: View {
+    let title: String
+    let subtitle: String?
+    let uiFont: LeanFont
+    let isDark: Bool
+    var headingWeight: LeanFontWeight = .medium
+    var bodyWeight: LeanFontWeight = .regular
+    @ViewBuilder let control: () -> Control
+
     @State private var isRowHovered = false
 
     var body: some View {
@@ -958,22 +1009,15 @@ struct FontWeightSliderRow: View {
                     .font(uiFont.font(size: 13, weight: headingWeight.fontWeight))
                     .foregroundColor(isDark ? Color(white: 0.94) : Color(white: 0.12))
 
-                if let subtitle = subtitle {
+                if let subtitle {
                     Text(subtitle)
                         .font(uiFont.font(size: 11.5, weight: bodyWeight.fontWeight))
-                        .foregroundColor(isDark ? Color(white: 0.50) : Color(white: 0.48))
+                        .foregroundColor(isDark ? Color.white.opacity(0.50) : Color.black.opacity(0.48))
                 }
             }
 
             Spacer(minLength: 16)
-
-            FontWeightSlider(
-                weight: $value,
-                label: label,
-                isDark: isDark,
-                uiFont: uiFont,
-                width: 215
-            )
+            control()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

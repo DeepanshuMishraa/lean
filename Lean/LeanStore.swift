@@ -4,6 +4,17 @@ import Foundation
 import SwiftUI
 import WebKit
 
+private struct BrowserUIScaleEnvironmentKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1
+}
+
+extension EnvironmentValues {
+    var browserUIScale: CGFloat {
+        get { self[BrowserUIScaleEnvironmentKey.self] }
+        set { self[BrowserUIScaleEnvironmentKey.self] = newValue }
+    }
+}
+
 enum FloatingOmnibarMode {
     case newTab
     case navigate
@@ -86,6 +97,18 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         case .downloads: return "arrow.down.circle"
         case .themeToggle: return "sun.max.fill"
         case .settings: return "gearshape"
+        }
+    }
+
+    var icon: Ph {
+        switch self {
+        case .back: return .caretLeft
+        case .forward: return .caretRight
+        case .reload: return .arrowClockwise
+        case .newTab: return .plus
+        case .downloads: return .arrowCircleDown
+        case .themeToggle: return .sun
+        case .settings: return .gear
         }
     }
 
@@ -221,6 +244,21 @@ final class LeanStore: ObservableObject {
             persist(uiBodyWeight.rawValue, forKey: Self.uiBodyWeightKey)
         }
     }
+
+    @Published var browserUIScalePercent: Int {
+        didSet {
+            let clamped = min(120, max(80, browserUIScalePercent))
+            if browserUIScalePercent != clamped {
+                browserUIScalePercent = clamped
+                return
+            }
+            persist(browserUIScalePercent, forKey: Self.browserUIScaleKey)
+        }
+    }
+
+    var browserUIScale: CGFloat { CGFloat(browserUIScalePercent) / 100 }
+
+    func scaled(_ value: CGFloat) -> CGFloat { value * browserUIScale }
 
     func headingFont(size: CGFloat) -> Font {
         leanUIFont.font(size: size, weight: uiHeadingWeight.fontWeight)
@@ -392,6 +430,11 @@ final class LeanStore: ObservableObject {
             ?? UserDefaults.standard.object(forKey: Self.uiBodyWeightKey) as? Int
             ?? LeanFontWeight.regular.rawValue
         self.uiBodyWeight = LeanFontWeight(rawValue: savedBodyWeight) ?? .regular
+
+        let savedBrowserUIScale = databaseValue(self.database, Int.self, forKey: Self.browserUIScaleKey)
+            ?? UserDefaults.standard.object(forKey: Self.browserUIScaleKey) as? Int
+            ?? 100
+        self.browserUIScalePercent = min(120, max(80, savedBrowserUIScale))
 
         let savedWebPageFont = databaseValue(self.database, String.self, forKey: Self.webPageFontKey)
             ?? UserDefaults.standard.string(forKey: Self.webPageFontKey)
@@ -987,6 +1030,7 @@ final class LeanStore: ObservableObject {
         persist(leanUIFont.rawValue, forKey: Self.leanUIFontKey)
         persist(uiHeadingWeight.rawValue, forKey: Self.uiHeadingWeightKey)
         persist(uiBodyWeight.rawValue, forKey: Self.uiBodyWeightKey)
+        persist(browserUIScalePercent, forKey: Self.browserUIScaleKey)
         persist(webPageFont.rawValue, forKey: Self.webPageFontKey)
         persist(enableZenMode, forKey: Self.zenModeKey)
         persist(enableWindowBorder, forKey: Self.windowBorderKey)
@@ -1025,6 +1069,7 @@ final class LeanStore: ObservableObject {
     private static let leanUIFontKey = "leanUIFont"
     private static let uiHeadingWeightKey = "uiHeadingWeight"
     private static let uiBodyWeightKey = "uiBodyWeight"
+    private static let browserUIScaleKey = "browserUIScalePercent"
     private static let webPageFontKey = "webPageFont"
     private static let zenModeKey = "enableZenMode"
     private static let windowBorderKey = "enableWindowBorder"

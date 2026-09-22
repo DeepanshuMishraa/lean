@@ -218,9 +218,10 @@ struct TabThumbnailCard: View {
                 }
             } else {
                 // Loading or placeholder
-                Image(systemName: "globe")
-                    .font(.system(size: 24))
-                    .foregroundColor(isDark ? Color.white.opacity(0.35) : Color.black.opacity(0.30))
+                Ph.browser.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 24, height: 24)
+                    .foregroundColor(isDark ? Color.white.opacity(0.5) : Color.black.opacity(0.4))
             }
         }
     }
@@ -287,9 +288,10 @@ private struct SiteIconView: View {
         let host = url?.host?.lowercased() ?? ""
 
         if host.contains("youtube") {
-            Image(systemName: "play.rectangle.fill")
+            Ph.youtubeLogo.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 16, height: 16)
                 .foregroundColor(.red)
-                .font(.system(size: 14))
         } else if host.contains("twitter") || host.contains("x.com") {
             Text("𝕏")
                 .font(.system(size: 13, weight: .bold))
@@ -301,16 +303,19 @@ private struct SiteIconView: View {
                 .foregroundColor(.blue)
                 .frame(width: 16, height: 16)
         } else if host.contains("slack") {
-            Image(systemName: "number.square.fill")
+            Ph.slackLogo.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 14, height: 14)
                 .foregroundColor(Color(red: 0.85, green: 0.25, blue: 0.55))
-                .font(.system(size: 14))
         } else if host.contains("github") {
-            Image(systemName: "chevron.left.forwardslash.chevron.right")
-                .font(.system(size: 11, weight: .bold))
+            Ph.code.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 13, height: 13)
                 .foregroundColor(isDark ? .white : .black)
         } else {
-            Image(systemName: url == nil ? "plus.circle.fill" : "globe")
-                .font(.system(size: 13))
+            Ph.browser.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 14, height: 14)
                 .foregroundColor(isDark ? Color.white.opacity(0.7) : Color.black.opacity(0.6))
         }
     }

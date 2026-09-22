@@ -85,7 +85,8 @@ Only a paid Developer ID certificate plus notarization removes step 3.
 - Light, dark, and system themes
 - Separate Lean UI and webpage fonts
 - Configurable page scrollbars and native scrolling
-- WebKit content blocking
+- Adjustable interface size (Settings → Appearance → Browser UI)
+- WebKit content blocking (uBlock Origin lists + YouTube ad coverage)
 
 ## Run
 

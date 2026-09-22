@@ -63,7 +63,8 @@ struct LeanView: View {
                 }
             }
             hideTopBarWorkItem = item
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: item)
+            let delay = store.selectedTab?.engineKind == .cef ? 0.45 : 0.18
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
         }
     }
 
@@ -119,6 +120,27 @@ struct LeanView: View {
                             .zIndex(40)
                     }
                 }
+            } else if store.enableZenMode && store.selectedTab?.engineKind == .cef {
+                ZStack(alignment: .top) {
+                    // Keep Chromium at a stable size. Moving the card preserves
+                    // the Zen transition without feeding spring-sized viewports
+                    // into CEF.
+                    mainContentCard
+                        .offset(y: isTopBarVisible ? store.scaled(store.enableWindowBorder ? 34 : 36) : 0)
+
+                    if isTopBarVisible {
+                        TopBarView(store: store)
+                            .onHover { hovering in
+                                setZenHoverState(isHoveringTop: hovering)
+                            }
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .top).combined(with: .opacity),
+                                removal: .move(edge: .top).combined(with: .opacity)
+                            ))
+                            .zIndex(20)
+                    }
+                }
+                .clipped()
             } else {
                 VStack(spacing: 0) {
                     // Top Bar - In Zen mode, disappears and reveals on hover
@@ -166,20 +188,16 @@ struct LeanView: View {
                     .zIndex(50)
             }
             // Floating Omnibar Overlay (Cmd+T / Cmd+L / Active Tab Pill Click)
+            // NOTE: no full-screen tap catcher here on purpose. Outside-click
+            // dismiss is owned by the NSEvent mouse monitor below, which does
+            // not swallow the click, so the underlying toolbar button fires
+            // on the very first press.
             if store.isFloatingOmnibarVisible {
-                ZStack(alignment: .top) {
-                    Color.black.opacity(0.0001)
-                        .contentShape(Rectangle())
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            store.dismissFloatingOmnibar()
-                        }
-
-                    VStack(spacing: 0) {
-                        Spacer().frame(height: 72)
-                        OmnibarView(store: store, isFloating: true)
-                    }
+                VStack(spacing: 0) {
+                    Spacer().frame(height: store.scaled(72))
+                    OmnibarView(store: store, isFloating: true)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .transition(.asymmetric(
                     insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .top)),
                     removal: .opacity
@@ -191,53 +209,53 @@ struct LeanView: View {
             // Bespoke Quick Settings Overlay
             if store.isQuickSettingsPresented {
                 ZStack(alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing) {
-                    Color.black.opacity(0.0001)
-                        .contentShape(Rectangle())
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                                store.isQuickSettingsPresented = false
-                            }
-                        }
-
                     QuickSettingsPopover(store: store)
-                        .padding(.top, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : 4)))
+                        .padding(.top, store.tabLayout == .sidebar ? 0 : store.scaled(store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : store.scaled(4)))
                         .padding(.trailing, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? store.windowBorderWidth : 0) + 12))
                         .padding(.leading, store.tabLayout == .sidebar ? (store.windowBorderWidth + 12) : 0)
                         .padding(.bottom, store.tabLayout == .sidebar ? (store.windowBorderWidth + 46) : 0)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing)
                 .transition(.asymmetric(
-                    insertion: .scale(scale: 0.94, anchor: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing).combined(with: .opacity),
-                    removal: .scale(scale: 0.96, anchor: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing).combined(with: .opacity)
+                    insertion: .opacity,
+                    removal: .opacity
                 ))
-                .animation(.spring(response: 0.22, dampingFraction: 0.82), value: store.isQuickSettingsPresented)
+                .animation(.easeOut(duration: 0.12), value: store.isQuickSettingsPresented)
                 .zIndex(190)
             }
 
             // Bespoke Downloads Overlay
             if store.isDownloadsPresented {
                 ZStack(alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing) {
-                    Color.black.opacity(0.0001)
-                        .contentShape(Rectangle())
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                                store.isDownloadsPresented = false
-                            }
-                        }
-
                     DownloadsPopover(store: store)
-                        .padding(.top, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : 4)))
+                        .padding(.top, store.tabLayout == .sidebar ? 0 : store.scaled(store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : store.scaled(4)))
                         .padding(.trailing, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? store.windowBorderWidth : 0) + 12))
                         .padding(.leading, store.tabLayout == .sidebar ? (store.windowBorderWidth + 12) : 0)
                         .padding(.bottom, store.tabLayout == .sidebar ? (store.windowBorderWidth + 46) : 0)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing)
                 .transition(.asymmetric(
-                    insertion: .scale(scale: 0.94, anchor: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing).combined(with: .opacity),
-                    removal: .scale(scale: 0.96, anchor: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing).combined(with: .opacity)
+                    insertion: .opacity,
+                    removal: .opacity
                 ))
-                .animation(.spring(response: 0.22, dampingFraction: 0.82), value: store.isDownloadsPresented)
+                .animation(.easeOut(duration: 0.12), value: store.isDownloadsPresented)
                 .zIndex(190)
+            }
+
+            // Engine Restart Dialog (modal: dimmed backdrop, no tap-through)
+            if store.isEngineRestartDialogPresented {
+                ZStack {
+                    Color.black.opacity(store.isDarkMode ? 0.5 : 0.25)
+                        .ignoresSafeArea()
+
+                    EngineRestartDialog(store: store)
+                }
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.96).combined(with: .opacity),
+                    removal: .scale(scale: 0.98).combined(with: .opacity)
+                ))
+                .animation(.spring(response: 0.24, dampingFraction: 0.84), value: store.isEngineRestartDialogPresented)
+                .zIndex(200)
             }
 
             // Ctrl+Tab Thumbnail Switcher Overlay
@@ -251,17 +269,10 @@ struct LeanView: View {
                     .zIndex(100)
             }
 
-            // When inline URL bar is being edited, clicking anywhere in the content area collapses it
-            if store.isInlineURLEditing {
-                Color.black.opacity(0.0001)
-                    .contentShape(Rectangle())
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        store.dismissInlineURLEditing()
-                    }
-                    .zIndex(15)
-            }
+            // Inline URL editing dismiss is owned by the NSEvent mouse monitor
+            // below (pass-through, no click swallowing), so no overlay here.
         }
+        .environment(\.browserUIScale, store.browserUIScale)
         .ignoresSafeArea(.all)
         .background(
             store.enableWindowBorder
@@ -368,7 +379,8 @@ struct LeanView: View {
     // MARK: - Main Content Card & Spacing
     private var cardTopPadding: CGFloat {
         if !store.enableWindowBorder { return 0 }
-        if store.tabLayout == .sidebar {
+        if store.tabLayout == .sidebar
+            || (store.enableZenMode && store.selectedTab?.engineKind == .cef) {
             return store.windowBorderWidth
         }
         return isTopBarVisible ? 2 : store.windowBorderWidth
@@ -386,13 +398,24 @@ struct LeanView: View {
         let basePadding = store.enableWindowBorder ? store.windowBorderWidth : 0
         if store.tabLayout == .sidebar && isSidebarEffectivelyVisible && !store.isSidebarCollapsed && isCurrentTabWebPage {
             let gap = store.enableWindowBorder ? store.windowBorderWidth : 8
-            return basePadding + 256 + gap
+            return basePadding + store.scaled(256) + gap
         }
         return basePadding
     }
 
     private var cardTrailingPadding: CGFloat {
         store.enableWindowBorder ? store.windowBorderWidth : 0
+    }
+
+    private var acceptsCEFInput: Bool {
+        !store.isFloatingOmnibarVisible
+            && !store.isQuickSettingsPresented
+            && !store.isDownloadsPresented
+            && !store.isEngineRestartDialogPresented
+            && !store.isTabSwitcherVisible
+            && !store.isInlineURLEditing
+            && !store.showsFindBar
+            && !(store.tabLayout == .sidebar && store.isSidebarCollapsed && isSidebarEffectivelyVisible)
     }
 
     private var mainContentCard: some View {
@@ -420,10 +443,24 @@ struct LeanView: View {
                         .padding(.bottom, cardBottomPadding)
                         .padding(.top, cardTopPadding)
                 } else if tab.url != nil {
-                    // Web Page Loaded
+                    // Web Page Loaded — engine slot. Shell chrome is identical
+                    // for both engines; only this content view branches.
                     ZStack(alignment: .topTrailing) {
-                        WebView(tab: tab)
-                            .id(tab.id)
+                        if tab.engineKind == .cef, CEFIntegration.canRender(), tab.cefHost != nil {
+                            if tab.cefCrashed {
+                                CEFCrashedView(tab: tab, store: store)
+                                    .id(tab.id)
+                            } else {
+                                CEFEngineView(tab: tab, acceptsInput: acceptsCEFInput)
+                                    .id(tab.id)
+                            }
+                        } else if tab.engineKind == .cef {
+                            CEFUnavailableView(store: store)
+                                .id(tab.id)
+                        } else {
+                            WebView(tab: tab)
+                                .id(tab.id)
+                        }
 
                         if store.showsFindBar {
                             floatingFindBar
@@ -460,7 +497,7 @@ struct LeanView: View {
 
                         VStack(spacing: 0) {
                             if store.isNewTabOmnibarFloating {
-                                Spacer().frame(height: 80)
+                                Spacer().frame(height: store.scaled(80))
                             } else {
                                 Spacer()
                             }
@@ -509,30 +546,27 @@ struct LeanView: View {
             let swiftUIPoint = CGPoint(x: clickLocation.x, y: windowHeight - clickLocation.y)
 
             // When Quick Settings popover is open, dismiss when clicking outside its bounds (and the gear button)
+            // Pass-through: return event so the clicked toolbar control still fires on the first press.
             if store.isQuickSettingsPresented {
-                let popoverFrame = store.quickSettingsPopoverFrame
-                let submenuFrame = store.quickSettingsSubmenuFrame
-                let buttonFrame = store.settingsButtonFrame
-                let isInsidePopover = popoverFrame.width > 0 && popoverFrame.contains(swiftUIPoint)
-                let isInsideSubmenu = submenuFrame.width > 0 && submenuFrame.contains(swiftUIPoint)
-                let isInsideButton = buttonFrame.width > 0 && buttonFrame.contains(swiftUIPoint)
+                let popoverFrame = store.quickSettingsPopoverFrame.insetBy(dx: -8, dy: -8)
+                let submenuFrame = store.quickSettingsSubmenuFrame.insetBy(dx: -8, dy: -8)
+                let buttonFrame = store.settingsButtonFrame.insetBy(dx: -4, dy: -4)
+                let isInsidePopover = store.quickSettingsPopoverFrame.width > 0 && popoverFrame.contains(swiftUIPoint)
+                let isInsideSubmenu = store.quickSettingsSubmenuFrame.width > 0 && submenuFrame.contains(swiftUIPoint)
+                let isInsideButton = store.settingsButtonFrame.width > 0 && buttonFrame.contains(swiftUIPoint)
                 if !isInsidePopover && !isInsideSubmenu && !isInsideButton {
-                    withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
-                        store.isQuickSettingsPresented = false
-                    }
+                    store.isQuickSettingsPresented = false
                 }
             }
 
             // When Downloads popover is open, dismiss when clicking outside its bounds (and the button)
             if store.isDownloadsPresented {
-                let popoverFrame = store.downloadsPopoverFrame
-                let buttonFrame = store.downloadsButtonFrame
-                let isInsidePopover = popoverFrame.width > 0 && popoverFrame.contains(swiftUIPoint)
-                let isInsideButton = buttonFrame.width > 0 && buttonFrame.contains(swiftUIPoint)
+                let popoverFrame = store.downloadsPopoverFrame.insetBy(dx: -8, dy: -8)
+                let buttonFrame = store.downloadsButtonFrame.insetBy(dx: -4, dy: -4)
+                let isInsidePopover = store.downloadsPopoverFrame.width > 0 && popoverFrame.contains(swiftUIPoint)
+                let isInsideButton = store.downloadsButtonFrame.width > 0 && buttonFrame.contains(swiftUIPoint)
                 if !isInsidePopover && !isInsideButton {
-                    withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
-                        store.isDownloadsPresented = false
-                    }
+                    store.isDownloadsPresented = false
                 }
             }
 
@@ -564,8 +598,10 @@ struct LeanView: View {
             if effectivePaletteFrame.contains(swiftUIPoint) {
                 return event
             } else {
+                // Dismiss but let the click pass through so toolbar
+                // buttons work on the first press, not the second.
                 store.dismissFloatingOmnibar()
-                return nil
+                return event
             }
         }
 
@@ -573,6 +609,10 @@ struct LeanView: View {
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             // Intercept Escape (keyCode 53) to close quick settings, inline url bar, floating omnibar, new tab omnibar, or tab switcher
             if event.keyCode == 53 {
+                if store.isEngineRestartDialogPresented {
+                    store.cancelEngineChange()
+                    return nil
+                }
                 if store.isDownloadsPresented {
                     withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
                         store.isDownloadsPresented = false
@@ -603,6 +643,13 @@ struct LeanView: View {
                 }
             }
 
+            // While the engine-restart modal is up, don't fire global
+            // shortcuts behind it. Return the event (don't swallow it) so
+            // the dialog and system keys still receive it.
+            if store.isEngineRestartDialogPresented {
+                return event
+            }
+
             // Check custom shortcuts
             for action in ShortcutAction.allCases {
                 if action == .dismiss || action == .stopLoading {
@@ -629,8 +676,9 @@ struct LeanView: View {
 
     private var floatingFindBar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 12))
+            Ph.magnifyingGlass.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 12, height: 12)
                 .foregroundColor(store.themeColors.secondaryText)
 
             TextField("Find on page", text: $findQuery)
@@ -643,8 +691,9 @@ struct LeanView: View {
             Button {
                 store.selectedTab?.find(findQuery)
             } label: {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                Ph.caretDown.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 10, height: 10)
                     .foregroundColor(store.themeColors.secondaryText)
             }
             .buttonStyle(.plain)
@@ -654,8 +703,9 @@ struct LeanView: View {
                 store.showsFindBar = false
                 findQuery = ""
             } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .semibold))
+                Ph.x.bold
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 10, height: 10)
                     .foregroundColor(store.themeColors.secondaryText)
             }
             .buttonStyle(.plain)
@@ -694,6 +744,93 @@ private struct WebView: NSViewRepresentable {
     }
 }
 
+/// In-content notice when a CEF renderer dies: Chromium respawns the
+/// renderer on the next navigation, so Reload recovers instead of leaving
+/// a permanent blank page. Lives inside the web content card only.
+private struct CEFCrashedView: View {
+    @ObservedObject var tab: LeanTab
+    @ObservedObject var store: LeanStore
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Ph.warning.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 28, height: 28)
+                .foregroundColor(store.themeColors.secondaryText)
+            Text("This page crashed")
+                .font(store.headingFont(size: 14))
+                .foregroundColor(store.themeColors.omnibarText)
+            Text("The Chromium renderer stopped unexpectedly. Your tabs are intact — reload to continue.")
+                .font(store.bodyFont(size: 12))
+                .foregroundColor(store.themeColors.secondaryText)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+            Button {
+                tab.reload()
+            } label: {
+                Text("Reload page")
+                    .font(store.bodyFont(size: 12))
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(
+                        store.themeColors.omnibarBackground,
+                        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(store.themeColors.windowBackground)
+    }
+}
+
+/// In-content notice for CEF tabs that cannot render here: either the
+/// framework isn't bundled, or the app runs from DerivedData (the sandbox
+/// blocks the CEF helper there, so every page would stay blank).
+/// Lives inside the web content card only — top bar, sidebar, omnibar,
+/// and settings chrome are untouched.
+private struct CEFUnavailableView: View {
+    @ObservedObject var store: LeanStore
+
+    private var isDerivedDataLaunch: Bool {
+        CEFIntegration.isAvailable() && CEFIntegration.isRunningFromDerivedData()
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Ph.cpu.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 28, height: 28)
+                .foregroundColor(store.themeColors.secondaryText)
+            Text(isDerivedDataLaunch ? "Chromium can't render from here" : "Chromium engine not installed")
+                .font(store.headingFont(size: 14))
+                .foregroundColor(store.themeColors.omnibarText)
+            Text(isDerivedDataLaunch
+                ? "Xcode builds run from DerivedData, where the sandbox blocks the Chromium helper — pages would stay blank. Relaunch from an installed copy: scripts/run-cef-dev.sh."
+                : "This tab asked for CEF, but the Chromium framework isn't bundled with this build. New tabs keep using WebKit until CEF lands — see docs/CEF.md.")
+                .font(store.bodyFont(size: 12))
+                .foregroundColor(store.themeColors.secondaryText)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+            Button {
+                store.requestEngineChange(.webKit)
+            } label: {
+                Text("Use WebKit for new tabs")
+                    .font(store.bodyFont(size: 12))
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(
+                        store.themeColors.omnibarBackground,
+                        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(store.themeColors.windowBackground)
+    }
+}
+
 private struct WindowConfigurator: NSViewRepresentable {
     @ObservedObject var store: LeanStore
     let isTopBarVisible: Bool
@@ -718,7 +855,12 @@ private struct WindowConfigurator: NSViewRepresentable {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.styleMask.insert(.fullSizeContentView)
-        window.isMovableByWindowBackground = true
+        // Never use window-wide background dragging: with fullSizeContentView
+        // it makes AppKit treat presses on SwiftUI controls as potential
+        // window drags, so every button needs unnaturally still, repeated
+        // clicks to fire. Dragging is owned explicitly by WindowDragView
+        // surfaces behind the top bar / sidebar empty areas instead.
+        window.isMovableByWindowBackground = false
         window.isReleasedWhenClosed = false
         window.backgroundColor = store.enableWindowBorder
             ? NSColor(store.effectiveZenColor)

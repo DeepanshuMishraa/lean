@@ -12,6 +12,7 @@ struct TopBarView: View {
             // Space reserved for native macOS traffic lights (centered at y = 16, x = 9..69)
             Spacer()
                 .frame(width: 80)
+                .background(WindowDragView())
 
             // Horizontal Tabs (New Tab or user opened tabs only - no default pinned sites!)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -28,10 +29,10 @@ struct TopBarView: View {
 
                     if store.isToolbarItemShown(.newTab) {
                         InteractiveIconButton(
-                            systemImage: "plus",
+                            icon: .plus,
                             helpText: "New Tab (⌘T)",
                             size: store.enableWindowBorder ? 26 : 24,
-                            iconSize: 11,
+                            iconSize: 12,
                             color: store.adaptiveTheme.secondaryText,
                             hoverColor: store.adaptiveTheme.primaryText,
                             disabledColor: store.adaptiveTheme.disabledIconText,
@@ -83,6 +84,7 @@ struct TopBarView: View {
             .onHover { isTabStripHovered = $0 }
 
             Spacer()
+                .background(WindowDragView())
 
             // Navigation Controls (Back, Forward, Reload) - Hidden on homepage or if not shown
             if store.selectedTab?.url != nil {
@@ -94,7 +96,7 @@ struct TopBarView: View {
                     HStack(spacing: 2) {
                         if showBack {
                             InteractiveIconButton(
-                                systemImage: "chevron.left",
+                                icon: .caretLeft,
                                 helpText: "Back (⌘[)",
                                 size: 24,
                                 iconSize: 12,
@@ -112,7 +114,7 @@ struct TopBarView: View {
 
                         if showForward {
                             InteractiveIconButton(
-                                systemImage: "chevron.right",
+                                icon: .caretRight,
                                 helpText: "Forward (⌘])",
                                 size: 24,
                                 iconSize: 12,
@@ -130,7 +132,7 @@ struct TopBarView: View {
 
                         if showReload {
                             InteractiveIconButton(
-                                systemImage: "arrow.clockwise",
+                                icon: .arrowClockwise,
                                 helpText: "Reload (⌘R)",
                                 size: 24,
                                 iconSize: 12,
@@ -174,7 +176,7 @@ struct TopBarView: View {
 
                     if showTheme {
                         InteractiveIconButton(
-                            systemImage: store.isDarkMode ? "sun.max.fill" : "moon.fill",
+                            icon: store.isDarkMode ? .sun : .moon,
                             helpText: store.isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
                             size: 24,
                             iconSize: 12,
@@ -193,7 +195,7 @@ struct TopBarView: View {
 
                     if showSettings {
                         InteractiveIconButton(
-                            systemImage: "gearshape",
+                            icon: .gear,
                             helpText: "Settings (⌘,)",
                             size: 24,
                             iconSize: 12,
@@ -204,9 +206,7 @@ struct TopBarView: View {
                             pressedBackground: store.adaptiveTheme.iconPressedBackground,
                             isDark: store.adaptiveTheme.effectiveIsDark
                         ) {
-                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                                store.isQuickSettingsPresented.toggle()
-                            }
+                            store.isQuickSettingsPresented.toggle()
                         }
                         .background(
                             GeometryReader { proxy in
@@ -223,18 +223,17 @@ struct TopBarView: View {
 
             Spacer().frame(width: 12)
         }
-        .frame(height: store.enableWindowBorder ? 34 : 36)
+        .frame(height: store.scaled(store.enableWindowBorder ? 34 : 36))
         .background(
             store.enableWindowBorder
                 ? AnyView(Color.clear)
                 : AnyView(store.themeColors.topBarBackground)
         )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if store.isInlineURLEditing {
-                store.dismissInlineURLEditing()
-            }
-        }
+        // NOTE: no onTapGesture here on purpose. A tap gesture covering the
+        // whole bar competes with every toolbar/tab Button inside it, forcing
+        // double/triple clicks or pixel-hunting. Dismissing inline URL editing
+        // on outside clicks is already handled by the global mouse monitor in
+        // LeanView.setupKeyMonitor, which doesn't swallow the click.
         .animation(.easeInOut(duration: 0.2), value: store.isDarkMode)
         .animation(.easeInOut(duration: 0.2), value: store.enableWindowBorder)
         .animation(.easeInOut(duration: 0.2), value: store.effectiveZenColor)
@@ -272,58 +271,78 @@ private struct TopBarTabItem: View {
     }
 
     var body: some View {
-        tabContent
-            .frame(height: store.enableWindowBorder ? 27 : 26)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(
-                        isSelected
-                            ? store.adaptiveTheme.activeTabBackground
-                            : (isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : store.adaptiveTheme.inactiveTabBackground)
-                    )
-                    .overlay(
-                        isSelected && store.enableWindowBorder
-                            ? RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
-                            : nil
-                    )
-                    .shadow(
-                        color: isSelected && store.enableWindowBorder ? store.adaptiveTheme.activeTabShadow : Color.clear,
-                        radius: store.adaptiveTheme.isFrameLight ? 2 : 4,
-                        x: 0,
-                        y: 1
-                    )
-            )
-            .contentShape(Rectangle())
-            .help(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
-            .onTapGesture {
-                if !isSelected {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                        onSelect()
-                    }
-                } else if !store.isInlineURLEditing {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                        store.isInlineURLEditing = true
-                    }
-                }
+        Button(action: handleTap) {
+            tabContent
+                .frame(height: store.scaled(store.enableWindowBorder ? 27 : 26))
+        }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(
+                    isSelected
+                        ? store.adaptiveTheme.activeTabBackground
+                        : (isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : store.adaptiveTheme.inactiveTabBackground)
+                )
+                .overlay(
+                    isSelected && store.enableWindowBorder
+                        ? RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
+                        : nil
+                )
+                .shadow(
+                    color: isSelected && store.enableWindowBorder ? store.adaptiveTheme.activeTabShadow : Color.clear,
+                    radius: store.adaptiveTheme.isFrameLight ? 2 : 4,
+                    x: 0,
+                    y: 1
+                )
+        )
+        .contentShape(Rectangle())
+        .help(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
+        .onHover { isHovered = $0 }
+        .contextMenu {
+            Button("Close Tab", action: onClose)
+            Button("Reload") { tab.reload() }
+            if tab.canGoBack {
+                Button("Back") { tab.goBack() }
             }
-            .onHover { hovered in
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    isHovered = hovered
-                }
+            if tab.canGoForward {
+                Button("Forward") { tab.goForward() }
             }
-            .contextMenu {
-                Button("Close Tab", action: onClose)
-                Button("Reload") { tab.reload() }
-                if tab.canGoBack {
-                    Button("Back") { tab.goBack() }
-                }
-                if tab.canGoForward {
-                    Button("Forward") { tab.goForward() }
-                }
+        }
+        .overlay(alignment: .trailing) {
+            // Sibling overlay, NOT nested inside the select Button label,
+            // so both Buttons hit-test independently with stable frames.
+            if shouldShowClose && store.tabDisplayMode != .iconOnly {
+                closeButton
+                    .padding(.trailing, 6)
             }
-            .animation(.spring(response: 0.24, dampingFraction: 0.82), value: showURLBar)
-            .animation(.spring(response: 0.22, dampingFraction: 0.82), value: isSelected)
+        }
+        .overlay(alignment: .center) {
+            // Icon-only close replaces the favicon in place. Centered
+            // sibling overlay for the same nested-Button reason: a close
+            // Button inside iconOnlyContent (the select Button's label)
+            // would never fire — the outer Button consumes the click.
+            if shouldShowClose && store.tabDisplayMode == .iconOnly {
+                closeButton
+            }
+        }
+    }
+
+    private var shouldShowClose: Bool {
+        switch store.tabDisplayMode {
+        case .textOnly, .hybrid:
+            return isHovered && !showURLBar
+        case .iconOnly:
+            return showCloseOnHover
+        }
+    }
+
+    private func handleTap() {
+        if !isSelected {
+            onSelect()
+        } else if !store.isInlineURLEditing {
+            store.isInlineURLEditing = true
+        }
     }
 
     @ViewBuilder
@@ -361,31 +380,22 @@ private struct TopBarTabItem: View {
                         : store.adaptiveTheme.inactiveTabText
                 )
                 .lineLimit(1)
-
-            if isHovered {
-                closeButton
-            }
+            // Reserve close-button space so hover doesn't shift layout.
+            Spacer(minLength: 0)
+                .frame(width: shouldShowClose ? 16 : 0)
         }
-        .padding(.horizontal, isSelected ? 13 : 9)
+        .padding(.horizontal, 10)
+        .padding(.trailing, shouldShowClose ? 20 : 0)
     }
 
     @ViewBuilder
     private var iconOnlyContent: some View {
-        HStack(spacing: 5) {
-            TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
-
-            if showCloseOnHover {
-                closeButton
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.7)),
-                        removal: .opacity
-                    ))
-            }
-        }
-        .padding(.horizontal, showCloseOnHover ? 8 : 7)
-        .frame(height: 26)
-        .frame(minWidth: 28)
-        .animation(.spring(response: 0.22, dampingFraction: 0.82), value: isHovered)
+        // Fixed centered box: no HStack spacing artifact, no reserved
+        // gap, no width shift on hover. The favicon hides when the
+        // centered sibling overlay shows the close button in its place.
+        TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
+            .opacity(shouldShowClose ? 0 : 1)
+            .frame(width: store.scaled(28), height: store.scaled(26))
     }
 
     @ViewBuilder
@@ -402,30 +412,30 @@ private struct TopBarTabItem: View {
                 )
                 .lineLimit(1)
 
-            if isHovered {
-                closeButton
-            }
+            Spacer(minLength: 0)
+                .frame(width: shouldShowClose ? 16 : 0)
         }
-        .padding(.horizontal, isSelected ? 12 : 9)
+        .padding(.horizontal, 10)
+        .padding(.trailing, shouldShowClose ? 20 : 0)
     }
 
     private var closeButton: some View {
-        Button(action: {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                onClose()
-            }
-        }) {
-            Image(systemName: "xmark")
-                .font(.system(size: 8.5, weight: .bold))
+        Button(action: onClose) {
+            Ph.x.bold
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: store.scaled(8), height: store.scaled(8))
                 .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
-                .frame(width: 14, height: 14)
+                .frame(width: store.scaled(18), height: store.scaled(18))
                 .background(
-                    isHovered ? store.adaptiveTheme.tabCloseButtonHoverBackground : Color.clear,
+                    store.adaptiveTheme.tabCloseButtonHoverBackground,
                     in: Circle()
                 )
+                // Rectangular hit area is larger and stable at the edges.
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .transition(.scale.combined(with: .opacity))
+        .contentShape(Rectangle())
     }
 }
 
@@ -457,13 +467,13 @@ struct InlineURLBar: View {
         )
     }
 
-    private func suggestionIcon(for match: OmnibarSuggestion) -> String {
+    private func suggestionIcon(for match: OmnibarSuggestion) -> Ph {
         if match.isSearch {
-            return "magnifyingglass"
+            return .magnifyingGlass
         } else if match.isSwitchToTab {
-            return "arrow.right.circle"
+            return .arrowCircleRight
         } else {
-            return "globe"
+            return .browser
         }
     }
 
@@ -499,17 +509,23 @@ struct InlineURLBar: View {
                 }
 
             if !text.isEmpty {
-                Button(action: onClose) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 10))
+                Button {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        onClose()
+                    }
+                } label: {
+                    Ph.xCircle.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 11, height: 11)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
                 }
                 .buttonStyle(.plain)
+                .help("Close Tab (⌘W)")
             }
         }
         .padding(.horizontal, 9)
-        .frame(height: 26)
-        .frame(minWidth: 260, maxWidth: 440)
+        .frame(height: store.scaled(26))
+        .frame(minWidth: store.scaled(260), maxWidth: store.scaled(440))
         .background(
             GeometryReader { geo in
                 Color.clear
@@ -640,15 +656,16 @@ struct InlineURLBar: View {
 
 struct InlineSuggestionRow: View {
     let match: OmnibarSuggestion
-    let icon: String
+    let icon: Ph
     let isSelected: Bool
     let store: LeanStore
     let onSelect: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 11))
+            icon.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 12, height: 12)
                 .foregroundColor(store.adaptiveTheme.secondaryText)
                 .frame(width: 14)
 
@@ -678,7 +695,9 @@ struct InlineSuggestionRow: View {
 }
 
 struct InteractiveIconButton: View {
-    let systemImage: String
+    @Environment(\.browserUIScale) private var browserUIScale
+
+    let icon: Ph
     let helpText: String
     let size: CGFloat
     let iconSize: CGFloat
@@ -716,22 +735,36 @@ struct InteractiveIconButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: iconSize, weight: .medium))
+            icon.uiIcon
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: iconSize * browserUIScale, height: iconSize * browserUIScale)
                 .foregroundColor(foregroundColor)
-                .frame(width: size, height: size)
+                .frame(width: size * browserUIScale, height: size * browserUIScale)
                 .background(
                     backgroundColor,
                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                 )
-                .scaleEffect(isPressed ? 0.92 : (isHovered ? 1.05 : 1.0))
-                .animation(.spring(response: 0.20, dampingFraction: 0.75), value: isHovered)
-                .animation(.spring(response: 0.15, dampingFraction: 0.8), value: isPressed)
+                .contentShape(Rectangle())
+                // Stable hit area: never grow on hover. Only a subtle press
+                // shrink while held, so mouseUp always lands inside bounds.
+                .scaleEffect(isPressed ? 0.93 : 1.0)
+                .animation(.easeOut(duration: 0.08), value: isPressed)
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .disabled(!isEnabled)
         .help(helpText)
         .onHover { isHovered = isEnabled && $0 }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if isEnabled && !isPressed { isPressed = true }
+                }
+                .onEnded { _ in
+                    isPressed = false
+                }
+        )
     }
 }
 
@@ -754,6 +787,7 @@ struct DownloadsButtonFrameKey: PreferenceKey {
 // MARK: - Downloads Toolbar Button (sits beside the theme icon)
 struct DownloadToolbarButton: View {
     @ObservedObject var store: LeanStore
+    @Environment(\.browserUIScale) private var browserUIScale
 
     @State private var isHovered = false
     @State private var isPressed = false
@@ -784,45 +818,57 @@ struct DownloadToolbarButton: View {
 
     var body: some View {
         Button {
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                store.isQuickSettingsPresented = false
-                store.isDownloadsPresented.toggle()
-            }
+            store.isQuickSettingsPresented = false
+            store.isDownloadsPresented.toggle()
         } label: {
             ZStack {
-                Image(systemName: hasActive || store.isDownloadsPresented ? "arrow.down.circle.fill" : "arrow.down.circle")
-                    .font(.system(size: 12, weight: .medium))
+                Ph.arrowCircleDown.fill
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 12 * browserUIScale, height: 12 * browserUIScale)
                     .foregroundColor(foregroundColor)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 24 * browserUIScale, height: 24 * browserUIScale)
                     .background(
                         backgroundColor,
                         in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                     )
-                    .scaleEffect(isPressed ? 0.92 : (isHovered ? 1.05 : 1.0))
+                    .scaleEffect(isPressed ? 0.93 : 1.0)
+                    .animation(.easeOut(duration: 0.08), value: isPressed)
 
                 if hasActive {
                     Capsule()
                         .fill(store.adaptiveTheme.secondaryText.opacity(0.25))
                         .frame(width: 12, height: 2)
                         .offset(y: 8)
+                        .allowsHitTesting(false)
                     Capsule()
                         .fill(store.isDarkMode ? Color.white : Color.black)
                         .frame(width: 12 * CGFloat(store.downloadManager.overallProgress), height: 2)
                         .offset(y: 8)
+                        .allowsHitTesting(false)
                 } else if !store.downloadManager.downloads.isEmpty {
                     Circle()
                         .fill(store.adaptiveTheme.secondaryText.opacity(0.55))
                         .frame(width: 4, height: 4)
                         .offset(x: 7, y: -7)
+                        .allowsHitTesting(false)
                 }
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .help(downloadsHelpText)
         .onHover { isHovered = $0 }
-        .animation(.spring(response: 0.20, dampingFraction: 0.75), value: isHovered)
-        .animation(.spring(response: 0.15, dampingFraction: 0.8), value: isPressed)
-        .animation(.easeInOut(duration: 0.2), value: hasActive)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isPressed { isPressed = true }
+                }
+                .onEnded { _ in
+                    isPressed = false
+                }
+        )
     }
 
     private var downloadsHelpText: String {
@@ -981,7 +1027,7 @@ struct QuickSettingsPopover: View {
             // Quick Toggles starting directly from Zen mode
             VStack(spacing: 2) {
                 QuickToggleItem(
-                    icon: "slider.horizontal.3",
+                    icon: .slidersHorizontal,
                     title: "Zen mode",
                     isOn: $store.enableZenMode,
                     isDark: store.isDarkMode,
@@ -991,7 +1037,7 @@ struct QuickSettingsPopover: View {
 
                 if store.tabLayout != .sidebar {
                     QuickToggleItem(
-                        icon: "macwindow",
+                        icon: .browser,
                         title: "Window frame",
                         isOn: $store.enableWindowBorder,
                         isDark: store.isDarkMode,
@@ -1001,7 +1047,7 @@ struct QuickSettingsPopover: View {
                 }
 
                 QuickToggleItem(
-                    icon: "shield.fill",
+                    icon: .shield,
                     title: "Ad & tracker filter",
                     isOn: $store.adBlockingEnabled,
                     isDark: store.isDarkMode,
@@ -1011,7 +1057,7 @@ struct QuickSettingsPopover: View {
                 )
 
                 QuickToggleItem(
-                    icon: "computermouse.fill",
+                    icon: .mouse,
                     title: "Smooth scrolling",
                     isOn: $store.smoothScrollingEnabled,
                     isDark: store.isDarkMode,
@@ -1054,16 +1100,18 @@ struct QuickSettingsPopover: View {
                     store.openSettings()
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 11, weight: .medium))
+                        Ph.gear.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 12, height: 12)
                         Text("All Settings...")
                             .font(store.headingFont(size: 12))
                         Spacer()
                         Text("⌘,")
                             .font(.system(size: 10, weight: .semibold, design: .monospaced))
                             .foregroundColor(store.adaptiveTheme.secondaryText)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 8, weight: .semibold))
+                        Ph.caretRight.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 8, height: 8)
                             .foregroundColor(store.adaptiveTheme.secondaryText)
                     }
                     .foregroundColor(store.adaptiveTheme.primaryText)
@@ -1118,8 +1166,9 @@ struct QuickSettingsHistoryRow: View {
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 8) {
-                Image(systemName: "clock")
-                    .font(.system(size: 11, weight: .medium))
+                Ph.clock.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 12, height: 12)
                     .foregroundColor(isDark ? Color.white.opacity(0.70) : Color.black.opacity(0.60))
                     .frame(width: 16)
 
@@ -1129,8 +1178,9 @@ struct QuickSettingsHistoryRow: View {
 
                 Spacer()
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
+                Ph.caretRight.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 8, height: 8)
                     .foregroundColor(isDark ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
             }
             .padding(.horizontal, 8)
@@ -1165,8 +1215,9 @@ struct QuickSettingsHistorySubmenu: View {
 
             if recentItems.isEmpty {
                 HStack(spacing: 8) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 11))
+                    Ph.clock.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
                         .frame(width: 14)
                     Text("No Recent History")
@@ -1200,8 +1251,9 @@ struct QuickSettingsHistorySubmenu: View {
             // Option to view all which opens the history tab in the settings
             Button(action: onOpenHistoryTab) {
                 HStack(spacing: 8) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 11, weight: .medium))
+                    Ph.clockCounterClockwise.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
                         .frame(width: 14)
 
@@ -1211,8 +1263,9 @@ struct QuickSettingsHistorySubmenu: View {
 
                     Spacer()
 
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
+                    Ph.caretRight.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 8, height: 8)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
                 }
                 .padding(.horizontal, 8)
@@ -1317,7 +1370,7 @@ private struct QuickSettingsHistorySubmenuItem: View {
 
 // MARK: - Quick Toggle Item
 struct QuickToggleItem: View {
-    let icon: String
+    let icon: Ph
     let title: String
     @Binding var isOn: Bool
     let isDark: Bool
@@ -1334,8 +1387,9 @@ struct QuickToggleItem: View {
             }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .medium))
+                icon.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 13, height: 13)
                     .foregroundColor(
                         isOn
                             ? (accentColor ?? (isDark ? Color.white : Color.black))
@@ -1381,6 +1435,7 @@ struct QuickToggleItem: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .onHover { hovering in
             isHovered = hovering
             onHoverChanged?(hovering)

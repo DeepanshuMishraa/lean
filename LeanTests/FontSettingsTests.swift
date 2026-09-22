@@ -51,6 +51,26 @@ struct FontSettingsTests {
         #expect(store.uiBodyWeight == .light)
     }
 
+    @Test("Browser UI scale is clamped and persists across restarts")
+    @MainActor
+    func browserUIScalePersistsAcrossRestarts() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("Lean.sqlite3")
+
+        let first = LeanStore(database: try AppDatabase(url: url))
+        first.browserUIScalePercent = 115
+        #expect(abs(first.scaled(20) - 23) < 0.001)
+
+        let second = LeanStore(database: try AppDatabase(url: url))
+        #expect(second.browserUIScalePercent == 115)
+
+        second.browserUIScalePercent = 200
+        #expect(second.browserUIScalePercent == 120)
+    }
+
     @Test("Heading and body font weights survive a database reopen")
     @MainActor
     func fontWeightsPersistAcrossRestarts() throws {

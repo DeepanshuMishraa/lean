@@ -15,17 +15,17 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var icon: String {
+    var icon: Ph {
         switch self {
-        case .general: return "slider.horizontal.3"
-        case .topBar: return "menubar.dock.rectangle"
-        case .appearance: return "paintpalette"
-        case .tabs: return "square.stack.3d.forward.dottedline"
-        case .browsing: return "globe"
-        case .privacy: return "shield"
-        case .shortcuts: return "command"
-        case .history: return "clock"
-        case .downloads: return "arrow.down.circle"
+        case .general: return .slidersHorizontal
+        case .topBar: return .layout
+        case .appearance: return .palette
+        case .tabs: return .tabs
+        case .browsing: return .compass
+        case .privacy: return .shield
+        case .shortcuts: return .command
+        case .history: return .clock
+        case .downloads: return .arrowCircleDown
         }
     }
 
@@ -49,8 +49,6 @@ struct SettingsView: View {
     @ObservedObject var updater: AppUpdater
     @State private var selectedCategory: SettingsCategory = .general
     @StateObject private var dropdownState = DropdownMenuState()
-    @Namespace private var sidebarAnimation
-    @Namespace private var compactAnimation
 
     var body: some View {
         GeometryReader { geometry in
@@ -151,48 +149,15 @@ struct SettingsView: View {
             // Category Items
             VStack(spacing: 3) {
                 ForEach(SettingsCategory.allCases) { category in
-                    let isSelected = category == selectedCategory
-                    Button {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
-                            selectedCategory = category
-                        }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: category.icon)
-                                .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular))
-                                .foregroundColor(
-                                    isSelected
-                                        ? primaryText
-                                        : (store.isDarkMode ? Color.white.opacity(0.55) : Color.black.opacity(0.50))
-                                )
-                                .frame(width: 18)
-
-                            Text(category.rawValue)
-                                .font(store.headingFont(size: 13))
-                                .foregroundColor(
-                                    isSelected
-                                        ? primaryText
-                                        : (store.isDarkMode ? Color.white.opacity(0.65) : Color.black.opacity(0.60))
-                                )
-
-                            Spacer()
-                        }
-                        .padding(.horizontal, 12)
-                        .frame(height: 32)
-                        .background {
-                            if isSelected {
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .fill(store.isDarkMode ? Color.white.opacity(0.09) : Color.black.opacity(0.06))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                            .stroke(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04), lineWidth: 0.5)
-                                    )
-                                    .matchedGeometryEffect(id: "activeSidebarCategory", in: sidebarAnimation)
-                            }
-                        }
-                        .contentShape(Rectangle())
+                    SidebarCategoryButton(
+                        category: category,
+                        isSelected: category == selectedCategory,
+                        isDark: store.isDarkMode,
+                        primaryText: primaryText,
+                        headingFont: store.headingFont
+                    ) {
+                        selectedCategory = category
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 10)
@@ -213,38 +178,15 @@ struct SettingsView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
                 ForEach(SettingsCategory.allCases) { category in
-                    let isSelected = category == selectedCategory
-                    Button {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
-                            selectedCategory = category
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: category.icon)
-                                .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
-                            Text(category.rawValue)
-                                .font(store.headingFont(size: 12))
-                        }
-                        .foregroundColor(
-                            isSelected
-                                ? primaryText
-                                : (store.isDarkMode ? Color.white.opacity(0.50) : Color.black.opacity(0.50))
-                        )
-                        .padding(.horizontal, 12)
-                        .frame(height: 30)
-                        .background {
-                            if isSelected {
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .fill(store.isDarkMode ? Color.white.opacity(0.12) : Color.black.opacity(0.07))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                            .stroke(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05), lineWidth: 0.5)
-                                    )
-                                    .matchedGeometryEffect(id: "activeCompactCategory", in: compactAnimation)
-                            }
-                        }
+                    CompactCategoryButton(
+                        category: category,
+                        isSelected: category == selectedCategory,
+                        isDark: store.isDarkMode,
+                        primaryText: primaryText,
+                        headingFont: store.headingFont
+                    ) {
+                        selectedCategory = category
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)
@@ -352,8 +294,9 @@ private struct HistorySection: View {
         VStack(alignment: .leading, spacing: 20) {
             // Search and Filter Bar
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11.5, weight: .medium))
+                Ph.magnifyingGlass.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 12, height: 12)
                     .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
 
                 TextField("Search history by title or domain...", text: $searchText)
@@ -365,8 +308,9 @@ private struct HistorySection: View {
                     Button {
                         searchText = ""
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 11))
+                        Ph.xCircle.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 12, height: 12)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
                     }
                     .buttonStyle(.plain)
@@ -403,8 +347,9 @@ private struct HistorySection: View {
                             }
                         } label: {
                             HStack(spacing: 4) {
-                                Image(systemName: "trash.fill")
-                                    .font(.system(size: 9.5))
+                                Ph.trash.fill
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 10, height: 10)
                                 Text("Confirm Clear All")
                                     .font(store.leanUIFont.font(size: 11, weight: .semibold))
                             }
@@ -429,8 +374,9 @@ private struct HistorySection: View {
                             }
                         } label: {
                             HStack(spacing: 4) {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 9.5))
+                                Ph.trash.fill
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 10, height: 10)
                                 Text("Clear All")
                                     .font(store.leanUIFont.font(size: 11, weight: .medium))
                             }
@@ -451,8 +397,9 @@ private struct HistorySection: View {
             if store.historyItems.isEmpty {
                 // Empty History Canvas
                 VStack(spacing: 12) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 32, weight: .ultraLight))
+                    Ph.clockCounterClockwise.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 32, height: 32)
                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.30) : Color.black.opacity(0.30))
 
                     Text("No Browsing History")
@@ -468,8 +415,9 @@ private struct HistorySection: View {
             } else if filteredItems.isEmpty {
                 // No Search Matches
                 VStack(spacing: 12) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 28, weight: .light))
+                    Ph.magnifyingGlass.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 28, height: 28)
                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.30) : Color.black.opacity(0.30))
 
                     Text("No Matches Found")
@@ -589,8 +537,9 @@ private struct HistoryItemRow: View {
                             }
                         }
                     } label: {
-                        Image(systemName: isCopied ? "checkmark" : "link")
-                            .font(.system(size: 11, weight: .medium))
+                        (isCopied ? Ph.check.bold : Ph.copy.fill)
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 12, height: 12)
                             .foregroundColor(isCopied ? Color.green : (store.isDarkMode ? Color.white.opacity(0.7) : Color.black.opacity(0.65)))
                             .frame(width: 26, height: 26)
                             .background(
@@ -605,8 +554,9 @@ private struct HistoryItemRow: View {
                     Button {
                         store.openHistoryItem(item, inNewTab: true)
                     } label: {
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 11, weight: .medium))
+                        Ph.arrowSquareOut.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 12, height: 12)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.7) : Color.black.opacity(0.65))
                             .frame(width: 26, height: 26)
                             .background(
@@ -623,8 +573,9 @@ private struct HistoryItemRow: View {
                             store.deleteHistoryItem(id: item.id)
                         }
                     } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 11, weight: .medium))
+                        Ph.trash.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 12, height: 12)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.6) : Color.black.opacity(0.55))
                             .frame(width: 26, height: 26)
                             .background(
@@ -769,8 +720,9 @@ private struct TopBarCustomizerSection: View {
                     }
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: 10, weight: .semibold))
+                        Ph.arrowCounterClockwise.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 10, height: 10)
                         Text("Reset Default")
                             .font(store.leanUIFont.font(size: 11.5, weight: .medium))
                     }
@@ -882,8 +834,9 @@ private struct ToolbarShelf: View {
 
             if items.isEmpty {
                 HStack(spacing: 8) {
-                    Image(systemName: isShownShelf ? "tray" : "checkmark.circle")
-                        .font(.system(size: 12))
+                    (isShownShelf ? Ph.tray.fill : Ph.checkCircle.fill)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.3) : Color.black.opacity(0.3))
 
                     Text(isShownShelf ? "No icons visible in top bar" : "All available icons are currently shown")
@@ -974,8 +927,9 @@ private struct ToolbarInteractiveChip: View {
         } label: {
             VStack(spacing: 3) {
                 ZStack(alignment: .topTrailing) {
-                    Image(systemName: item.systemImage)
-                        .font(.system(size: 13, weight: .medium))
+                    item.icon.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 14, height: 14)
                         .foregroundColor(iconColor)
                         .frame(width: 36, height: 30)
                         .background(
@@ -988,8 +942,9 @@ private struct ToolbarInteractiveChip: View {
                         )
 
                     if isHovered {
-                        Image(systemName: isShown ? "minus.circle.fill" : "plus.circle.fill")
-                            .font(.system(size: 9, weight: .bold))
+                        (isShown ? Ph.minusCircle.fill : Ph.plusCircle.fill)
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 9, height: 9)
                             .foregroundColor(isShown ? Color.red.opacity(0.85) : Color.green.opacity(0.85))
                             .offset(x: 3, y: -3)
                             .transition(.scale.combined(with: .opacity))
@@ -1026,9 +981,9 @@ private struct AppearanceSection: View {
 
                 CustomSegmentedPicker(
                     options: [
-                        SegmentOption(id: AppTheme.light.rawValue, label: "Light", icon: "sun.max.fill"),
-                        SegmentOption(id: AppTheme.dark.rawValue, label: "Dark", icon: "moon.fill"),
-                        SegmentOption(id: AppTheme.system.rawValue, label: "System", icon: "circle.lefthalf.filled")
+                        SegmentOption(id: AppTheme.light.rawValue, label: "Light", icon: .sun),
+                        SegmentOption(id: AppTheme.dark.rawValue, label: "Dark", icon: .moon),
+                        SegmentOption(id: AppTheme.system.rawValue, label: "System", icon: .circleHalf)
                     ],
                     selectedId: store.theme.rawValue,
                     isDark: store.isDarkMode,
@@ -1036,6 +991,37 @@ private struct AppearanceSection: View {
                 ) { newId in
                     if let theme = AppTheme(rawValue: newId) {
                         store.theme = theme
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel(
+                    "Browser UI",
+                    uiFont: store.leanUIFont,
+                    isDark: store.isDarkMode,
+                    headingWeight: store.uiHeadingWeight,
+                    bodyWeight: store.uiBodyWeight
+                )
+
+                SettingsGroup(isDark: store.isDarkMode) {
+                    SettingsSliderRow(
+                        title: "Interface size",
+                        subtitle: "Scales browser controls, icons, tabs, sidebars, and browser text",
+                        uiFont: store.leanUIFont,
+                        isDark: store.isDarkMode,
+                        headingWeight: store.uiHeadingWeight,
+                        bodyWeight: store.uiBodyWeight
+                    ) {
+                        SettingsValueSlider(
+                            value: $store.browserUIScalePercent,
+                            range: 80...120,
+                            step: 5,
+                            label: "UI",
+                            valueSuffix: "%",
+                            isDark: store.isDarkMode,
+                            uiFont: store.leanUIFont
+                        )
                     }
                 }
             }
@@ -1156,9 +1142,9 @@ private struct TabsSection: View {
 
                 CustomSegmentedPicker(
                     options: [
-                        SegmentOption(id: TabDisplayMode.textOnly.rawValue, label: "Text Only", icon: "text.alignleft"),
-                        SegmentOption(id: TabDisplayMode.iconOnly.rawValue, label: "Icon Only", icon: "square.grid.2x2"),
-                        SegmentOption(id: TabDisplayMode.hybrid.rawValue, label: "Hybrid", icon: "rectangle.badge.checkmark")
+                        SegmentOption(id: TabDisplayMode.textOnly.rawValue, label: "Text Only", icon: .textAlignLeft),
+                        SegmentOption(id: TabDisplayMode.iconOnly.rawValue, label: "Icon Only", icon: .squaresFour),
+                        SegmentOption(id: TabDisplayMode.hybrid.rawValue, label: "Hybrid", icon: .checkSquare)
                     ],
                     selectedId: store.tabDisplayMode.rawValue,
                     isDark: store.isDarkMode,
@@ -1210,9 +1196,7 @@ private struct TabLayoutPickerView: View {
                 isDark: store.isDarkMode,
                 uiFont: store.leanUIFont
             ) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                    store.tabLayout = .top
-                }
+                store.tabLayout = .top
             }
 
             TabLayoutCard(
@@ -1221,9 +1205,7 @@ private struct TabLayoutPickerView: View {
                 isDark: store.isDarkMode,
                 uiFont: store.leanUIFont
             ) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                    store.tabLayout = .sidebar
-                }
+                store.tabLayout = .sidebar
             }
         }
         .padding(.vertical, 4)
@@ -1284,9 +1266,6 @@ private struct TabLayoutCard: View {
                     x: 0,
                     y: 2
                 )
-                .scaleEffect(isHovered ? 1.02 : 1.0)
-                .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isHovered)
-                .animation(.spring(response: 0.24, dampingFraction: 0.82), value: isSelected)
 
                 // Label below card
                 Text(layout.title)
@@ -1390,15 +1369,46 @@ private struct BrowsingSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
+            // Rendering Engine — WebKit default, CEF opt-in. Switching restarts Lean.
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Rendering Engine", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+
+                CustomSegmentedPicker(
+                    options: [
+                        SegmentOption(id: BrowserEngineKind.webKit.rawValue, label: "WebKit", icon: .compass),
+                        SegmentOption(id: BrowserEngineKind.cef.rawValue, label: "Chromium", icon: .cpu)
+                    ],
+                    selectedId: store.engineKind.rawValue,
+                    isDark: store.isDarkMode,
+                    uiFont: store.leanUIFont
+                ) { newId in
+                    if let kind = BrowserEngineKind(rawValue: newId) {
+                        // Don't persist Chromium when it can't render here
+                        // (no bundled framework or DerivedData run) — after
+                        // relaunch every tab would show the unavailable-engine
+                        // notice. Stay on WebKit instead.
+                        if kind == .cef, !CEFIntegration.canRender() {
+                            store.requestEngineChange(.webKit)
+                            return
+                        }
+                        store.requestEngineChange(kind)
+                    }
+                }
+
+                Text(engineFootnote)
+                    .font(store.leanUIFont.font(size: 11.5))
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.45) : Color.black.opacity(0.45))
+            }
+
             // Scrollbar Style
             VStack(alignment: .leading, spacing: 8) {
                 SettingsHeaderLabel("Scrollbar Appearance", uiFont: store.leanUIFont, isDark: store.isDarkMode)
 
                 CustomSegmentedPicker(
                     options: [
-                        SegmentOption(id: ScrollbarStyle.hidden.rawValue, label: "Hidden", icon: "eye.slash"),
-                        SegmentOption(id: ScrollbarStyle.thin.rawValue, label: "Thin", icon: "line.3.horizontal"),
-                        SegmentOption(id: ScrollbarStyle.normal.rawValue, label: "Default", icon: "slider.vertical.3")
+                        SegmentOption(id: ScrollbarStyle.hidden.rawValue, label: "Hidden", icon: .eyeSlash),
+                        SegmentOption(id: ScrollbarStyle.thin.rawValue, label: "Thin", icon: .list),
+                        SegmentOption(id: ScrollbarStyle.normal.rawValue, label: "Default", icon: .sliders)
                     ],
                     selectedId: store.scrollbarStyle.rawValue,
                     isDark: store.isDarkMode,
@@ -1424,7 +1434,36 @@ private struct BrowsingSection: View {
                     )
                 }
             }
+
+            // Text Rendering
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Text Rendering", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+
+                SettingsGroup(isDark: store.isDarkMode) {
+                    CustomToggleRow(
+                        title: "Font smoothing",
+                        subtitle: "Grayscale antialiasing for page text in WebKit and Chromium. Off by default. The browser chrome itself always follows the macOS system setting.",
+                        isOn: $store.fontSmoothingEnabled,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
+                }
+            }
         }
+    }
+
+    private var engineFootnote: String {
+        let engineName: String = {
+            switch store.engineKind {
+            case .webKit: return "System WebKit · default, no bundled engine."
+            case .cef:
+                if CEFIntegration.isAvailable() {
+                    return "Chromium (CEF) · bundled engine, broader site compatibility."
+                }
+                return "Chromium selected · framework not bundled in this build (see docs/CEF.md)."
+            }
+        }()
+        return engineName + " Switching engines restarts Lean; open tabs are restored."
     }
 }
 
@@ -1453,7 +1492,7 @@ private struct PrivacySection: View {
 
                     CustomToggleRow(
                         title: "Tracker & ad filtering",
-                        subtitle: "Built-in blocking powered by uBlock Origin filter lists (EasyList, EasyPrivacy, uBlock filters).",
+                        subtitle: "Built-in network and cosmetic blocking powered by EasyList, EasyPrivacy, and uBlock filters.",
                         isOn: $store.adBlockingEnabled,
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont
@@ -1524,8 +1563,9 @@ private struct PrivacySection: View {
 
                         if historyCleared {
                             HStack(spacing: 4) {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 10, weight: .bold))
+                                Ph.check.bold
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 10, height: 10)
                                 Text("Cleared")
                                     .font(store.leanUIFont.font(size: 11.5, weight: .medium))
                             }
@@ -1669,8 +1709,9 @@ private struct ShortcutsSection: View {
             VStack(spacing: 12) {
                 // Search Input Field
                 HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 11.5, weight: .medium))
+                    Ph.magnifyingGlass.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.35))
 
                     TextField("Search shortcuts or keys...", text: $searchQuery)
@@ -1682,8 +1723,9 @@ private struct ShortcutsSection: View {
                         Button {
                             searchQuery = ""
                         } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 11))
+                            Ph.xCircle.fill
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 12, height: 12)
                                 .foregroundColor(secondaryText)
                         }
                         .buttonStyle(.plain)
@@ -1737,8 +1779,9 @@ private struct ShortcutsSection: View {
                             }
                         } label: {
                             HStack(spacing: 4) {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 10, weight: .semibold))
+                                Ph.arrowCounterClockwise.fill
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 10, height: 10)
                                 Text("Reset All")
                                     .font(store.leanUIFont.font(size: 11, weight: .medium))
                             }
@@ -1809,8 +1852,9 @@ private struct ShortcutsSection: View {
                             } label: {
                                 HStack(spacing: 4) {
                                     if wasTriggered {
-                                        Image(systemName: "checkmark")
-                                            .font(.system(size: 9.5, weight: .bold))
+                                        Ph.check.bold
+                                            .aspectRatio(contentMode: .fit)
+                                            .frame(width: 9.5, height: 9.5)
                                             .foregroundColor(Color(red: 48/255, green: 209/255, blue: 88/255))
                                     }
                                     Text(wasTriggered ? "Triggered" : "Test")
@@ -1863,7 +1907,7 @@ private struct ShortcutsSection: View {
                                 } else {
                                     HStack(spacing: 3) {
                                         ForEach(Array(combo.displayKeys.enumerated()), id: \.offset) { _, key in
-                                            KeycapBadge(key: key, isDark: store.isDarkMode, font: store.leanUIFont)
+                                             KeycapBadge(key: key, isDark: store.isDarkMode, font: store.leanUIFont)
                                         }
                                     }
                                     .padding(.horizontal, 4)
@@ -1888,8 +1932,9 @@ private struct ShortcutsSection: View {
                                         store.resetShortcut(for: action)
                                     }
                                 } label: {
-                                    Image(systemName: "arrow.counterclockwise")
-                                        .font(.system(size: 9.5, weight: .semibold))
+                                    Ph.arrowCounterClockwise.fill
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: 9.5, height: 9.5)
                                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.45) : Color.black.opacity(0.40))
                                         .frame(width: 20, height: 20)
                                         .background(
@@ -2009,8 +2054,9 @@ private struct DownloadsSection: View {
 
                 SettingsGroup(isDark: store.isDarkMode) {
                     HStack(alignment: .center, spacing: 16) {
-                        Image(systemName: "folder.fill")
-                            .font(.system(size: 15))
+                        Ph.folder.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 15, height: 15)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
                             .frame(width: 30, height: 30)
                             .background(
@@ -2081,8 +2127,9 @@ private struct DownloadsSection: View {
                             }
                         } label: {
                             HStack(spacing: 4) {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 9.5))
+                                Ph.trash.fill
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 9.5, height: 9.5)
                                 Text("Clear Finished")
                                     .font(store.leanUIFont.font(size: 11, weight: .medium))
                             }
@@ -2100,8 +2147,9 @@ private struct DownloadsSection: View {
 
                 if !store.downloadManager.downloads.isEmpty {
                     HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 11.5, weight: .medium))
+                        Ph.magnifyingGlass.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 12, height: 12)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
 
                         TextField("Search downloads...", text: $searchText)
@@ -2113,8 +2161,9 @@ private struct DownloadsSection: View {
                             Button {
                                 searchText = ""
                             } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 11))
+                                Ph.xCircle.fill
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 12, height: 12)
                                     .foregroundColor(secondaryText)
                             }
                             .buttonStyle(.plain)
@@ -2134,8 +2183,9 @@ private struct DownloadsSection: View {
 
                 if store.downloadManager.downloads.isEmpty {
                     VStack(spacing: 12) {
-                        Image(systemName: "arrow.down.circle")
-                            .font(.system(size: 32, weight: .ultraLight))
+                        Ph.arrowCircleDown.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 32, height: 32)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.30) : Color.black.opacity(0.30))
                         Text("No Downloads Yet")
                             .font(store.leanUIFont.font(size: 14, weight: .medium))
@@ -2148,8 +2198,9 @@ private struct DownloadsSection: View {
                     .padding(.vertical, 48)
                 } else if filteredItems.isEmpty {
                     VStack(spacing: 12) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 28, weight: .light))
+                        Ph.magnifyingGlass.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 28, height: 28)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.30) : Color.black.opacity(0.30))
                         Text("No Matches Found")
                             .font(store.leanUIFont.font(size: 14, weight: .medium))
@@ -2243,8 +2294,9 @@ private struct DownloadSettingsRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: DownloadFormat.systemImage(for: item.fileName))
-                .font(.system(size: 14))
+            DownloadFormat.icon(for: item.fileName).fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 16, height: 16)
                 .foregroundColor(store.isDarkMode ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
                 .frame(width: 32, height: 32)
                 .background(
@@ -2289,21 +2341,21 @@ private struct DownloadSettingsRow: View {
                             .font(.system(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.45) : Color.black.opacity(0.40))
                     }
-                    SettingsIconButton(systemImage: "xmark", help: "Cancel download", store: store) {
+                    SettingsIconButton(icon: .x, help: "Cancel download", store: store) {
                         store.cancelDownload(id: item.id)
                     }
                     .opacity(showHoverActions ? 1 : 0)
                     .disabled(!showHoverActions)
                 } else if showHoverActions {
-                    SettingsIconButton(systemImage: "folder", help: "Show in Finder", store: store) {
+                    SettingsIconButton(icon: .folder, help: "Show in Finder", store: store) {
                         store.revealDownload(item)
                     }
                     if item.state == .completed {
-                        SettingsIconButton(systemImage: "arrow.up.forward", help: "Open file", store: store) {
+                        SettingsIconButton(icon: .arrowUpRight, help: "Open file", store: store) {
                             store.openDownload(item)
                         }
                     }
-                    SettingsIconButton(systemImage: "trash", help: "Remove from list", store: store) {
+                    SettingsIconButton(icon: .trash, help: "Remove from list", store: store) {
                         withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
                             store.downloadManager.removeDownload(id: item.id)
                         }
@@ -2337,23 +2389,144 @@ private struct DownloadSettingsRow: View {
 }
 
 private struct SettingsIconButton: View {
-    let systemImage: String
+    let icon: Ph
     let help: String
     @ObservedObject var store: LeanStore
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 11, weight: .medium))
+            icon.uiIcon
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 11, height: 11)
                 .foregroundColor(store.isDarkMode ? Color.white.opacity(0.7) : Color.black.opacity(0.65))
                 .frame(width: 26, height: 26)
                 .background(
                     store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05),
                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                 )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .help(help)
+    }
+}
+
+// MARK: - Sidebar Category Button
+private struct SidebarCategoryButton: View {
+    let category: SettingsCategory
+    let isSelected: Bool
+    let isDark: Bool
+    let primaryText: Color
+    let headingFont: (CGFloat) -> Font
+    let onSelect: () -> Void
+
+    @State private var isHovered = false
+
+    private var iconColor: Color {
+        if isSelected || isHovered { return primaryText }
+        return isDark ? Color.white.opacity(0.55) : Color.black.opacity(0.50)
+    }
+
+    private var labelColor: Color {
+        if isSelected || isHovered { return primaryText }
+        return isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.60)
+    }
+
+    private var rowFill: Color {
+        if isSelected { return isDark ? Color.white.opacity(0.09) : Color.black.opacity(0.06) }
+        if isHovered { return isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.035) }
+        return Color.clear
+    }
+
+    private var rowStroke: Color? {
+        guard isSelected else { return nil }
+        return isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04)
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 10) {
+                category.icon.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 14, height: 14)
+                    .foregroundColor(iconColor)
+                    .frame(width: 18)
+
+                Text(category.rawValue)
+                    .font(headingFont(13))
+                    .foregroundColor(labelColor)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 32)
+            // Static background: no sliding pill, so the hit area never
+            // moves between mouseDown and mouseUp.
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(rowFill)
+                    .overlay(
+                        Group {
+                            if let stroke = rowStroke {
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .stroke(stroke, lineWidth: 0.5)
+                            }
+                        }
+                    )
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+    }
+}
+
+// MARK: - Compact Category Button
+private struct CompactCategoryButton: View {
+    let category: SettingsCategory
+    let isSelected: Bool
+    let isDark: Bool
+    let primaryText: Color
+    let headingFont: (CGFloat) -> Font
+    let onSelect: () -> Void
+
+    @State private var isHovered = false
+
+    private var labelColor: Color {
+        if isSelected || isHovered { return primaryText }
+        return isDark ? Color.white.opacity(0.50) : Color.black.opacity(0.50)
+    }
+
+    private var rowFill: Color {
+        if isSelected { return isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.07) }
+        if isHovered { return isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.035) }
+        return Color.clear
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 6) {
+                category.icon.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 12, height: 12)
+                Text(category.rawValue)
+            }
+            .font(headingFont(12))
+            .foregroundColor(labelColor)
+            .padding(.horizontal, 12)
+            .frame(height: 30)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(rowFill)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
     }
 }

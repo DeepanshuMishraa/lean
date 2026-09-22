@@ -77,9 +77,15 @@ final class OmnibarService {
             }
         }
 
-        // 2. Add matching history entries
+        // 2. Add matching history entries.
+        // When navigating to loopback, past search-engine pages about that
+        // address (e.g. "localhost:3000 at DuckDuckGo") are never useful.
+        let queryIsLoopback = AddressResolver.isLoopbackURLString(trimmed)
         var directMatch: OmnibarSuggestion?
         let historyMatches = history.filter { item in
+            if queryIsLoopback && !AddressResolver.isLoopbackURLString(item.url.absoluteString) {
+                return false
+            }
             let title = item.title.lowercased()
             let host = item.url.host?.lowercased() ?? ""
             let matchesQuery = lower.count == 1
@@ -106,17 +112,43 @@ final class OmnibarService {
 
         // 3. Fallback for domain-like input
         if directMatch == nil && !trimmed.contains(" ") {
-            if trimmed.contains(".") || trimmed.hasPrefix("localhost") {
-                let urlString = trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://")
-                    ? trimmed
-                    : "https://\(trimmed)"
+            let lowerTrimmed = trimmed.lowercased()
+            let hasExplicitWebScheme = lowerTrimmed.hasPrefix("http://") || lowerTrimmed.hasPrefix("https://")
+            if hasExplicitWebScheme
+                || trimmed.contains(".")
+                || trimmed.hasPrefix("localhost")
+                || AddressResolver.isLoopbackInput(trimmed)
+                || trimmed.hasPrefix("[::1]") {
+                let urlString: String
+                if hasExplicitWebScheme {
+                    urlString = trimmed
+                } else if AddressResolver.isLoopbackInput(trimmed) {
+                    // Dev servers serve plain HTTP; https:// would fail silently.
+                    urlString = "http://\(trimmed)"
+                } else {
+                    urlString = "https://\(trimmed)"
+                }
                 if let url = URL(string: urlString) {
-                    let host = url.host ?? trimmed
+                    // Re-classify by the parsed host so bare loopback forms
+                    // with only a query/fragment (e.g. `localhost?x=1`)
+                    // still select plain HTTP even if the raw-input check missed.
+                    let parsedHost = url.host ?? ""
+                    let isLoopbackHost = AddressResolver.isLoopbackInput(parsedHost)
+                        || AddressResolver.isLoopbackURLString(url.absoluteString)
+                    let finalURL: URL
+                    if isLoopbackHost, url.scheme?.lowercased() == "https",
+                       var comp = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+                        comp.scheme = "http"
+                        finalURL = comp.url ?? url
+                    } else {
+                        finalURL = url
+                    }
+                    let host = finalURL.host ?? trimmed
                     directMatch = OmnibarSuggestion(
                         primaryText: host,
                         secondaryText: host,
                         isSearch: false,
-                        targetURL: url
+                        targetURL: finalURL
                     )
                 }
             }
@@ -126,17 +158,22 @@ final class OmnibarService {
             results.append(directMatch)
         }
 
-        // 4. Search suggestion with the selected search engine
-        var comp = searchEngine.searchURL.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
-        comp?.queryItems = [URLQueryItem(name: "q", value: trimmed)]
-        if let searchURL = comp?.url {
-            results.append(OmnibarSuggestion(
-                primaryText: trimmed,
-                secondaryText: searchEngine.name,
-                isSearch: true,
-                targetURL: searchURL,
-                searchEngine: searchEngine
-            ))
+        // 4. Search suggestion with the selected search engine.
+        // Skipped when the input directly resolves to a loopback URL:
+        // nobody wants to Google "localhost:3000".
+        let suppressSearch = directMatch.map { AddressResolver.isLoopbackURLString($0.targetURL.absoluteString) } ?? false
+        if !suppressSearch {
+            var comp = searchEngine.searchURL.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
+            comp?.queryItems = [URLQueryItem(name: "q", value: trimmed)]
+            if let searchURL = comp?.url {
+                results.append(OmnibarSuggestion(
+                    primaryText: trimmed,
+                    secondaryText: searchEngine.name,
+                    isSearch: true,
+                    targetURL: searchURL,
+                    searchEngine: searchEngine
+                ))
+            }
         }
 
         return results

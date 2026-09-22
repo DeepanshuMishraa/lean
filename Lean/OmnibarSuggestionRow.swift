@@ -90,8 +90,9 @@ struct SuggestionRow: View {
                     )
                     .frame(width: 22, height: 22)
 
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 10, weight: isSelected ? .bold : .semibold))
+                Ph.arrowRight.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 10, height: 10)
                     .foregroundColor(
                         isSelected
                             ? (store.isDarkMode ? Color.black : Color.white)
@@ -175,8 +176,9 @@ private struct BrandFaviconView: View {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(isDark ? Color.white : Color.black)
                     .frame(width: 20, height: 20)
-                Image(systemName: "chevron.left.forwardslash.chevron.right")
-                    .font(.system(size: 8.5, weight: .black))
+                Ph.code.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 10, height: 10)
                     .foregroundColor(isDark ? Color.black : Color.white)
             }
 
@@ -185,8 +187,9 @@ private struct BrandFaviconView: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(Color(red: 255/255, green: 0, blue: 0))
                     .frame(width: 20, height: 14)
-                Image(systemName: "play.fill")
-                    .font(.system(size: 6.5))
+                Ph.play.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 7, height: 7)
                     .foregroundColor(.white)
                     .offset(x: 0.5)
             }
@@ -197,51 +200,52 @@ private struct BrandFaviconView: View {
                 .foregroundColor(isDark ? Color.white : Color.black)
 
         case .cloudflare:
-            Image(systemName: "cloud.fill")
-                .font(.system(size: 13, weight: .semibold))
+            Ph.cloud.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 13, height: 13)
                 .foregroundColor(Color(red: 243/255, green: 128/255, blue: 32/255))
 
         case .discord:
-            Image(systemName: "bubble.left.and.bubble.right.fill")
-                .font(.system(size: 13, weight: .semibold))
+            Ph.chats.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 13, height: 13)
                 .foregroundColor(Color(red: 88/255, green: 101/255, blue: 242/255))
 
         case .claude:
-            Image(systemName: "sparkles")
-                .font(.system(size: 13, weight: .semibold))
+            Ph.sparkle.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 13, height: 13)
                 .foregroundColor(Color(red: 217/255, green: 119/255, blue: 87/255))
 
         case .slack:
-            Image(systemName: "number")
-                .font(.system(size: 14, weight: .black))
+            Ph.hash.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 14, height: 14)
                 .foregroundColor(Color(red: 224/255, green: 30/255, blue: 90/255))
 
         case .apple:
-            Image(systemName: "apple.logo")
-                .font(.system(size: 13, weight: .semibold))
+            Ph.appleLogo.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 13, height: 13)
                 .foregroundColor(isDark ? Color.white : Color.black)
 
         case .google:
             GoogleFaviconView()
 
         case .contact:
-            Image(systemName: "bubble.left.and.text.bubble.right.fill")
-                .font(.system(size: 13))
+            Ph.chatText.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 13, height: 13)
                 .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
 
         case .search:
             SearchEngineFaviconView(engine: match.searchEngine ?? .google, isDark: isDark)
 
         case .generic:
-            if match.isSwitchToTab {
-                Image(systemName: "macwindow")
-                    .font(.system(size: 13))
-                    .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
-            } else {
-                Image(systemName: "globe")
-                    .font(.system(size: 13))
-                    .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
-            }
+            Ph.browser.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 13, height: 13)
+                .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
         }
     }
 }
@@ -258,8 +262,9 @@ private struct SearchEngineFaviconView: View {
                     .resizable()
                     .scaledToFit()
             } else {
-                Image(systemName: "globe")
-                    .font(.system(size: 13, weight: .semibold))
+                Ph.browser.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 13, height: 13)
                     .foregroundColor(isDark ? .white.opacity(0.7) : .black.opacity(0.55))
             }
         }
@@ -297,8 +302,9 @@ private struct GoogleFaviconView: View {
                 .interpolation(.high)
                 .frame(width: 16, height: 16)
         } else {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 13, weight: .medium))
+            Ph.magnifyingGlass.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 13, height: 13)
                 .foregroundColor(Color(red: 66/255, green: 133/255, blue: 244/255))
                 .frame(width: 16, height: 16)
         }

@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import WebKit
 
 @MainActor
@@ -15,10 +16,26 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     @Published var favicon: NSImage? = nil
     private(set) var scrollbarStyle: ScrollbarStyle
     private(set) var smoothScrollingEnabled: Bool
+    private(set) var fontSmoothingEnabled: Bool
     private(set) var pageFont: LeanFont
     private(set) var pageHeadingWeight: Int
     private(set) var pageBodyWeight: Int
     private(set) var adBlockingEnabled: Bool
+    /// Engine this tab was created with. Never hot-swapped: changing the
+    /// global engine choice only affects newly opened tabs.
+    private(set) var engineKind: BrowserEngineKind
+
+    // MARK: - CEF engine state (nil for WebKit tabs)
+    var cefHost: CEFBrowserHost?
+    private var cefContainer: CEFContainerView?
+    private var pendingCEFURL: URL?
+    private var cefAttached = false
+    /// Set when the renderer dies (crash/OOM/launch failure). The view
+    /// layer swaps the dead page for a notice with Reload instead of a
+    /// permanent blank. Cleared on the next navigation.
+    @Published private(set) var cefCrashed = false
+    private var cefDownloadItems: [String: UUID] = [:]
+    private var cefDownloadSamples: [UUID: (bytes: Int64, date: Date, speed: Double)] = [:]
 
     var isSettingsPage: Bool {
         guard let url = url else { return false }
@@ -27,7 +44,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     var onStateChange: (() -> Void)?
     var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
+    var onCloseTab: (() -> Void)?
+    /// CEF popup URLs (v1: opened as plain new tabs inheriting the store engine).
+    var onOpenNewTabURL: ((URL) -> Void)?
     var downloadManager: DownloadManager?
+    var mediaPermissionStore: MediaPermissionStore?
     private var progressObserver: NSKeyValueObservation?
     private var navigationObservers: [NSKeyValueObservation] = []
     private var activeDownloadIDs: [ObjectIdentifier: UUID] = [:]
@@ -38,6 +59,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     func cancelActiveDownload(id: UUID) {
         activeDownloadObjects[id]?.cancel()
         activeDownloadObjects[id] = nil
+        if let cefKey = cefDownloadItems.first(where: { $0.value == id })?.key {
+            cefDownloadItems.removeValue(forKey: cefKey)
+            cefDownloadSamples.removeValue(forKey: id)
+            cefHost?.cancelDownload(cefKey)
+        }
     }
 
     init(
@@ -46,14 +72,18 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         isDark: Bool = false,
         scrollbarStyle: ScrollbarStyle = .normal,
         smoothScrolling: Bool = true,
+        fontSmoothing: Bool = false,
         pageFont: LeanFont = .system,
         pageHeadingWeight: Int = 0,
         pageBodyWeight: Int = 0,
         adBlockingEnabled: Bool = true,
+        engineKind: BrowserEngineKind = .webKit,
         configuration: WKWebViewConfiguration? = nil
     ) {
+        self.engineKind = engineKind
         self.scrollbarStyle = scrollbarStyle
         self.smoothScrollingEnabled = smoothScrolling
+        self.fontSmoothingEnabled = fontSmoothing
         self.pageFont = pageFont
         self.pageHeadingWeight = pageHeadingWeight
         self.pageBodyWeight = pageBodyWeight
@@ -84,6 +114,18 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             forMainFrameOnly: false
         )
         configuration.userContentController.addUserScript(smoothScript)
+        let fontSmoothingScript = WKUserScript(
+            source: PageScripts.fontSmoothing(enabled: fontSmoothing),
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: false
+        )
+        configuration.userContentController.addUserScript(fontSmoothingScript)
+        let youtubeAdsScript = WKUserScript(
+            source: PageScripts.youtubeAds(enabled: adBlockingEnabled),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        configuration.userContentController.addUserScript(youtubeAdsScript)
         configuration.userContentController.addUserScript(
             WKUserScript(
                 source: PageScripts.pageReady,
@@ -151,6 +193,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             }
         ]
 
+        if engineKind == .cef, CEFIntegration.canRender() {
+            setupCEFHost()
+        }
         applyAdBlocking(adBlockingEnabled)
 
         if let initialURL {
@@ -160,6 +205,22 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     func applyAdBlocking(_ enabled: Bool) {
         adBlockingEnabled = enabled
+        if engineKind == .cef {
+            cefHost?.setAdBlockingEnabled(enabled)
+            return
+        }
+        // Rebuild re-registers every script with the fresh flag (including
+        // the YouTube scriptlet, whose content is baked in at registration)
+        // and re-syncs the rule lists. Idempotent; safe to call on toggles.
+        // User scripts only affect future navigations, so also patch the
+        // live page: install/uninstall the YouTube hooks in place.
+        rebuildUserScripts()
+        webView.evaluateJavaScript(PageScripts.youtubeAdsLive(enabled: enabled)) { _, _ in }
+    }
+
+    /// Adds/removes the compiled content-rule lists without touching scripts.
+    private func syncContentRuleLists() {
+        let enabled = adBlockingEnabled
         Task { [weak self] in
             let ruleLists = await ContentBlocker.ruleLists()
             guard let self, self.adBlockingEnabled == enabled else { return }
@@ -206,6 +267,18 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             forMainFrameOnly: false
         )
         webView.configuration.userContentController.addUserScript(smoothScript)
+        let fontSmoothingScript = WKUserScript(
+            source: PageScripts.fontSmoothing(enabled: fontSmoothingEnabled),
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: false
+        )
+        webView.configuration.userContentController.addUserScript(fontSmoothingScript)
+        let youtubeAdsScript = WKUserScript(
+            source: PageScripts.youtubeAds(enabled: adBlockingEnabled),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        webView.configuration.userContentController.addUserScript(youtubeAdsScript)
         webView.configuration.userContentController.addUserScript(
             WKUserScript(
                 source: PageScripts.pageReady,
@@ -214,11 +287,17 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             )
         )
 
-        applyAdBlocking(adBlockingEnabled)
+        syncContentRuleLists()
     }
 
     func applyScrollbarStyle(_ style: ScrollbarStyle) {
         self.scrollbarStyle = style
+        if engineKind == .cef {
+            // CEF has no persistent user-script store: inject into the live
+            // page now; navigations re-apply via onLoadingState below.
+            cefHost?.executeJavaScript(PageScripts.scrollbar(style))
+            return
+        }
         rebuildUserScripts()
         let script = PageScripts.scrollbar(style)
         webView.evaluateJavaScript(script) { _, _ in }
@@ -228,6 +307,19 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         self.smoothScrollingEnabled = enabled
         rebuildUserScripts()
         let script = PageScripts.smoothScrolling(enabled: enabled)
+        webView.evaluateJavaScript(script) { _, _ in }
+    }
+
+    func applyFontSmoothing(_ enabled: Bool) {
+        self.fontSmoothingEnabled = enabled
+        if engineKind == .cef {
+            // CEF has no persistent user-script store: inject into the live
+            // page now; navigations re-apply via onLoadingState below.
+            cefHost?.executeJavaScript(PageScripts.fontSmoothing(enabled: enabled))
+            return
+        }
+        rebuildUserScripts()
+        let script = PageScripts.fontSmoothing(enabled: enabled)
         webView.evaluateJavaScript(script) { _, _ in }
     }
 
@@ -270,6 +362,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     func load(_ url: URL) {
         self.url = url
+        cefCrashed = false
         if title == "New Tab" || title.isEmpty {
             self.title = url.host ?? "Loading..."
         }
@@ -280,6 +373,16 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             self.canGoBack = webView.canGoBack
             self.canGoForward = webView.canGoForward
             onStateChange?()
+            return
+        }
+        if let cef = cefHost {
+            pendingCEFURL = url
+            isLoading = true
+            onStateChange?()
+            updateFavicon(for: url)
+            if cefAttached {
+                cef.loadURL(url.absoluteString)
+            }
             return
         }
         isLoading = true
@@ -294,29 +397,67 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     func goBack() {
+        if let cef = cefHost {
+            isLoading = true
+            onStateChange?()
+            cef.goBack()
+            return
+        }
         isLoading = true
         onStateChange?()
         webView.goBack()
     }
     func goForward() {
+        if let cef = cefHost {
+            isLoading = true
+            onStateChange?()
+            cef.goForward()
+            return
+        }
         isLoading = true
         onStateChange?()
         webView.goForward()
     }
     func reload() {
+        cefCrashed = false
+        if let cef = cefHost {
+            isLoading = true
+            onStateChange?()
+            cef.reload()
+            return
+        }
         isLoading = true
         onStateChange?()
         webView.reload()
     }
     func reloadFromOrigin() {
+        if let cef = cefHost {
+            isLoading = true
+            onStateChange?()
+            cef.reloadFromOrigin()
+            return
+        }
         isLoading = true
         onStateChange?()
         webView.reloadFromOrigin()
     }
     func stop() {
+        if let cef = cefHost {
+            isLoading = false
+            cef.stopLoading()
+            onStateChange?()
+            return
+        }
         isLoading = false
         webView.stopLoading()
         onStateChange?()
+    }
+
+    /// Window for modal sheets. CEF tabs mount `CEFContainerView`, not
+    /// `webView`, so `webView.window` is nil there — fall back to the
+    /// container's window before giving up.
+    private var sheetWindow: NSWindow? {
+        cefContainer?.window ?? webView.window
     }
 
     func destroy() {
@@ -327,6 +468,26 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         isLoading = false
         onStateChange = nil
         onOpenNewTab = nil
+        onCloseTab = nil
+        onOpenNewTabURL = nil
+
+        // Cancel tracked CEF downloads before dropping the mappings so the
+        // CEF item stops and the DownloadManager row is finalized.
+        if !cefDownloadItems.isEmpty {
+            for (cefKey, itemID) in cefDownloadItems {
+                cefHost?.cancelDownload(cefKey)
+                downloadManager?.cancelDownload(id: itemID)
+            }
+        }
+        if let cef = cefHost {
+            cef.close()
+            cefHost = nil
+        }
+        cefContainer?.removeFromSuperview()
+        cefContainer = nil
+        pendingCEFURL = nil
+        cefDownloadItems.removeAll()
+        cefDownloadSamples.removeAll()
 
         // 1. Pause and remove all audio/video elements immediately
         let stopMediaJS = """
@@ -365,22 +526,68 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.removeFromSuperview()
     }
 
-    func zoomIn() { webView.pageZoom = min(webView.pageZoom + 0.1, 3) }
-    func zoomOut() { webView.pageZoom = max(webView.pageZoom - 0.1, 0.5) }
-    func resetZoom() { webView.pageZoom = 1 }
+    func zoomIn() {
+        if let cef = cefHost { cef.zoomIn(); return }
+        webView.pageZoom = min(webView.pageZoom + 0.1, 3)
+    }
+    func zoomOut() {
+        if let cef = cefHost { cef.zoomOut(); return }
+        webView.pageZoom = max(webView.pageZoom - 0.1, 0.5)
+    }
+    func resetZoom() {
+        if let cef = cefHost { cef.resetZoom(); return }
+        webView.pageZoom = 1
+    }
+
+    func focusContent() {
+        if let cef = cefHost {
+            cef.focus()
+        } else {
+            webView.window?.makeFirstResponder(webView)
+        }
+    }
 
     func find(_ query: String) {
         guard !query.isEmpty else { return }
+        if let cef = cefHost { cef.find(query); return }
         webView.find(query, configuration: WKFindConfiguration()) { _ in }
     }
 
     func captureSnapshot() {
+        if engineKind == .cef {
+            captureCEFSnapshot()
+            return
+        }
         guard webView.bounds.width > 0 && webView.bounds.height > 0 else { return }
         let config = WKSnapshotConfiguration()
         config.snapshotWidth = 440 // High DPI thumbnail width
         webView.takeSnapshot(with: config) { [weak self] image, _ in
             guard let self, let image else { return }
             self.snapshot = image
+        }
+    }
+
+    /// CEF renders into a GPU surface that macOS window capture returns as
+    /// black. Ask Chromium's compositor for the page image instead.
+    private func captureCEFSnapshot() {
+        guard url != nil, !isSettingsPage, let cefHost else { return }
+        cefHost.captureSnapshot { [weak self] data in
+            guard let self, let data,
+                  let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  let image = CGImageSourceCreateThumbnailAtIndex(
+                    source,
+                    0,
+                    [
+                        kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceCreateThumbnailWithTransform: true,
+                        kCGImageSourceThumbnailMaxPixelSize: 440
+                    ] as CFDictionary
+                  )
+            else { return }
+            self.snapshot = NSImage(
+                cgImage: image,
+                size: NSSize(width: image.width, height: image.height)
+            )
         }
     }
 
@@ -476,16 +683,91 @@ extension LeanTab: WKNavigationDelegate {
 
     func webView(
         _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        if let url = navigationAction.request.url,
+           ExternalLinkPolicy.shouldOpenExternally(url) {
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        let method = challenge.protectionSpace.authenticationMethod
+        if method == NSURLAuthenticationMethodServerTrust {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        if method == NSURLAuthenticationMethodHTTPBasic
+            || method == NSURLAuthenticationMethodHTTPDigest {
+            presentCredentialsSheet(for: challenge, completionHandler: completionHandler)
+            return
+        }
+        // Client certificates and other methods have no in-app UI: fail fast
+        // instead of hanging the page silently.
+        completionHandler(.cancelAuthenticationChallenge, nil)
+    }
+
+    private func presentCredentialsSheet(
+        for challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard let window = webView.window else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        let host = challenge.protectionSpace.host
+        let alert = NSAlert()
+        alert.messageText = "Sign in to \(host)"
+        alert.informativeText = "This site is asking for a username and password."
+        alert.alertStyle = .informational
+        let username = NSTextField(string: challenge.proposedCredential?.user ?? "")
+        username.placeholderString = "Username"
+        let password = NSSecureTextField()
+        password.placeholderString = "Password"
+        let stack = NSStackView(views: [username, password])
+        stack.orientation = .vertical
+        stack.spacing = 8
+        stack.frame = NSRect(x: 0, y: 0, width: 280, height: 52)
+        alert.accessoryView = stack
+        alert.addButton(withTitle: "Sign In")
+        alert.addButton(withTitle: "Cancel")
+        alert.layout()
+        window.makeFirstResponder(username)
+        alert.beginSheetModal(for: window) { response in
+            guard response == .alertFirstButtonReturn else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
+            let credential = URLCredential(
+                user: username.stringValue,
+                password: password.stringValue,
+                persistence: .forSession
+            )
+            completionHandler(.useCredential, credential)
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
         decidePolicyFor navigationResponse: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
-        // Only trigger download if Content-Disposition explicitly specifies attachment
-        if let httpResponse = navigationResponse.response as? HTTPURLResponse {
-            let disposition = (httpResponse.value(forHTTPHeaderField: "Content-Disposition") ?? "").lowercased()
-            if disposition.contains("attachment") {
-                decisionHandler(.download)
-                return
-            }
+        let disposition = (navigationResponse.response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Content-Disposition")
+        if DownloadPolicy.shouldDownload(
+            contentDisposition: disposition,
+            mimeType: navigationResponse.response.mimeType
+        ) {
+            decisionHandler(.download)
+            return
         }
 
         decisionHandler(.allow)
@@ -505,6 +787,114 @@ extension LeanTab: WKUIDelegate {
     ) -> WKWebView? {
         guard let url = navigationAction.request.url else { return nil }
         return onOpenNewTab?(url, configuration)
+    }
+
+    /// Lets OAuth / SSO popups close themselves (`window.close()`), which
+    /// previously stalled the `postMessage` handshake and left dead tabs.
+    func webViewDidClose(_ webView: WKWebView) {
+        onCloseTab?()
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptAlertPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping () -> Void
+    ) {
+        presentAlert(message: message, showsTextField: false, isConfirmation: false) { confirmed, _ in
+            completionHandler()
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        presentAlert(message: message, showsTextField: false, isConfirmation: true) { confirmed, _ in
+            completionHandler(confirmed)
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptTextInputPanelWithPrompt prompt: String,
+        defaultText: String?,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (String?) -> Void
+    ) {
+        presentAlert(message: prompt, showsTextField: true, isConfirmation: true, defaultText: defaultText) { confirmed, text in
+            completionHandler(confirmed ? text : nil)
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+        initiatedByFrame frame: WKFrameInfo,
+        type: WKMediaCaptureType,
+        decisionHandler: @escaping (WKPermissionDecision) -> Void
+    ) {
+        let originKey: String = {
+            if origin.port != 0 {
+                return "\(origin.protocol)://\(origin.host):\(origin.port)"
+            }
+            return "\(origin.protocol)://\(origin.host)"
+        }()
+        if let stored = mediaPermissionStore?.decision(forOriginKey: originKey) {
+            decisionHandler(stored ? .grant : .deny)
+            return
+        }
+        guard let window = webView.window else {
+            decisionHandler(.deny)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Allow camera and microphone?"
+        alert.informativeText = "\(origin.host) wants to use your camera and microphone."
+        alert.addButton(withTitle: "Allow")
+        alert.addButton(withTitle: "Don't Allow")
+        alert.alertStyle = .informational
+        alert.beginSheetModal(for: window) { [weak self] response in
+            let allowed = response == .alertFirstButtonReturn
+            self?.mediaPermissionStore?.setDecision(allowed, forOriginKey: originKey)
+            decisionHandler(allowed ? .grant : .deny)
+        }
+    }
+
+    private func presentAlert(
+        message: String,
+        showsTextField: Bool,
+        isConfirmation: Bool,
+        defaultText: String? = nil,
+        completion: @escaping (Bool, String?) -> Void
+    ) {
+        guard let window = sheetWindow else {
+            completion(false, nil)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = webView.title?.nilIfEmpty ?? url?.host ?? "This page"
+        alert.informativeText = message
+        alert.alertStyle = .informational
+        let textField: NSTextField? = showsTextField ? NSTextField(string: defaultText ?? "") : nil
+        if let textField {
+            textField.frame = NSRect(x: 0, y: 0, width: 280, height: 22)
+            alert.accessoryView = textField
+        }
+        alert.addButton(withTitle: "OK")
+        if isConfirmation || showsTextField {
+            alert.addButton(withTitle: "Cancel")
+        }
+        alert.beginSheetModal(for: window) { response in
+            let confirmed = response == .alertFirstButtonReturn
+            completion(confirmed, textField?.stringValue)
+        }
+        alert.layout()
+        if showsTextField {
+            window.makeFirstResponder(textField)
+        }
     }
 }
 
@@ -614,4 +1004,286 @@ extension LeanTab: WKDownloadDelegate {
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+// MARK: - CEF engine
+
+extension LeanTab {
+    private func setupCEFHost() {
+        guard CEFBootstrap.ensureInitialized() else { return }
+        let host = CEFBrowserHost()
+        cefHost = host
+
+        host.onCreated = { [weak self] in
+            guard let self else { return }
+            if let pendingCEFURL {
+                self.cefHost?.loadURL(pendingCEFURL.absoluteString)
+            }
+        }
+        host.onTitle = { [weak self] title in
+            guard let self else { return }
+            let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.title = clean.isEmpty ? (self.url?.host ?? "New Tab") : clean
+            self.onStateChange?()
+        }
+        host.onURL = { [weak self] urlString in
+            guard let self else { return }
+            if let url = URL(string: urlString) {
+                self.url = url
+            }
+            self.onStateChange?()
+            // YouTube watch->watch is a same-document SPA nav: no new V8
+            // context (Helper early patch) and no OnLoadStart/End
+            // (BrowserHost cosmetic inject) fire. Re-run the idempotent,
+            // hostname-guarded hooks so pruning + skip fallback survive.
+            if self.engineKind == .cef, self.adBlockingEnabled {
+                self.cefHost?.executeJavaScript(PageScripts.youtubeAds(enabled: true))
+            }
+        }
+        host.onLoadingState = { [weak self] loading, back, forward in
+            guard let self else { return }
+            self.isLoading = loading
+            self.canGoBack = back
+            self.canGoForward = forward
+            self.onStateChange?()
+            if !loading {
+                // Fresh documents drop injected styles: restore font
+                // smoothing and the scrollbar style.
+                if self.fontSmoothingEnabled {
+                    self.cefHost?.executeJavaScript(PageScripts.fontSmoothing(enabled: true))
+                }
+                self.cefHost?.executeJavaScript(PageScripts.scrollbar(self.scrollbarStyle))
+                if self.engineKind == .cef, self.adBlockingEnabled {
+                    self.cefHost?.executeJavaScript(PageScripts.youtubeAds(enabled: true))
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    self?.captureSnapshot()
+                }
+            }
+        }
+        host.onFaviconURLs = { [weak self] urls in
+            guard let self else { return }
+            self.updateFavicon(for: self.url, explicitIconURL: urls.first)
+        }
+        host.onLoadError = { [weak self] _, _ in
+            guard let self else { return }
+            self.isLoading = false
+            self.onStateChange?()
+        }
+        host.onRendererTerminated = { [weak self] _ in
+            guard let self else { return }
+            self.isLoading = false
+            self.cefCrashed = true
+            self.onStateChange?()
+        }
+        host.onClose = { [weak self] in
+            self?.onCloseTab?()
+        }
+        host.onPopupURL = { [weak self] urlString in
+            guard let self, let url = URL(string: urlString) else { return }
+            self.onOpenNewTabURL?(url)
+        }
+        host.onJSAlert = { [weak self] message, id in
+            guard let self else { return }
+            self.presentAlert(message: message, showsTextField: false, isConfirmation: false) { _, _ in
+                self.cefHost?.completeJSDialog(id, ok: true, text: nil)
+            }
+        }
+        host.onJSConfirm = { [weak self] message, id in
+            guard let self else { return }
+            self.presentAlert(message: message, showsTextField: false, isConfirmation: true) { confirmed, _ in
+                self.cefHost?.completeJSDialog(id, ok: confirmed, text: nil)
+            }
+        }
+        host.onJSPrompt = { [weak self] message, defaultText, id in
+            guard let self else { return }
+            self.presentAlert(message: message, showsTextField: true, isConfirmation: true, defaultText: defaultText) { confirmed, text in
+                self.cefHost?.completeJSDialog(id, ok: confirmed, text: text)
+            }
+        }
+        host.onAuthChallenge = { [weak self] challengeHost, realm, id in
+            self?.presentCEFCredentialsSheet(host: challengeHost, realm: realm, id: id)
+        }
+        host.onMediaPermission = { [weak self] originURLString, id in
+            self?.handleCEFMediaPermission(originURLString: originURLString, id: id)
+        }
+        host.onDownloadStarted = { [weak self] downloadId, suggestedName, sourceURLString, total in
+            self?.startCEFDownload(id: downloadId, suggestedName: suggestedName,
+                                   sourceURLString: sourceURLString, totalBytes: total)
+        }
+        host.onDownloadProgress = { [weak self] downloadId, received, total in
+            self?.updateCEFDownload(id: downloadId, receivedBytes: received, totalBytes: total)
+        }
+        host.onDownloadFinished = { [weak self] downloadId, _ in
+            self?.finishCEFDownload(id: downloadId)
+        }
+        host.onDownloadFailed = { [weak self] downloadId, cancelled in
+            self?.failCEFDownload(id: downloadId, cancelled: cancelled)
+        }
+    }
+
+    /// The single container view for this tab's CEF browser. Returned to the
+    /// SwiftUI representable so tab switches re-insert the same view.
+    func cefContainerView() -> CEFContainerView {
+        if let cefContainer { return cefContainer }
+        let view = CEFContainerView()
+        view.tab = self
+        cefContainer = view
+        return view
+    }
+
+    /// Creates the browser inside `view` (first presentation only).
+    func attachCEF(to view: NSView) {
+        guard let host = cefHost, !cefAttached else { return }
+        cefAttached = true
+        if ProcessInfo.processInfo.environment["LEAN_CEF_DEBUG"] == "1" {
+            NSLog("CEF attach: container %.0f x %.0f", view.bounds.width, view.bounds.height)
+        }
+        // Only flush a pending URL that still matches the tab; a stale one
+        // (e.g. from before a settings navigation) must not resurrect.
+        let initial: URL?
+        if let pending = pendingCEFURL, pending == url {
+            initial = pending
+        } else {
+            initial = url
+        }
+        pendingCEFURL = initial
+        host.create(in: view, initialURL: initial?.absoluteString)
+    }
+
+    private func presentCEFCredentialsSheet(host challengeHost: String, realm: String, id: Int64) {
+        guard let window = sheetWindow else {
+            cefHost?.completeAuth(id, username: nil, password: nil)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Sign in to \(challengeHost)"
+        alert.informativeText = realm.isEmpty
+            ? "This site is asking for a username and password."
+            : realm
+        alert.alertStyle = .informational
+        let username = NSTextField(string: "")
+        username.placeholderString = "Username"
+        let password = NSSecureTextField()
+        password.placeholderString = "Password"
+        let stack = NSStackView(views: [username, password])
+        stack.orientation = .vertical
+        stack.spacing = 8
+        stack.frame = NSRect(x: 0, y: 0, width: 280, height: 52)
+        alert.accessoryView = stack
+        alert.addButton(withTitle: "Sign In")
+        alert.addButton(withTitle: "Cancel")
+        alert.layout()
+        window.makeFirstResponder(username)
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else {
+                self?.cefHost?.completeAuth(id, username: nil, password: nil)
+                return
+            }
+            self?.cefHost?.completeAuth(id, username: username.stringValue, password: password.stringValue)
+        }
+    }
+
+    private func handleCEFMediaPermission(originURLString: String, id: Int64) {
+        guard let originURL = URL(string: originURLString),
+              let originKey = MediaPermissionStore.originKey(for: originURL) else {
+            cefHost?.completeMediaPermission(id, allow: false)
+            return
+        }
+        if let stored = mediaPermissionStore?.decision(forOriginKey: originKey) {
+            cefHost?.completeMediaPermission(id, allow: stored)
+            return
+        }
+        guard let window = sheetWindow else {
+            cefHost?.completeMediaPermission(id, allow: false)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Allow camera and microphone?"
+        alert.informativeText = "\(originURL.host ?? originKey) wants to use your camera and microphone."
+        alert.addButton(withTitle: "Allow")
+        alert.addButton(withTitle: "Don't Allow")
+        alert.alertStyle = .informational
+        alert.beginSheetModal(for: window) { [weak self] response in
+            let allowed = response == .alertFirstButtonReturn
+            self?.mediaPermissionStore?.setDecision(allowed, forOriginKey: originKey)
+            self?.cefHost?.completeMediaPermission(id, allow: allowed)
+        }
+    }
+
+    private func startCEFDownload(id: String, suggestedName: String,
+                                  sourceURLString: String, totalBytes: Int64) {
+        let manager = downloadManager
+        let fallbackDir = DownloadManager.defaultDownloadsDirectory()
+        try? FileManager.default.createDirectory(at: fallbackDir, withIntermediateDirectories: true)
+        let fileName = suggestedName.isEmpty ? "download" : suggestedName
+        let destination = manager?.uniqueDestination(for: fileName)
+            ?? fallbackDir.appendingPathComponent(fileName)
+        let total = totalBytes > 0 ? totalBytes : Int64(-1)
+        let itemID = manager?.beginDownload(
+            fileName: destination.lastPathComponent,
+            sourceURL: URL(string: sourceURLString),
+            destinationURL: destination,
+            totalBytes: total
+        ) ?? UUID()
+        cefDownloadItems[id] = itemID
+        cefDownloadSamples[itemID] = (bytes: 0, date: Date(), speed: 0)
+        cefHost?.continueDownload(id, path: destination.path)
+    }
+
+    private func updateCEFDownload(id: String, receivedBytes: Int64, totalBytes: Int64) {
+        guard let itemID = cefDownloadItems[id] else { return }
+        let now = Date()
+        var speed = cefDownloadSamples[itemID]?.speed ?? 0
+        if let last = cefDownloadSamples[itemID] {
+            let dt = now.timeIntervalSince(last.date)
+            if dt > 0.15 {
+                let instant = Double(receivedBytes - last.bytes) / dt
+                if instant >= 0 {
+                    speed = last.speed * 0.6 + instant * 0.4
+                }
+                cefDownloadSamples[itemID] = (bytes: receivedBytes, date: now, speed: speed)
+            }
+        }
+        downloadManager?.updateProgress(
+            id: itemID,
+            receivedBytes: receivedBytes,
+            totalBytes: totalBytes > 0 ? totalBytes : Int64(-1),
+            speedBytesPerSec: speed
+        )
+    }
+
+    private func finishCEFDownload(id: String) {
+        guard let itemID = cefDownloadItems[id] else { return }
+        cefDownloadItems[id] = nil
+        // A cancelled download can still report finish if the cancel raced
+        // the final bytes: drop the partial file instead of presenting it.
+        if downloadManager?.downloads.first(where: { $0.id == itemID })?.state == .cancelled {
+            if let dst = downloadManager?.downloads.first(where: { $0.id == itemID })?.destinationURL {
+                try? FileManager.default.removeItem(at: dst)
+            }
+            downloadManager?.failDownload(id: itemID, errorDescription: "Cancelled", cancelled: true)
+            cefDownloadSamples[itemID] = nil
+            return
+        }
+        if let item = downloadManager?.downloads.first(where: { $0.id == itemID }) {
+            let diskSize = (try? FileManager.default.attributesOfItem(atPath: item.destinationURL.path)[.size] as? Int64) ?? nil
+            let received = diskSize ?? -1
+            let total = received >= 0 ? received : Int64(-1)
+            downloadManager?.updateProgress(id: itemID, receivedBytes: received >= 0 ? received : 0,
+                                            totalBytes: total, speedBytesPerSec: 0)
+        }
+        let fileName = downloadManager?.downloads.first(where: { $0.id == itemID })?.destinationURL.lastPathComponent
+        downloadManager?.finishDownload(id: itemID, fileName: fileName)
+        cefDownloadSamples[itemID] = nil
+    }
+
+    private func failCEFDownload(id: String, cancelled: Bool) {
+        guard let itemID = cefDownloadItems[id] else { return }
+        cefDownloadItems[id] = nil
+        cefDownloadSamples[itemID] = nil
+        downloadManager?.failDownload(id: itemID,
+                                      errorDescription: cancelled ? "Cancelled" : "Download failed",
+                                      cancelled: cancelled)
+    }
 }

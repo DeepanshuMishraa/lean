@@ -63,9 +63,69 @@ enum AddressResolver {
         let looksLikeHost = !value.contains(" ") && (
             value.contains(".") ||
             value.hasPrefix("localhost") ||
+            isLoopbackInput(value) ||
             value.range(of: #"^\d{1,3}(\.\d{1,3}){3}(:\d+)?(/.*)?$"#, options: .regularExpression) != nil
         )
         guard looksLikeHost else { return nil }
-        return URLComponents(string: "https://\(value)")?.url
+        let scheme = isLoopbackInput(value) ? "http" : "https"
+        return URLComponents(string: "\(scheme)://\(value)")?.url
+    }
+
+    /// True when the raw input points at a loopback host, with or without an
+    /// explicit http(s) scheme, port, or path (e.g. "localhost:3000",
+    /// "http://localhost:3000/x", "127.0.0.1:8080", "[::1]:3000").
+    static func isLoopbackURLString(_ value: String) -> Bool {
+        var v = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if v.hasPrefix("http://") {
+            v = String(v.dropFirst("http://".count))
+        } else if v.hasPrefix("https://") {
+            v = String(v.dropFirst("https://".count))
+        }
+        return isLoopbackInput(v)
+    }
+
+    /// Bare loopback addresses (localhost, 127.x, ::1) almost always serve
+    /// plain HTTP, so default them to http:// instead of https://.
+    static func isLoopbackInput(_ value: String) -> Bool {
+        var host = value.lowercased()
+        // Stop at the first path/query/fragment delimiter so
+        // `localhost?x=1` and `localhost#frag` parse their host correctly.
+        if let end = host.firstIndex(where: { $0 == "/" || $0 == "?" || $0 == "#" }) {
+            host = String(host[..<end])
+        }
+        // Strip userinfo if present.
+        if let at = host.lastIndex(of: "@") {
+            host = String(host[host.index(after: at)...])
+        }
+        // Strip port, keeping IPv6 literals like [::1] intact.
+        if host.hasPrefix("[") {
+            if let close = host.firstIndex(of: "]") {
+                host = String(host[...close])
+            }
+        } else if let colon = host.firstIndex(of: ":") {
+            host = String(host[..<colon])
+        }
+        host = host.trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
+        return host == "localhost"
+            || host.hasSuffix(".localhost")
+            || host == "127.0.0.1"
+            || isLoopbackIPv4(host)
+            || host == "::1"
+            || host == "0.0.0.0"
+    }
+
+    /// True only for a numeric 127/8 address (127.0.0.0–127.255.255.255).
+    /// A hostname that merely starts with "127." (e.g. `127.example.com`)
+    /// must not downgrade to HTTP.
+    private static func isLoopbackIPv4(_ host: String) -> Bool {
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4,
+              parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy(\.isNumber) }) else { return false }
+        guard let first = Int(parts[0]), first == 127 else { return false }
+        return parts.dropFirst().allSatisfy { part in
+            guard let octet = Int(part), (0...255).contains(octet) else { return false }
+            // Reject leading-zero octets ("01") to avoid octal ambiguity.
+            return String(octet) == part || (part.hasPrefix("0") == false)
+        }
     }
 }

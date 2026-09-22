@@ -4,6 +4,14 @@
 <dict>
     <key>com.apple.security.app-sandbox</key>
     <true/>
+    <!-- App group: lets the sandboxed app register Chromium's Mach
+    rendezvous service (<bundle-id>.MachPortRendezvousServer.<pid>), which
+    the sandbox otherwise denies and CefInitialize fails. Production needs
+    a TeamID-prefixed group (paid Developer ID); a bare group works ad-hoc. -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>com.dipxsy.lean</string>
+    </array>
     <key>com.apple.security.network.client</key>
     <true/>
     <key>com.apple.security.network.server</key>
@@ -21,6 +29,16 @@
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
     <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <!-- V8 JIT (inherited by CEF helpers, which cannot carry their own
+    entitlement under sandbox inheritance). -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
     <!-- Ad-hoc signed (no Team ID): dyld derives each binary's team from its
     cdhash, so the app and embedded Sparkle can never match teams under the

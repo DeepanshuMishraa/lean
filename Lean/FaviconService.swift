@@ -50,8 +50,19 @@ final class FaviconService {
         fetchFromCDN(host: host, completion: completion)
     }
 
+    private func isLocalHost(_ host: String) -> Bool {
+        host == "localhost" ||
+        host.hasSuffix(".local") ||
+        host == "127.0.0.1" ||
+        host == "::1" ||
+        host.hasPrefix("192.168.") ||
+        host.hasPrefix("10.") ||
+        host.hasPrefix("172.")
+    }
+
     private func fetchFromCDN(host: String, completion: @escaping @MainActor @Sendable (NSImage?) -> Void) {
-        guard let cdnURL = URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=64") else {
+        guard !isLocalHost(host),
+              let cdnURL = URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=64&default_icon=none") else {
             DispatchQueue.main.async { completion(nil) }
             return
         }
@@ -67,8 +78,17 @@ final class FaviconService {
     }
 
     private func fetchImage(from url: URL, completion: @escaping @Sendable (NSImage?) -> Void) {
+        // Only the Google CDN fallback globe (726 bytes) is rejected, and only
+        // for CDN responses — explicit <link rel="icon"> endpoints served
+        // through this same helper must never be byte-count filtered.
+        let isGoogleCDN = url.host?.lowercased().contains("google.com") == true
+            && url.absoluteString.contains("s2/favicons")
         let task = session.dataTask(with: url) { data, response, error in
-            guard let data, error == nil, let image = NSImage(data: data) else {
+            guard let data, error == nil,
+                  let httpResponse = response as? HTTPURLResponse,
+                  (200...299).contains(httpResponse.statusCode),
+                  !(isGoogleCDN && data.count == 726),
+                  let image = NSImage(data: data) else {
                 completion(nil)
                 return
             }

@@ -53,6 +53,8 @@ struct DownloadsTests {
         #expect(DownloadFormat.progressText(received: 50, total: 100).contains("50%"))
         #expect(DownloadFormat.systemImage(for: "movie.mp4") == "film.fill")
         #expect(DownloadFormat.systemImage(for: "unknown.xyz") == "doc.fill")
+        #expect(DownloadFormat.icon(for: "movie.mp4") == .fileVideo)
+        #expect(DownloadFormat.icon(for: "unknown.xyz") == .file)
     }
 
     @MainActor

@@ -4,6 +4,17 @@ import Foundation
 import SwiftUI
 import WebKit
 
+private struct BrowserUIScaleEnvironmentKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1
+}
+
+extension EnvironmentValues {
+    var browserUIScale: CGFloat {
+        get { self[BrowserUIScaleEnvironmentKey.self] }
+        set { self[BrowserUIScaleEnvironmentKey.self] = newValue }
+    }
+}
+
 enum FloatingOmnibarMode {
     case newTab
     case navigate
@@ -77,6 +88,18 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         }
     }
 
+    var icon: Ph {
+        switch self {
+        case .back: return .caretLeft
+        case .forward: return .caretRight
+        case .reload: return .arrowClockwise
+        case .newTab: return .plus
+        case .downloads: return .arrowCircleDown
+        case .themeToggle: return .sun
+        case .settings: return .gear
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .back: return "chevron.left"
@@ -98,6 +121,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         }
     }
 }
+
 
 private struct BrowserSession: Codable {
     var urls: [String]
@@ -165,6 +189,23 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    /// Default engine for newly opened tabs. WebKit unless the user opts
+    /// into CEF. Existing tabs keep the engine they were created with.
+    @Published var engineKind: BrowserEngineKind {
+        didSet {
+            persist(engineKind.rawValue, forKey: Self.engineKindKey)
+        }
+    }
+
+    /// Engine this process booted with. New tabs always use it — switching
+    /// the selection restarts the app, so a process never mixes engines.
+    let bootEngineKind: BrowserEngineKind
+
+    /// True while the selection differs from the booted engine.
+    var needsEngineRestart: Bool { engineKind != bootEngineKind }
+
+    @Published var isEngineRestartDialogPresented = false
+
     @Published var theme: AppTheme {
         didSet {
             persist(theme.rawValue, forKey: Self.themeKey)
@@ -198,6 +239,15 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    /// Grayscale/antialiased page text. Off by default: pages use the
+    /// platform rasterizer unless the user opts in.
+    @Published var fontSmoothingEnabled: Bool {
+        didSet {
+            persist(fontSmoothingEnabled, forKey: Self.fontSmoothingKey)
+            updateAllTabsFontSmoothing()
+        }
+    }
+
     @Published var showFullTitleOnActiveTab: Bool {
         didSet {
             persist(showFullTitleOnActiveTab, forKey: Self.showFullTitleKey)
@@ -222,12 +272,27 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    @Published var browserUIScalePercent: Int {
+        didSet {
+            let clamped = min(120, max(80, browserUIScalePercent))
+            if browserUIScalePercent != clamped {
+                browserUIScalePercent = clamped
+                return
+            }
+            persist(browserUIScalePercent, forKey: Self.browserUIScaleKey)
+        }
+    }
+
+    var browserUIScale: CGFloat { CGFloat(browserUIScalePercent) / 100 }
+
+    func scaled(_ value: CGFloat) -> CGFloat { value * browserUIScale }
+
     func headingFont(size: CGFloat) -> Font {
-        leanUIFont.font(size: size, weight: uiHeadingWeight.fontWeight)
+        leanUIFont.font(size: scaled(size), weight: uiHeadingWeight.fontWeight)
     }
 
     func bodyFont(size: CGFloat) -> Font {
-        leanUIFont.font(size: size, weight: uiBodyWeight.fontWeight)
+        leanUIFont.font(size: scaled(size), weight: uiBodyWeight.fontWeight)
     }
 
     @Published var webPageFont: LeanFont {
@@ -299,6 +364,7 @@ final class LeanStore: ObservableObject {
 
     private let dataStore: WKWebsiteDataStore
     private let database: AppDatabase?
+    private let mediaPermissionStore: MediaPermissionStore
     private var recentlyClosed: [URL] = []
     private var adBlockUpdateObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
@@ -307,6 +373,7 @@ final class LeanStore: ObservableObject {
         self.dataStore = dataStore ?? WKWebsiteDataStore.default()
         self.database = database ?? AppDatabase.openDefault()
         self.downloadManager = DownloadManager(database: self.database)
+        self.mediaPermissionStore = MediaPermissionStore(database: self.database)
 
         let savedSearchEngine = databaseValue(self.database, String.self, forKey: Self.searchEngineKey)
             ?? UserDefaults.standard.string(forKey: Self.searchEngineKey)
@@ -317,6 +384,13 @@ final class LeanStore: ObservableObject {
             ?? UserDefaults.standard.object(forKey: Self.adBlockingKey) as? Bool
             ?? true
         self.adBlockingEnabled = savedAdBlocking
+
+        let savedEngine = databaseValue(self.database, String.self, forKey: Self.engineKindKey)
+            ?? UserDefaults.standard.string(forKey: Self.engineKindKey)
+            ?? BrowserEngineKind.webKit.rawValue
+        let resolvedEngine = BrowserEngineKind(rawValue: savedEngine) ?? .webKit
+        self.engineKind = resolvedEngine
+        self.bootEngineKind = resolvedEngine
 
         if let savedHistory = databaseValue(self.database, [HistoryItem].self, forKey: Self.historyKey) {
             self.historyItems = savedHistory
@@ -370,6 +444,12 @@ final class LeanStore: ObservableObject {
             ?? true
         self.smoothScrollingEnabled = savedSmoothScrolling
 
+        // Load saved font smoothing preference (default to false)
+        let savedFontSmoothing = databaseValue(self.database, Bool.self, forKey: Self.fontSmoothingKey)
+            ?? UserDefaults.standard.object(forKey: Self.fontSmoothingKey) as? Bool
+            ?? false
+        self.fontSmoothingEnabled = savedFontSmoothing
+
         // Load saved show full title preference (default to true)
         let savedShowFullTitle = databaseValue(self.database, Bool.self, forKey: Self.showFullTitleKey)
             ?? UserDefaults.standard.object(forKey: Self.showFullTitleKey) as? Bool
@@ -390,6 +470,11 @@ final class LeanStore: ObservableObject {
             ?? UserDefaults.standard.object(forKey: Self.uiBodyWeightKey) as? Int
             ?? LeanFontWeight.regular.rawValue
         self.uiBodyWeight = LeanFontWeight(rawValue: savedBodyWeight) ?? .regular
+
+        let savedBrowserUIScale = databaseValue(self.database, Int.self, forKey: Self.browserUIScaleKey)
+            ?? UserDefaults.standard.object(forKey: Self.browserUIScaleKey) as? Int
+            ?? 100
+        self.browserUIScalePercent = min(120, max(80, savedBrowserUIScale))
 
         let savedWebPageFont = databaseValue(self.database, String.self, forKey: Self.webPageFontKey)
             ?? UserDefaults.standard.string(forKey: Self.webPageFontKey)
@@ -451,12 +536,15 @@ final class LeanStore: ObservableObject {
         deduplicateHistory()
         saveHistory()
 
+        installChromiumAdBlockRules(ContentBlocker.fallbackChromiumRules)
+        refreshChromiumAdBlockRules()
         adBlockUpdateObserver = NotificationCenter.default.addObserver(
             forName: ContentBlocker.didUpdateNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
+                self?.refreshChromiumAdBlockRules()
                 self?.updateAllTabsAdBlocking()
             }
         }
@@ -530,6 +618,40 @@ final class LeanStore: ObservableObject {
 
     func toggleTheme() {
         theme = isDarkMode ? .light : .dark
+    }
+
+    // MARK: - Engine switching (restart to apply)
+
+    /// Called from the Settings picker. Same engine: silent. Different
+    /// engine: persist the choice and ask for a restart.
+    func requestEngineChange(_ kind: BrowserEngineKind) {
+        engineKind = kind
+        isEngineRestartDialogPresented = kind != bootEngineKind
+    }
+
+    /// Dialog "Not now": revert the selection to the booted engine.
+    func cancelEngineChange() {
+        engineKind = bootEngineKind
+        isEngineRestartDialogPresented = false
+    }
+
+    /// Dialog "Restart now": save the session, launch a fresh instance,
+    /// then quit this one. Tabs restore under the new engine on launch.
+    func restartForEngineChange() {
+        saveSession()
+        isEngineRestartDialogPresented = false
+        let config = NSWorkspace.OpenConfiguration()
+        config.createsNewApplicationInstance = true
+        config.activates = true
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { _, error in
+            if let error {
+                NSLog("Engine restart relaunch failed: %@", String(describing: error))
+                return
+            }
+            DispatchQueue.main.async {
+                NSApp.terminate(nil)
+            }
+        }
     }
 
     func openSettings(category: SettingsCategory = .general) {
@@ -616,6 +738,13 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    func updateAllTabsFontSmoothing() {
+        let enabled = fontSmoothingEnabled
+        for tab in tabs {
+            tab.applyFontSmoothing(enabled)
+        }
+    }
+
     func updateAllTabsFonts() {
         for tab in tabs {
             tab.applyPageFont(webPageFont)
@@ -624,6 +753,31 @@ final class LeanStore: ObservableObject {
 
     func updateAllTabsAdBlocking() {
         for tab in tabs {
+            tab.applyAdBlocking(adBlockingEnabled)
+        }
+    }
+
+    private func refreshChromiumAdBlockRules() {
+        // CEF is opt-in and tabs use bootEngineKind: skip the full Chromium
+        // compile on WebKit-only sessions to avoid needless CPU/memory work.
+        guard bootEngineKind == .cef else { return }
+        Task { [weak self] in
+            let rules = await ContentBlocker.chromiumRules()
+            self?.installChromiumAdBlockRules(rules)
+        }
+    }
+
+    private func installChromiumAdBlockRules(_ rules: ChromiumAdBlockRules) {
+        CEFBrowserHost.configureAdBlocker(
+            blockedDomains: rules.blockedDomains,
+            allowedDomains: rules.allowedDomains,
+            blockedPatterns: rules.blockedPatterns,
+            allowedPatterns: rules.allowedPatterns,
+            globalSelectors: rules.globalSelectors,
+            domainSelectors: rules.domainSelectors,
+            networkRules: rules.networkRules.map { $0.bridgeDictionary }
+        )
+        for tab in tabs where tab.engineKind == .cef {
             tab.applyAdBlocking(adBlockingEnabled)
         }
     }
@@ -752,8 +906,10 @@ final class LeanStore: ObservableObject {
             isDark: isDarkMode,
             scrollbarStyle: scrollbarStyle,
             smoothScrolling: smoothScrollingEnabled,
+            fontSmoothing: fontSmoothingEnabled,
             pageFont: webPageFont,
             adBlockingEnabled: adBlockingEnabled,
+            engineKind: bootEngineKind,
             configuration: configuration
         )
         tab.onStateChange = { [weak self] in
@@ -765,8 +921,35 @@ final class LeanStore: ObservableObject {
             self.saveSession()
         }
         tab.downloadManager = downloadManager
-        tab.onOpenNewTab = { [weak self] url, configuration in
-            self?.newTab(url: nil, configuration: configuration).webView
+        tab.mediaPermissionStore = mediaPermissionStore
+        tab.onOpenNewTab = { [weak self] _, configuration in
+            guard let self else { return nil }
+            // WebKit drives the popup load itself through the returned
+            // web view — do not pre-load or the OAuth handshake double-loads.
+            let child = self.newTab(url: nil, configuration: configuration)
+            child.onCloseTab = { [weak self, weak child] in
+                guard let self, let child else { return }
+                self.close(child)
+            }
+            return child.webView
+        }
+        tab.onOpenNewTabURL = { [weak self] url in
+            guard let self else { return }
+            // CEF popups bypass WK navigation policy, so gate external
+            // schemes here: hand them to the OS instead of loading them
+            // into a tab (CEF would fail them; WebKit re-gates at
+            // navigation time anyway).
+            if ExternalLinkPolicy.shouldOpenExternally(url) {
+                NSWorkspace.shared.open(url)
+                return
+            }
+            let child = self.newTab(url: url)
+            // CEF popups (window.open → plain tab) must be closable via
+            // window.close() like their WebKit counterparts.
+            child.onCloseTab = { [weak self, weak child] in
+                guard let self, let child else { return }
+                self.close(child)
+            }
         }
         tabs.append(tab)
         if select {
@@ -817,8 +1000,7 @@ final class LeanStore: ObservableObject {
         isFloatingOmnibarVisible = false
         floatingPaletteFrame = .zero
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
-            tab.webView.window?.makeFirstResponder(tab.webView)
+            self?.selectedTab?.focusContent()
         }
     }
 
@@ -836,13 +1018,18 @@ final class LeanStore: ObservableObject {
         inlineURLBarFrame = .zero
         inlineSuggestionsFrame = .zero
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
-            tab.webView.evaluateJavaScript("window.getSelection()?.removeAllRanges()", completionHandler: nil)
-            tab.webView.window?.makeFirstResponder(tab.webView)
+            guard let tab = self?.selectedTab else { return }
+            if tab.engineKind == .webKit {
+                tab.webView.evaluateJavaScript("window.getSelection()?.removeAllRanges()", completionHandler: nil)
+            }
+            tab.focusContent()
         }
     }
 
     func switchToTab(id: LeanTab.ID) {
+        // Preserve the outgoing page's preview: its CEF/WK view detaches on
+        // switch, after which it can no longer be snapshotted.
+        selectedTab?.captureSnapshot()
         isFloatingOmnibarVisible = false
         isNewTabOmnibarFloating = false
         isInlineURLEditing = false
@@ -852,8 +1039,7 @@ final class LeanStore: ObservableObject {
         selectedID = id
         saveSession()
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
-            tab.webView.window?.makeFirstResponder(tab.webView)
+            self?.selectedTab?.focusContent()
         }
     }
 
@@ -861,12 +1047,12 @@ final class LeanStore: ObservableObject {
         guard tabs.count > 1,
               let selectedID,
               let index = tabs.firstIndex(where: { $0.id == selectedID }) else { return }
+        selectedTab?.captureSnapshot()
         let offset = reverse ? tabs.count - 1 : 1
         self.selectedID = tabs[(index + offset) % tabs.count].id
         saveSession()
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
-            tab.webView.window?.makeFirstResponder(tab.webView)
+            self?.selectedTab?.focusContent()
         }
     }
 
@@ -874,8 +1060,12 @@ final class LeanStore: ObservableObject {
         guard !tabs.isEmpty else { return }
         let index = number == 9 ? tabs.count - 1 : number - 1
         guard tabs.indices.contains(index) else { return }
+        selectedTab?.captureSnapshot()
         selectedID = tabs[index].id
         saveSession()
+        DispatchQueue.main.async { [weak self] in
+            self?.selectedTab?.focusContent()
+        }
     }
 
     // MARK: - Ctrl+Tab Switcher Navigation
@@ -889,13 +1079,6 @@ final class LeanStore: ObservableObject {
     func startTabSwitcher(reverse: Bool = false) {
         let validTabs = switcherTabs
         guard !validTabs.isEmpty else { return }
-
-        // If thumbnail previews are enabled, capture snapshot asynchronously in background so switcher opens with 0ms lag
-        if enableThumbnailsInTabSwitcher {
-            DispatchQueue.main.async { [weak self] in
-                self?.selectedTab?.captureSnapshot()
-            }
-        }
 
         if !isTabSwitcherVisible {
             isTabSwitcherVisible = true
@@ -921,6 +1104,9 @@ final class LeanStore: ObservableObject {
         if validTabs.indices.contains(switcherSelectedIndex) {
             selectedID = validTabs[switcherSelectedIndex].id
             saveSession()
+            DispatchQueue.main.async { [weak self] in
+                self?.selectedTab?.focusContent()
+            }
         }
     }
 
@@ -965,6 +1151,7 @@ final class LeanStore: ObservableObject {
     private func migrateLegacyState(sessionURLs: [String]) {
         persist(searchEngine.rawValue, forKey: Self.searchEngineKey)
         persist(adBlockingEnabled, forKey: Self.adBlockingKey)
+        persist(engineKind.rawValue, forKey: Self.engineKindKey)
         persist(theme.rawValue, forKey: Self.themeKey)
         persist(scrollbarStyle.rawValue, forKey: Self.scrollbarKey)
         persist(tabDisplayMode.rawValue, forKey: Self.tabDisplayModeKey)
@@ -972,10 +1159,12 @@ final class LeanStore: ObservableObject {
         persist(isSidebarCollapsed, forKey: Self.isSidebarCollapsedKey)
         persist(enableThumbnailsInTabSwitcher, forKey: Self.thumbnailsSwitcherKey)
         persist(smoothScrollingEnabled, forKey: Self.smoothScrollingKey)
+        persist(fontSmoothingEnabled, forKey: Self.fontSmoothingKey)
         persist(showFullTitleOnActiveTab, forKey: Self.showFullTitleKey)
         persist(leanUIFont.rawValue, forKey: Self.leanUIFontKey)
         persist(uiHeadingWeight.rawValue, forKey: Self.uiHeadingWeightKey)
         persist(uiBodyWeight.rawValue, forKey: Self.uiBodyWeightKey)
+        persist(browserUIScalePercent, forKey: Self.browserUIScaleKey)
         persist(webPageFont.rawValue, forKey: Self.webPageFontKey)
         persist(enableZenMode, forKey: Self.zenModeKey)
         persist(enableWindowBorder, forKey: Self.windowBorderKey)
@@ -1003,6 +1192,7 @@ final class LeanStore: ObservableObject {
     private static let historyKey = "visitedHistory"
     private static let searchEngineKey = "searchEngine"
     private static let adBlockingKey = "adBlockingEnabled"
+    private static let engineKindKey = "browserEngineKind"
     private static let themeKey = "appTheme"
     private static let scrollbarKey = "scrollbarStyle"
     private static let tabDisplayModeKey = "tabDisplayMode"
@@ -1010,10 +1200,12 @@ final class LeanStore: ObservableObject {
     private static let isSidebarCollapsedKey = "isSidebarCollapsed"
     private static let thumbnailsSwitcherKey = "enableThumbnailsInTabSwitcher"
     private static let smoothScrollingKey = "smoothScrollingEnabled"
+    private static let fontSmoothingKey = "fontSmoothingEnabled"
     private static let showFullTitleKey = "showFullTitleOnActiveTab"
     private static let leanUIFontKey = "leanUIFont"
     private static let uiHeadingWeightKey = "uiHeadingWeight"
     private static let uiBodyWeightKey = "uiBodyWeight"
+    private static let browserUIScaleKey = "browserUIScalePercent"
     private static let webPageFontKey = "webPageFont"
     private static let zenModeKey = "enableZenMode"
     private static let windowBorderKey = "enableWindowBorder"

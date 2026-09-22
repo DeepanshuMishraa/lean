@@ -1,3 +1,5 @@
 DerivedData/
 *.xcuserstate
 xcuserdata/
+# CEF binary distribution (~350MB) — fetched via scripts/fetch-cef.sh, never committed.
+vendor/

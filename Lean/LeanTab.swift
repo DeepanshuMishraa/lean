@@ -28,6 +28,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     var onStateChange: (() -> Void)?
     var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
     var onCloseTab: (() -> Void)?
+    var onOpenURLInNewTab: ((URL) -> Void)?
     var onOpenSourceTab: ((String, String) -> Void)?
     var downloadManager: DownloadManager?
     var mediaPermissionStore: MediaPermissionStore?
@@ -114,10 +115,18 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
                 forMainFrameOnly: true
             )
         )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: PageScripts.contextMenuLinkTracker,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: false
+            )
+        )
 
         webView = LeanWebView(frame: .zero, configuration: configuration)
         super.init()
         webView.configuration.userContentController.add(self, name: PageScripts.pageReadyMessageName)
+        webView.configuration.userContentController.add(self, name: PageScripts.contextMenuMessageName)
         webView.contextMenuHook = { [weak self] menu in
             self?.appendPageMenuItems(to: menu)
         }
@@ -257,6 +266,13 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
                 forMainFrameOnly: true
             )
         )
+        webView.configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: PageScripts.contextMenuLinkTracker,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: false
+            )
+        )
 
         syncContentRuleLists()
     }
@@ -365,32 +381,42 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     // MARK: - Page context menu
 
+    /// Latest link under a right-click, reported by the injected tracker.
+    private var lastContextLink: (url: URL, at: Date)?
+
+    private var freshContextLinkURL: URL? {
+        guard let last = lastContextLink, Date().timeIntervalSince(last.at) < 2 else { return nil }
+        return last.url
+    }
+
     private func appendPageMenuItems(to menu: NSMenu) {
+        // Our items all target self; WebKit's don't. Strip ours first so a
+        // reused menu object never accumulates duplicates across opens.
+        menu.items
+            .filter { $0.target === self }
+            .forEach { menu.removeItem($0) }
+
+        // WebKit already supplies Back/Forward/Reload — only add what it lacks.
+        if let linkURL = freshContextLinkURL {
+            let open = NSMenuItem(title: "Open Link in New Tab", action: #selector(pageMenuOpenLink(_:)), keyEquivalent: "")
+            open.target = self
+            open.representedObject = linkURL.absoluteString
+            menu.insertItem(open, at: 0)
+            menu.insertItem(.separator(), at: 1)
+        }
         if !menu.items.isEmpty {
             menu.addItem(.separator())
         }
-        if canGoBack {
-            let back = NSMenuItem(title: "Back", action: #selector(pageMenuGoBack), keyEquivalent: "")
-            back.target = self
-            menu.addItem(back)
-        }
-        if canGoForward {
-            let forward = NSMenuItem(title: "Forward", action: #selector(pageMenuGoForward), keyEquivalent: "")
-            forward.target = self
-            menu.addItem(forward)
-        }
-        let reload = NSMenuItem(title: "Reload Page", action: #selector(pageMenuReload), keyEquivalent: "")
-        reload.target = self
-        menu.addItem(reload)
-        menu.addItem(.separator())
         let source = NSMenuItem(title: "View Page Source", action: #selector(pageMenuShowSource), keyEquivalent: "")
         source.target = self
         menu.addItem(source)
     }
 
-    @objc private func pageMenuGoBack() { goBack() }
-    @objc private func pageMenuGoForward() { goForward() }
-    @objc private func pageMenuReload() { reload() }
+    @objc private func pageMenuOpenLink(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let url = URL(string: raw) else { return }
+        onOpenURLInNewTab?(url)
+    }
     @objc private func pageMenuShowSource() { showPageSource() }
 
     func showPageSource() {
@@ -440,6 +466,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         onStateChange = nil
         onOpenNewTab = nil
         onCloseTab = nil
+        onOpenURLInNewTab = nil
         onOpenSourceTab = nil
         webView.contextMenuHook = nil
 
@@ -476,6 +503,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
         // 6. Remove all user scripts and message handlers
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.pageReadyMessageName)
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.contextMenuMessageName)
         webView.configuration.userContentController.removeAllUserScripts()
         webView.removeFromSuperview()
     }
@@ -533,6 +561,15 @@ extension LeanTab: WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
+        if message.name == PageScripts.contextMenuMessageName {
+            let raw = (message.body as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !raw.isEmpty, let url = URL(string: raw) {
+                lastContextLink = (url, Date())
+            } else {
+                lastContextLink = nil
+            }
+            return
+        }
         guard message.name == PageScripts.pageReadyMessageName,
               message.frameInfo.isMainFrame,
               message.webView === webView else {

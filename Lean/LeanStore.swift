@@ -826,6 +826,9 @@ final class LeanStore: ObservableObject {
         tab.onOpenSourceTab = { [weak self] title, html in
             self?.openPageSource(title: title, html: html)
         }
+        tab.onOpenURLInNewTab = { [weak self] url in
+            self?.newTab(url: url)
+        }
         tabs.append(tab)
         if select {
             selectedID = tab.id

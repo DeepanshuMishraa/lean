@@ -2,6 +2,28 @@ import Foundation
 
 enum PageScripts {
     static let pageReadyMessageName = "pageReady"
+    static let contextMenuMessageName = "leanContextMenu"
+
+    /// Reports the anchor under every right-click (empty string for
+    /// non-links) so the native menu can offer "Open Link in New Tab".
+    /// Always posts, so a stale URL can never linger. All frames: links
+    /// often live in iframes.
+    static let contextMenuLinkTracker = """
+    (function() {
+        try {
+            document.addEventListener('contextmenu', function(e) {
+                try {
+                    var url = '';
+                    var el = (e.target && e.target.closest) ? e.target.closest('a[href]') : null;
+                    if (el) { url = el.href || ''; }
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(contextMenuMessageName)) {
+                        window.webkit.messageHandlers.\(contextMenuMessageName).postMessage(url);
+                    }
+                } catch (err) {}
+            }, true);
+        } catch (e) {}
+    })();
+    """
 
     static let pageReady = """
     (function() {

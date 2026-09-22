@@ -37,4 +37,10 @@ struct YouTubeBlockingTests {
     func htmlEscaping() {
         #expect(LeanTab.escapedHTML("<div>&\"</div>") == "&lt;div&gt;&amp;\"&lt;/div&gt;")
     }
+
+    @Test("Context menu reports the link under right-click")
+    func contextMenuTracker() {
+        #expect(PageScripts.contextMenuLinkTracker.contains("closest('a[href]')"))
+        #expect(PageScripts.contextMenuLinkTracker.contains(PageScripts.contextMenuMessageName))
+    }
 }

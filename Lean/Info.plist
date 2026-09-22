@@ -29,9 +29,13 @@
     <key>LSMinimumSystemVersion</key>
     <string>$(MACOSX_DEPLOYMENT_TARGET)</string>
     <!-- Loopback-only cleartext for local dev servers (http://localhost etc.).
-         Narrow per-host exceptions — no NSAllowsLocalNetworking blanket, and
-         external http stays blocked by ATS. (Chromium/CEF ignores ATS and uses
-         its own stack; this governs WebKit.) -->
+         No blanket exception: external http stays blocked by ATS. Per Apple's
+         NSAllowsLocalNetworking docs, macOS 14 blocks cleartext to IP
+         literals by default, so the 127.0.0.1/::1 entries are load-bearing
+         for WebKit dev servers (Chromium/CEF ignores ATS and uses its own
+         stack). `localhost` needs no exception on modern macOS but is kept
+         for older-version behavior. Note: an IP literal has no subdomains,
+         so no NSIncludesSubdomains flag belongs on the IP keys. -->
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSExceptionDomains</key>
@@ -45,8 +49,11 @@
             </dict>
             <key>127.0.0.1</key>
             <dict>
-                <key>NSIncludesSubdomains</key>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
                 <true/>
+            </dict>
+            <key>::1</key>
+            <dict>
                 <key>NSExceptionAllowsInsecureHTTPLoads</key>
                 <true/>
             </dict>

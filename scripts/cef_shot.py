@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Capture a screenshot of a CEF page via the DevTools protocol.
 
-Usage: cef_shot.py <out.png> [url-substring]
-Connects to localhost:9222, picks the first page target whose URL contains
-url-substring (or the first non-devtools page), captures PNG, writes it out.
+Usage: cef_shot.py <out.png> [cdp-port] [url-substring]
+Connects to 127.0.0.1:<cdp-port> (default 9222), picks the first page target
+whose URL contains url-substring (or the first page target when no filter is
+given, so redirects/canonicalization can't deselect it), captures PNG and
+writes it out. A non-numeric second argument is treated as the URL filter
+for backwards compatibility.
 No third-party dependencies: minimal raw-socket WebSocket client.
 """
 import base64

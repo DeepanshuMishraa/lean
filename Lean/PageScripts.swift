@@ -157,4 +157,30 @@ enum PageScripts {
         })();
         """
     }
+
+    /// Grayscale/antialiased text rendering. Off by default: removes the
+    /// style node so pages fall back to the platform rasterizer.
+    static func fontSmoothing(enabled: Bool) -> String {
+        if !enabled {
+            return "document.getElementById('lean-font-smoothing-style')?.remove();"
+        }
+        let css = "html body, html body * { -webkit-font-smoothing: antialiased !important; -moz-osx-font-smoothing: grayscale !important; }"
+        return """
+        (function() {
+            function apply() {
+                var style = document.getElementById('lean-font-smoothing-style');
+                if (!style) {
+                    style = document.createElement('style');
+                    style.id = 'lean-font-smoothing-style';
+                    (document.head || document.documentElement).appendChild(style);
+                }
+                style.textContent = "\(css)";
+            }
+            apply();
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', apply, { once: true });
+            }
+        })();
+        """
+    }
 }

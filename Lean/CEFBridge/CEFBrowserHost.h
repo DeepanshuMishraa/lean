@@ -60,6 +60,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)resetZoom;
 - (void)focus;
 - (void)setAdBlockingEnabled:(BOOL)enabled NS_SWIFT_NAME(setAdBlockingEnabled(_:));
+/// Runs a snippet in the main frame (page-feature injections such as font
+/// smoothing that have no dedicated bridge call). No-op without a browser.
+- (void)executeJavaScript:(NSString *)script;
 
 /// Captures the visible page through Chromium's compositor.
 - (void)captureSnapshotWithCompletion:(void (^)(NSData *_Nullable imageData))completion

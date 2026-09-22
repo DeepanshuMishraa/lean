@@ -1025,6 +1025,24 @@ struct PendingDownload {
   });
 }
 
+- (void)executeJavaScript:(NSString *)script {
+  if (!script || script.length == 0) {
+    return;
+  }
+  std::string snippet = [script UTF8String];
+  CEFBrowserHost *selfRef = self;
+  PostToUI([selfRef, snippet] {
+    if (!selfRef->_browser) {
+      return;
+    }
+    CefRefPtr<CefFrame> frame = selfRef->_browser->GetMainFrame();
+    if (!frame) {
+      return;
+    }
+    frame->ExecuteJavaScript(snippet, frame->GetURL(), 0);
+  });
+}
+
 - (void)captureSnapshotWithCompletion:(void (^)(NSData *_Nullable))completion {
   if (!completion) {
     return;
@@ -1209,6 +1227,7 @@ struct PendingDownload {
 - (void)resetZoom {}
 - (void)focus {}
 - (void)setAdBlockingEnabled:(BOOL)enabled { (void)enabled; }
+- (void)executeJavaScript:(NSString *)script { (void)script; }
 - (void)captureSnapshotWithCompletion:(void (^)(NSData *_Nullable))completion {
   completion(nil);
 }

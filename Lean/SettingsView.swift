@@ -1419,6 +1419,21 @@ private struct BrowsingSection: View {
                     )
                 }
             }
+
+            // Text Rendering
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Text Rendering", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+
+                SettingsGroup(isDark: store.isDarkMode) {
+                    CustomToggleRow(
+                        title: "Font smoothing",
+                        subtitle: "Grayscale antialiasing for page text in WebKit and Chromium. Off by default. The browser chrome itself always follows the macOS system setting.",
+                        isOn: $store.fontSmoothingEnabled,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
+                }
+            }
         }
     }
 

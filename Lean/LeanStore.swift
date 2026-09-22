@@ -236,8 +236,18 @@ final class LeanStore: ObservableObject {
 
     @Published var smoothScrollingEnabled: Bool {
         didSet {
-            persist(smoothScrollingEnabled, forKey: Self.smoothScrollingKey)
+        persist(smoothScrollingEnabled, forKey: Self.smoothScrollingKey)
+        persist(fontSmoothingEnabled, forKey: Self.fontSmoothingKey)
             updateAllTabsSmoothScrolling()
+        }
+    }
+
+    /// Grayscale/antialiased page text. Off by default: pages use the
+    /// platform rasterizer unless the user opts in.
+    @Published var fontSmoothingEnabled: Bool {
+        didSet {
+            persist(fontSmoothingEnabled, forKey: Self.fontSmoothingKey)
+            updateAllTabsFontSmoothing()
         }
     }
 
@@ -421,6 +431,12 @@ final class LeanStore: ObservableObject {
             ?? UserDefaults.standard.object(forKey: Self.smoothScrollingKey) as? Bool
             ?? true
         self.smoothScrollingEnabled = savedSmoothScrolling
+
+        // Load saved font smoothing preference (default to false)
+        let savedFontSmoothing = databaseValue(self.database, Bool.self, forKey: Self.fontSmoothingKey)
+            ?? UserDefaults.standard.object(forKey: Self.fontSmoothingKey) as? Bool
+            ?? false
+        self.fontSmoothingEnabled = savedFontSmoothing
 
         // Load saved show full title preference (default to true)
         let savedShowFullTitle = databaseValue(self.database, Bool.self, forKey: Self.showFullTitleKey)
@@ -705,6 +721,13 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    func updateAllTabsFontSmoothing() {
+        let enabled = fontSmoothingEnabled
+        for tab in tabs {
+            tab.applyFontSmoothing(enabled)
+        }
+    }
+
     func updateAllTabsFonts() {
         for tab in tabs {
             tab.applyPageFont(webPageFont)
@@ -865,6 +888,7 @@ final class LeanStore: ObservableObject {
             isDark: isDarkMode,
             scrollbarStyle: scrollbarStyle,
             smoothScrolling: smoothScrollingEnabled,
+            fontSmoothing: fontSmoothingEnabled,
             pageFont: webPageFont,
             adBlockingEnabled: adBlockingEnabled,
             engineKind: bootEngineKind,
@@ -1156,6 +1180,7 @@ final class LeanStore: ObservableObject {
     private static let isSidebarCollapsedKey = "isSidebarCollapsed"
     private static let thumbnailsSwitcherKey = "enableThumbnailsInTabSwitcher"
     private static let smoothScrollingKey = "smoothScrollingEnabled"
+    private static let fontSmoothingKey = "fontSmoothingEnabled"
     private static let showFullTitleKey = "showFullTitleOnActiveTab"
     private static let leanUIFontKey = "leanUIFont"
     private static let uiHeadingWeightKey = "uiHeadingWeight"

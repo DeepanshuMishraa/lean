@@ -16,6 +16,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     @Published var favicon: NSImage? = nil
     private(set) var scrollbarStyle: ScrollbarStyle
     private(set) var smoothScrollingEnabled: Bool
+    private(set) var fontSmoothingEnabled: Bool
     private(set) var pageFont: LeanFont
     private(set) var pageHeadingWeight: Int
     private(set) var pageBodyWeight: Int
@@ -71,6 +72,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         isDark: Bool = false,
         scrollbarStyle: ScrollbarStyle = .normal,
         smoothScrolling: Bool = true,
+        fontSmoothing: Bool = false,
         pageFont: LeanFont = .system,
         pageHeadingWeight: Int = 0,
         pageBodyWeight: Int = 0,
@@ -81,6 +83,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         self.engineKind = engineKind
         self.scrollbarStyle = scrollbarStyle
         self.smoothScrollingEnabled = smoothScrolling
+        self.fontSmoothingEnabled = fontSmoothing
         self.pageFont = pageFont
         self.pageHeadingWeight = pageHeadingWeight
         self.pageBodyWeight = pageBodyWeight
@@ -240,6 +243,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             forMainFrameOnly: false
         )
         webView.configuration.userContentController.addUserScript(smoothScript)
+        let fontSmoothingScript = WKUserScript(
+            source: PageScripts.fontSmoothing(enabled: fontSmoothingEnabled),
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: false
+        )
+        webView.configuration.userContentController.addUserScript(fontSmoothingScript)
         webView.configuration.userContentController.addUserScript(
             WKUserScript(
                 source: PageScripts.pageReady,
@@ -262,6 +271,19 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         self.smoothScrollingEnabled = enabled
         rebuildUserScripts()
         let script = PageScripts.smoothScrolling(enabled: enabled)
+        webView.evaluateJavaScript(script) { _, _ in }
+    }
+
+    func applyFontSmoothing(_ enabled: Bool) {
+        self.fontSmoothingEnabled = enabled
+        if engineKind == .cef {
+            // CEF has no persistent user-script store: inject into the live
+            // page now; navigations re-apply via onLoadingState below.
+            cefHost?.executeJavaScript(PageScripts.fontSmoothing(enabled: enabled))
+            return
+        }
+        rebuildUserScripts()
+        let script = PageScripts.fontSmoothing(enabled: enabled)
         webView.evaluateJavaScript(script) { _, _ in }
     }
 
@@ -982,6 +1004,10 @@ extension LeanTab {
             self.canGoForward = forward
             self.onStateChange?()
             if !loading {
+                // Fresh documents drop injected styles: restore font smoothing.
+                if self.fontSmoothingEnabled {
+                    self.cefHost?.executeJavaScript(PageScripts.fontSmoothing(enabled: true))
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                     self?.captureSnapshot()
                 }

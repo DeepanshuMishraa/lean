@@ -37,7 +37,24 @@ struct TabFaviconView: View {
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
-        } else if host.contains("youtube") || host.contains("youtu.be") {
+        } else {
+            SiteFallbackGlyph(host: host, isDark: isDark, size: size)
+        }
+    }
+}
+
+// MARK: - Shared fallback glyph
+/// Brand marks plus the initial-letter monogram, shared by TabFaviconView
+/// and SiteFaviconView so the two fallback chains can never drift apart.
+/// Pure glyph rendering inside the caller's frame: no hit-testing impact.
+struct SiteFallbackGlyph: View {
+    let host: String
+    let isDark: Bool
+    var size: CGFloat = 14
+
+    @ViewBuilder
+    var body: some View {
+        if host.contains("youtube") || host.contains("youtu.be") {
             ZStack {
                 RoundedRectangle(cornerRadius: 2.5, style: .continuous)
                     .fill(Color(red: 255/255, green: 0, blue: 0))
@@ -161,80 +178,8 @@ struct SiteFaviconView: View {
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
-        } else if host.contains("youtube") || host.contains("youtu.be") {
-            ZStack {
-                RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                    .fill(Color(red: 255/255, green: 0, blue: 0))
-                Ph.play.fill
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: size * 0.45, height: size * 0.45)
-                    .foregroundColor(.white)
-                    .offset(x: 0.5)
-            }
-        } else if host.contains("x.com") || host.contains("twitter") {
-            Text("𝕏")
-                .font(.system(size: size * 0.9, weight: .bold))
-                .foregroundColor(isDark ? Color.white : Color.black)
-        } else if host.contains("github") {
-            ZStack {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(isDark ? Color.white : Color.black)
-                Ph.code.fill
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: size * 0.5, height: size * 0.5)
-                    .foregroundColor(isDark ? Color.black : Color.white)
-            }
-        } else if host.contains("google") {
-            ZStack {
-                Circle()
-                    .fill(Color(red: 66/255, green: 133/255, blue: 244/255))
-                Text("G")
-                    .font(.system(size: size * 0.65, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-            }
-        } else if host.contains("apple") {
-            Ph.appleLogo.fill
-                .aspectRatio(contentMode: .fit)
-                .frame(width: size * 0.85, height: size * 0.85)
-                .foregroundColor(isDark ? Color.white : Color.black)
-        } else if host.contains("discord") {
-            Ph.chats.fill
-                .aspectRatio(contentMode: .fit)
-                .frame(width: size * 0.8, height: size * 0.8)
-                .foregroundColor(Color(red: 88/255, green: 101/255, blue: 242/255))
-        } else if host.contains("slack") {
-            Ph.hash.fill
-                .aspectRatio(contentMode: .fit)
-                .frame(width: size * 0.85, height: size * 0.85)
-                .foregroundColor(Color(red: 224/255, green: 30/255, blue: 90/255))
-        } else if host.contains("claude") || host.contains("anthropic") {
-            Ph.sparkle.fill
-                .aspectRatio(contentMode: .fit)
-                .frame(width: size * 0.85, height: size * 0.85)
-                .foregroundColor(Color(red: 217/255, green: 119/255, blue: 87/255))
-        } else if host.contains("cloudflare") {
-            Ph.cloud.fill
-                .aspectRatio(contentMode: .fit)
-                .frame(width: size * 0.8, height: size * 0.8)
-                .foregroundColor(Color(red: 243/255, green: 128/255, blue: 32/255))
-        } else if host.contains("reddit") {
-            Ph.redditLogo.fill
-                .aspectRatio(contentMode: .fit)
-                .frame(width: size * 0.85, height: size * 0.85)
-                .foregroundColor(Color(red: 255/255, green: 69/255, blue: 0))
-        } else if !host.isEmpty {
-            ZStack {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(isDark ? Color.white.opacity(0.16) : Color.black.opacity(0.08))
-                Text(String(host.prefix(1)).uppercased())
-                    .font(.system(size: size * 0.62, weight: .semibold, design: .rounded))
-                    .foregroundColor(isDark ? Color.white.opacity(0.9) : Color.black.opacity(0.75))
-            }
         } else {
-            Ph.browser.fill
-                .aspectRatio(contentMode: .fit)
-                .frame(width: size * 0.85, height: size * 0.85)
-                .foregroundColor(isDark ? Color.white.opacity(0.70) : Color.black.opacity(0.60))
+            SiteFallbackGlyph(host: host, isDark: isDark, size: size)
         }
     }
 }

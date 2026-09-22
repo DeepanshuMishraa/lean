@@ -103,6 +103,12 @@ std::string LowerASCII(std::string value) {
 }
 
 std::string HostFromURL(const CefString &url) {
+  // CefParseURL CHECK-fails (SIGTRAP) on empty input instead of returning
+  // false. Frames routinely have no URL yet at startup / during navigation,
+  // so guard here — an empty URL has no host by definition.
+  if (url.empty()) {
+    return {};
+  }
   CefURLParts parts;
   if (!CefParseURL(url, parts)) {
     return {};

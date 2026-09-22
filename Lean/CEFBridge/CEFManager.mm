@@ -1,5 +1,6 @@
 #import "CEFManager.h"
 #import <AppKit/AppKit.h>
+#import <objc/message.h>
 #import <objc/runtime.h>
 
 #if __has_include("include/cef_app.h")
@@ -7,25 +8,51 @@
 #include <crt_externs.h>
 #include <memory>
 #include "include/cef_app.h"
+#include "include/cef_application_mac.h"
 #include "include/cef_version.h"
 #include "include/cef_command_line.h"
 #include "include/wrapper/cef_library_loader.h"
 
 namespace {
-// CEF's nested event pump (inside CefDoMessageLoopWork) calls the private
-// AppKit method -[NSApplication isHandlingSendEvent] to decide whether it
-// may dispatch events directly. That method no longer exists on macOS 27 —
-// and never did on SwiftUI's AppKitApplication subclass — so the first
-// nested pump kills the app with "unrecognized selector". Provide it when
-// absent. NO matches the real implementation's common-case value (not
-// inside -sendEvent:) and tells CEF direct dispatch is safe.
-BOOL LeanIsHandlingSendEvent(id, SEL) { return NO; }
+// SwiftUI owns the NSApplication subclass, so install CEF's required
+// CefAppProtocol behavior on that concrete class before CefInitialize.
+// Chromium opens a nested event loop for context menus and needs the real
+// sendEvent state; a constant NO allows unsafe reentrant event dispatch.
+static char kLeanHandlingSendEventKey;
+
+BOOL LeanIsHandlingSendEvent(id app, SEL) {
+  return [objc_getAssociatedObject(app, &kLeanHandlingSendEventKey) boolValue];
+}
+
+void LeanSetHandlingSendEvent(id app, SEL, BOOL value) {
+  objc_setAssociatedObject(app, &kLeanHandlingSendEventKey, @(value),
+                           OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+void LeanSendEvent(id app, SEL, NSEvent *event) {
+  BOOL previous = LeanIsHandlingSendEvent(app, nullptr);
+  LeanSetHandlingSendEvent(app, nullptr, YES);
+  @try {
+    ((void (*)(id, SEL, NSEvent *))objc_msgSend)(
+        app, @selector(lean_cef_originalSendEvent:), event);
+  } @finally {
+    LeanSetHandlingSendEvent(app, nullptr, previous);
+  }
+}
 
 void LeanInstallEventPumpShim(void) {
-  SEL sel = @selector(isHandlingSendEvent);
-  if (![[NSApplication class] instancesRespondToSelector:sel]) {
-    class_addMethod([NSApplication class], sel,
-                    (IMP)LeanIsHandlingSendEvent, "c@:");
+  NSApplication *app = [NSApplication sharedApplication];
+  Class cls = object_getClass(app);
+  class_addProtocol(cls, @protocol(CefAppProtocol));
+  class_addMethod(cls, @selector(isHandlingSendEvent),
+                  (IMP)LeanIsHandlingSendEvent, "c@:");
+  class_addMethod(cls, @selector(setHandlingSendEvent:),
+                  (IMP)LeanSetHandlingSendEvent, "v@:c");
+  Method original = class_getInstanceMethod(cls, @selector(sendEvent:));
+  const char *types = method_getTypeEncoding(original);
+  if (class_addMethod(cls, @selector(lean_cef_originalSendEvent:),
+                      method_getImplementation(original), types)) {
+    class_replaceMethod(cls, @selector(sendEvent:), (IMP)LeanSendEvent, types);
   }
 }
 class LeanCefApp : public CefApp, public CefBrowserProcessHandler {

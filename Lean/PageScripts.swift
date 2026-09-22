@@ -354,12 +354,24 @@ enum PageScripts {
                 var skipSel = '.ytp-skip-ad-button,.ytp-ad-skip-button,.ytp-skip-ad-button-modern';
                 function q(s) { try { return document.querySelector(s); } catch (e) { return null; } }
                 function qAll(s) { try { return document.querySelectorAll(s); } catch (e) { return []; } }
+                // The skip button node often exists while still disabled
+                // ("Skip in 5…"). Treating mere presence as skippable stalls
+                // every other skip path for the whole countdown — only honor
+                // a button that is actually clickable.
+                function skipButton() {
+                    var btns = qAll(skipSel);
+                    for (var i = 0; i < btns.length; i++) {
+                        try {
+                            var b = btns[i];
+                            if (b && !b.disabled && b.offsetParent !== null && b.clientWidth > 0) return b;
+                        } catch (e) {}
+                    }
+                    return null;
+                }
                 function clickSkip() {
                     try {
-                        var btns = qAll(skipSel);
-                        for (var i = 0; i < btns.length; i++) {
-                            try { btns[i].click(); } catch (e) {}
-                        }
+                        var btn = skipButton();
+                        if (btn) { try { btn.click(); } catch (e) {} }
                     } catch (e) {}
                     // Player API fallback: exposes skipAd() even when the
                     // button node hasn't rendered yet.
@@ -370,7 +382,7 @@ enum PageScripts {
                 }
                 function seekPastAd(v) {
                     try {
-                        if (q(skipSel)) return;
+                        if (skipButton()) return;
                         var d = v.duration;
                         if (isFinite(d) && d > 0 && d < 180 && v.currentTime < d - 0.5) {
                             try { v.currentTime = d - 0.2; } catch (e) {}
@@ -463,7 +475,7 @@ enum PageScripts {
                         // During-ad player-API seek: the DOM seek above can
                         // miss DASH ads; the player seek usually doesn't.
                         try {
-                            if (inAd && !q(skipSel)) {
+                            if (inAd && !skipButton()) {
                                 var p = document.getElementById('movie_player');
                                 if (p && typeof p.seekTo === 'function' && typeof p.getDuration === 'function') {
                                     var adDur = p.getDuration();
@@ -586,6 +598,9 @@ enum PageScripts {
                     }
                 } catch (e) {}
                 try { window.__leanYtSkip = false; } catch (e) {}
+                try { window.__leanYtWasAd = false; } catch (e) {}
+                try { window.__leanYtUserPaused = false; } catch (e) {}
+                try { window.__leanYtLastAdEnd = 0; } catch (e) {}
             } catch (e) {}
         })();
         """

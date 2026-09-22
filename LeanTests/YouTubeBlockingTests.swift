@@ -24,6 +24,15 @@ struct YouTubeBlockingTests {
         #expect(script.contains("__leanYtWasAd"))
     }
 
+    @Test("Skip logic requires a clickable skip button")
+    func clickableSkipButton() {
+        // A disabled "Skip in 5…" node must not stall seeking: only a
+        // visible, enabled button counts, otherwise seek paths proceed.
+        let script = PageScripts.youtubeAds(enabled: true)
+        #expect(script.contains("function skipButton()"))
+        #expect(script.contains("offsetParent"))
+    }
+
     @Test("Source HTML is escaped")
     func htmlEscaping() {
         #expect(LeanTab.escapedHTML("<div>&\"</div>") == "&lt;div&gt;&amp;\"&lt;/div&gt;")

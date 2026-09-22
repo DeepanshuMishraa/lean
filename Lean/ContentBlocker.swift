@@ -100,7 +100,7 @@ enum ContentBlocker {
     /// semantics) so existing installs recompile once instead of waiting
     /// for the weekly refresh.
     private static let schemaVersionKey = "adBlockFiltersSchemaVersion"
-    private static let currentSchemaVersion = 3
+    private static let currentSchemaVersion = 4
     private static let maxStoredLists = 8
 
     private static var cachedRuleLists: [WKContentRuleList] = []

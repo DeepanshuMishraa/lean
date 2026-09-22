@@ -21,22 +21,16 @@ engine, no daemons, no accounts — a clean, minimal window onto the web.
 Lean is a thin wrapper around `WKWebView`, so anything WebKit or the
 missing browser chrome does not provide will not work. Verified by testing:
 
-- **"Continue with Google" / third-party OAuth buttons often fail.**
-  Logging into Google directly (Gmail, YouTube) works. Popup-based
-  "Sign in with Google" now opens the popup as a tab and lets it close
-  itself (`webViewDidClose`), so the `postMessage` handshake completes.
-  Google may still refuse the flow outright for non-Safari browsers.
-  Workaround: use the site's direct email/password login, or finish that
-  login in Safari.
-- **JavaScript dialogs, HTTP Basic auth, external links, and
-  camera/microphone are handled natively.** `alert` / `confirm` /
-  `prompt` show sheets, HTTP Basic shows a sign-in sheet, `mailto:` /
-  `tel:` / app schemes open the target app, and camera/mic asks per
-  site (remembered per origin). Client-certificate pages still fail —
-  there is no certificate picker.
-- **Some downloads never start.** `Content-Disposition: attachment` and
-  `application/octet-stream` become downloads; other files served inline
-  without them still render instead of downloading.
+- **"Continue with Google" on some sites still fails.** Popup-based
+  flows open as a tab and close themselves, so the handshake completes
+  where Google allows it. Google may still refuse non-Safari browsers
+  outright, and button flows depending on FedCM or third-party cookies
+  have no WebKit API to grant. Workaround: use the site's direct
+  email/password login, or finish that login in Safari.
+- **Some downloads never start.** Files served inline without
+  `Content-Disposition: attachment` or an `application/octet-stream`
+  type still render instead of downloading.
+- **Client-certificate pages fail.** There is no certificate picker.
 - **No passkeys, autofill, or Apple Pay.** Safari-only integrations
   (iCloud Passwords autofill, Touch ID passkeys, `ApplePaySession`) are
   unavailable in a third-party `WKWebView`.
@@ -87,7 +81,9 @@ Only a paid Developer ID certificate plus notarization removes step 3.
 - Configurable page scrollbars and native scrolling
 - Adjustable interface size (Settings → Appearance → Browser UI)
 - WebKit content blocking (uBlock Origin lists + YouTube ad coverage)
-- Right-click page menu (Back, Forward, Reload, View Page Source, Inspect Element)
+- Right-click page menu (Open Link in New Tab, View Page Source, Inspect Element)
+- Native `alert` / `confirm` / `prompt`, HTTP Basic sign-in, external
+  (`mailto:`, `tel:`, app schemes) links, and per-site camera/mic prompts
 
 ## Run
 

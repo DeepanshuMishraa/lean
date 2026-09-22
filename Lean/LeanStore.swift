@@ -299,6 +299,7 @@ final class LeanStore: ObservableObject {
 
     private let dataStore: WKWebsiteDataStore
     private let database: AppDatabase?
+    private let mediaPermissionStore: MediaPermissionStore
     private var recentlyClosed: [URL] = []
     private var adBlockUpdateObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
@@ -307,6 +308,7 @@ final class LeanStore: ObservableObject {
         self.dataStore = dataStore ?? WKWebsiteDataStore.default()
         self.database = database ?? AppDatabase.openDefault()
         self.downloadManager = DownloadManager(database: self.database)
+        self.mediaPermissionStore = MediaPermissionStore(database: self.database)
 
         let savedSearchEngine = databaseValue(self.database, String.self, forKey: Self.searchEngineKey)
             ?? UserDefaults.standard.string(forKey: Self.searchEngineKey)
@@ -765,8 +767,17 @@ final class LeanStore: ObservableObject {
             self.saveSession()
         }
         tab.downloadManager = downloadManager
-        tab.onOpenNewTab = { [weak self] url, configuration in
-            self?.newTab(url: nil, configuration: configuration).webView
+        tab.mediaPermissionStore = mediaPermissionStore
+        tab.onOpenNewTab = { [weak self] _, configuration in
+            guard let self else { return nil }
+            // WebKit drives the popup load itself through the returned
+            // web view — do not pre-load or the OAuth handshake double-loads.
+            let child = self.newTab(url: nil, configuration: configuration)
+            child.onCloseTab = { [weak self, weak child] in
+                guard let self, let child else { return }
+                self.close(child)
+            }
+            return child.webView
         }
         tabs.append(tab)
         if select {

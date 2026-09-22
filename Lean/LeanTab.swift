@@ -120,6 +120,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             forMainFrameOnly: false
         )
         configuration.userContentController.addUserScript(fontSmoothingScript)
+        let youtubeAdsScript = WKUserScript(
+            source: PageScripts.youtubeAds(enabled: adBlockingEnabled),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        configuration.userContentController.addUserScript(youtubeAdsScript)
         configuration.userContentController.addUserScript(
             WKUserScript(
                 source: PageScripts.pageReady,
@@ -203,6 +209,15 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             cefHost?.setAdBlockingEnabled(enabled)
             return
         }
+        // Rebuild re-registers every script with the fresh flag (including
+        // the YouTube scriptlet, whose content is baked in at registration)
+        // and re-syncs the rule lists. Idempotent; safe to call on toggles.
+        rebuildUserScripts()
+    }
+
+    /// Adds/removes the compiled content-rule lists without touching scripts.
+    private func syncContentRuleLists() {
+        let enabled = adBlockingEnabled
         Task { [weak self] in
             let ruleLists = await ContentBlocker.ruleLists()
             guard let self, self.adBlockingEnabled == enabled else { return }
@@ -255,6 +270,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             forMainFrameOnly: false
         )
         webView.configuration.userContentController.addUserScript(fontSmoothingScript)
+        let youtubeAdsScript = WKUserScript(
+            source: PageScripts.youtubeAds(enabled: adBlockingEnabled),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        webView.configuration.userContentController.addUserScript(youtubeAdsScript)
         webView.configuration.userContentController.addUserScript(
             WKUserScript(
                 source: PageScripts.pageReady,
@@ -263,7 +284,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             )
         )
 
-        applyAdBlocking(adBlockingEnabled)
+        syncContentRuleLists()
     }
 
     func applyScrollbarStyle(_ style: ScrollbarStyle) {

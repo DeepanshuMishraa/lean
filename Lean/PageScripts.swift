@@ -158,6 +158,124 @@ enum PageScripts {
         """
     }
 
+    /// YouTube in-player ads. Same-origin creatives can't be blocked at the
+    /// network layer without breaking playback, so this prunes the ad
+    /// schedule out of `youtubei/v1/player` + `/next` responses before the
+    /// player ever sees it (no ad mode, no flash, no spinner): `fetch` is
+    /// wrapped for those endpoints and `JSON.parse` is wrapped for XHR
+    /// flows. A skip/mute fallback covers anything that still slips into
+    /// ad mode. Hostname-guarded; inert everywhere else. Document-start so
+    /// the patches win the race with the player bootstrap.
+    static func youtubeAds(enabled: Bool) -> String {
+        if !enabled {
+            return "void 0;"
+        }
+        return """
+        (function() {
+            try {
+                var host = location.hostname || '';
+                if (!/(^|\\.)youtube\\.com$|(^|\\.)youtu\\.be$/.test(host)) return;
+            } catch (e) { return; }
+
+            function stripAds(obj) {
+                if (!obj || typeof obj !== 'object') return;
+                var keys = ['adPlacements', 'playerAds', 'adSlots'];
+                for (var i = 0; i < keys.length; i++) {
+                    try {
+                        if (Object.prototype.hasOwnProperty.call(obj, keys[i])) {
+                            delete obj[keys[i]];
+                        }
+                    } catch (e) {}
+                }
+            }
+
+            try {
+                var origParse = JSON.parse;
+                JSON.parse = function(text, reviver) {
+                    var val = origParse.call(this, text, reviver);
+                    try { stripAds(val); } catch (e) {}
+                    return val;
+                };
+            } catch (e) {}
+
+            try {
+                if (window.fetch) {
+                    var origFetch = window.fetch;
+                    window.fetch = function(input, init) {
+                        var url = '';
+                        try {
+                            url = typeof input === 'string' ? input : (input && input.url) || '';
+                        } catch (e) {}
+                        if (url.indexOf('/youtubei/v1/player') === -1 &&
+                            url.indexOf('/youtubei/v1/next') === -1) {
+                            return origFetch.apply(this, arguments);
+                        }
+                        return origFetch.apply(this, arguments).then(function(resp) {
+                            try {
+                                return resp.text().then(function(text) {
+                                    if (text.indexOf('adPlacements') === -1 &&
+                                        text.indexOf('playerAds') === -1) {
+                                        return new Response(text, {
+                                            status: resp.status,
+                                            statusText: resp.statusText,
+                                            headers: resp.headers
+                                        });
+                                    }
+                                    var data = origParse(text);
+                                    stripAds(data);
+                                    return new Response(JSON.stringify(data), {
+                                        status: resp.status,
+                                        statusText: resp.statusText,
+                                        headers: resp.headers
+                                    });
+                                });
+                            } catch (e) { return resp; }
+                        });
+                    };
+                }
+            } catch (e) {}
+
+            // Fallback: skip/mute anything that still enters ad mode.
+            try {
+                if (window.__leanYtSkip) return;
+                window.__leanYtSkip = true;
+                var skipSel = '.ytp-skip-ad-button,.ytp-ad-skip-button,.ytp-skip-ad-button-modern';
+                function q(s) { return document.querySelector(s); }
+                function clickSkip() { var b = q(skipSel); if (b) { b.click(); } }
+                function tame() {
+                    var v = q('video');
+                    if (!v) return;
+                    if (q('.ad-showing')) {
+                        if (!v.dataset.leanMuted) { v.dataset.leanMuted = '1'; }
+                        v.muted = true;
+                        clickSkip();
+                        if (!q(skipSel) && isFinite(v.duration) && v.duration > 0 &&
+                            v.duration < 180 && v.currentTime < v.duration - 0.5) {
+                            try { v.currentTime = v.duration - 0.2; } catch (e) {}
+                        }
+                    } else if (v.dataset.leanMuted) {
+                        v.muted = false;
+                        delete v.dataset.leanMuted;
+                    }
+                }
+                function start() {
+                    if (!document.documentElement) {
+                        requestAnimationFrame(start);
+                        return;
+                    }
+                    setInterval(tame, 500);
+                    try {
+                        new MutationObserver(function() { if (q(skipSel)) { clickSkip(); } })
+                            .observe(document.documentElement, { childList: true, subtree: true });
+                    } catch (e) {}
+                    tame();
+                }
+                start();
+            } catch (e) {}
+        })();
+        """
+    }
+
     /// Grayscale/antialiased text rendering. Off by default: removes the
     /// style node so pages fall back to the platform rasterizer.
     static func fontSmoothing(enabled: Bool) -> String {

@@ -539,16 +539,6 @@ struct CustomSegmentedPicker: View {
 
     @State private var hoveredId: String? = nil
 
-    private func textColor(isSelected: Bool, isHovered: Bool) -> Color {
-        if isSelected {
-            return isDark ? Color.white : Color(white: 0.08)
-        } else if isHovered {
-            return isDark ? Color.white.opacity(0.80) : Color.black.opacity(0.75)
-        } else {
-            return isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.42)
-        }
-    }
-
     var body: some View {
         HStack(spacing: 2) {
             ForEach(options) { opt in

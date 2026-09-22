@@ -9,12 +9,13 @@ NS_ASSUME_NONNULL_BEGIN
 @interface CEFBrowserHost : NSObject
 
 + (void)configureAdBlockerWithBlockedDomains:(NSArray<NSString *> *)blockedDomains
-                              allowedDomains:(NSArray<NSString *> *)allowedDomains
-                             blockedPatterns:(NSArray<NSString *> *)blockedPatterns
-                             allowedPatterns:(NSArray<NSString *> *)allowedPatterns
-                             globalSelectors:(NSArray<NSString *> *)globalSelectors
-                             domainSelectors:(NSDictionary<NSString *, NSArray<NSString *> *> *)domainSelectors
-    NS_SWIFT_NAME(configureAdBlocker(blockedDomains:allowedDomains:blockedPatterns:allowedPatterns:globalSelectors:domainSelectors:));
+                               allowedDomains:(NSArray<NSString *> *)allowedDomains
+                              blockedPatterns:(NSArray<NSString *> *)blockedPatterns
+                              allowedPatterns:(NSArray<NSString *> *)allowedPatterns
+                              globalSelectors:(NSArray<NSString *> *)globalSelectors
+                              domainSelectors:(NSDictionary<NSString *, NSArray<NSString *> *> *)domainSelectors
+                                 networkRules:(NSArray<NSDictionary *> *)networkRules
+    NS_SWIFT_NAME(configureAdBlocker(blockedDomains:allowedDomains:blockedPatterns:allowedPatterns:globalSelectors:domainSelectors:networkRules:));
 
 /// Fired once the underlying CefBrowser exists.
 @property (nonatomic, copy, nullable) void (^onCreated)(void);
@@ -28,7 +29,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) void (^onRendererTerminated)(NSString *statusName);
 /// Page called window.close().
 @property (nonatomic, copy, nullable) void (^onClose)(void);
-/// Popup blocked (v1: opened as a plain new tab; window.opener handshake N/A).
+/// Legit popup (ad popups matching block rules are swallowed instead;
+/// opened as a plain new tab; window.opener handshake N/A).
 @property (nonatomic, copy, nullable) void (^onPopupURL)(NSString *urlString);
 
 @property (nonatomic, copy, nullable) void (^onJSAlert)(NSString *message, long long dialogId);

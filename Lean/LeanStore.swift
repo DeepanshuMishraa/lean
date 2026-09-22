@@ -756,7 +756,8 @@ final class LeanStore: ObservableObject {
             blockedPatterns: rules.blockedPatterns,
             allowedPatterns: rules.allowedPatterns,
             globalSelectors: rules.globalSelectors,
-            domainSelectors: rules.domainSelectors
+            domainSelectors: rules.domainSelectors,
+            networkRules: rules.networkRules.map { $0.bridgeDictionary }
         )
         for tab in tabs where tab.engineKind == .cef {
             tab.applyAdBlocking(adBlockingEnabled)

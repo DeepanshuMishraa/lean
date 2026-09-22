@@ -313,11 +313,18 @@ private struct TopBarTabItem: View {
         .overlay(alignment: .trailing) {
             // Sibling overlay, NOT nested inside the select Button label,
             // so both Buttons hit-test independently with stable frames.
-            // Icon-only draws its close centered in place of the favicon
-            // (see iconOnlyContent), so skip the trailing overlay there.
             if shouldShowClose && store.tabDisplayMode != .iconOnly {
                 closeButton
                     .padding(.trailing, 6)
+            }
+        }
+        .overlay(alignment: .center) {
+            // Icon-only close replaces the favicon in place. Centered
+            // sibling overlay for the same nested-Button reason: a close
+            // Button inside iconOnlyContent (the select Button's label)
+            // would never fire — the outer Button consumes the click.
+            if shouldShowClose && store.tabDisplayMode == .iconOnly {
+                closeButton
             }
         }
     }
@@ -384,16 +391,12 @@ private struct TopBarTabItem: View {
 
     @ViewBuilder
     private var iconOnlyContent: some View {
-        // Swap favicon and close in the same centered box: no HStack
-        // spacing artifact, no reserved gap, no width shift on hover.
-        ZStack {
-            TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
-                .opacity(shouldShowClose ? 0 : 1)
-            if shouldShowClose {
-                closeButton
-            }
-        }
-        .frame(width: 28, height: 26)
+        // Fixed centered box: no HStack spacing artifact, no reserved
+        // gap, no width shift on hover. The favicon hides when the
+        // centered sibling overlay shows the close button in its place.
+        TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
+            .opacity(shouldShowClose ? 0 : 1)
+            .frame(width: 28, height: 26)
     }
 
     @ViewBuilder

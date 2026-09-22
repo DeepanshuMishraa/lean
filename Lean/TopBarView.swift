@@ -1,4 +1,3 @@
-import PhosphorSwift
 import SwiftUI
 
 struct TopBarView: View {

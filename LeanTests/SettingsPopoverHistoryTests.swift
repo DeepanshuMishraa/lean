@@ -42,12 +42,14 @@ struct SettingsPopoverHistoryTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("Lean.sqlite3")
 
-        let first = LeanStore(database: try AppDatabase(url: url))
+        let database = try AppDatabase(url: url)
+        let first = LeanStore(dataStore: .nonPersistent(), database: database)
+        first.tabs.forEach { first.close($0) }
         first.newTab(url: URL(string: "https://example.com")!, select: false)
         first.newTab(url: URL(string: "https://apple.com")!, select: true)
         first.saveSession()
 
-        let second = LeanStore(database: try AppDatabase(url: url))
+        let second = LeanStore(dataStore: .nonPersistent(), database: try AppDatabase(url: url))
         #expect(second.tabs.compactMap(\.url).map(\.absoluteString) == ["https://example.com", "https://apple.com"])
         #expect(second.selectedTab?.url?.absoluteString == "https://apple.com")
     }

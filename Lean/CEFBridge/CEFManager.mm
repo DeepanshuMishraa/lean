@@ -78,6 +78,11 @@ class LeanCefApp : public CefApp, public CefBrowserProcessHandler {
       // The GPU process cannot nest Chromium's sandbox inside Lean's App
       // Sandbox; run it without the inner sandbox (it still inherits ours).
       command_line->AppendSwitch("disable-gpu-sandbox");
+      // Match WebKit behavior for post-ad resume: YouTube's main content
+      // must autoplay after a fast-forwarded ad without a fresh gesture.
+      // Chromium's default (user-gesture-required) leaves it paused at 0:00
+      // with a spinner until clicked; the scriptlet still calls play().
+      command_line->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");
 #if DEBUG
       // Debug only: DevTools + CDP screenshot harness (scripts/cef-shot.sh).
       // Never ship open (no auth on the port). LEAN_CEF_CDP_PORT lets the

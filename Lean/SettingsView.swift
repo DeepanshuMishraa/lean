@@ -1,5 +1,4 @@
 import AppKit
-import PhosphorSwift
 import SwiftUI
 import UniformTypeIdentifiers
 

@@ -14,9 +14,6 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     version: 2.9.4
-  PhosphorSwift:
-    url: https://github.com/phosphor-icons/swift
-    from: 2.1.0
 targets:
   Lean:
     type: application
@@ -42,7 +39,6 @@ targets:
           - "**/*.mm"
     dependencies:
       - package: Sparkle
-      - package: PhosphorSwift
       # Build ordering only: scripts/embed-cef.sh is the sole helper
       # embedder (Contents/Frameworks). Embedding here too would stash a
       # second copy under Contents/Resources.
@@ -101,7 +97,6 @@ targets:
       - LeanTests
     dependencies:
       - target: Lean
-      - package: PhosphorSwift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dipxsy.lean.tests

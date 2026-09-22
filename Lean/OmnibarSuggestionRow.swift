@@ -1,5 +1,4 @@
 import AppKit
-import PhosphorSwift
 import SwiftUI
 
 // MARK: - Suggestion Row matching Reference Screenshot

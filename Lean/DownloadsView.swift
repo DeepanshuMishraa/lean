@@ -1,4 +1,3 @@
-import PhosphorSwift
 import SwiftUI
 
 // MARK: - Bespoke Downloads Popover (same card language as Quick Settings)
@@ -202,18 +201,10 @@ private struct DownloadPopoverRow: View {
                     .truncationMode(.middle)
 
                 if item.state == .downloading {
-                    // Thin live progress track
-                    GeometryReader { geo in
-                        Capsule()
-                            .fill(store.isDarkMode ? Color.white.opacity(0.10) : Color.black.opacity(0.08))
-                            .frame(height: 3)
-                            .overlay(alignment: .leading) {
-                                Capsule()
-                                    .fill(store.isDarkMode ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
-                                    .frame(width: geo.size.width * CGFloat(item.fractionCompleted), height: 3)
-                            }
-                    }
-                    .frame(height: 3)
+                    DownloadProgressBar(
+                        fraction: item.fractionCompleted,
+                        isDark: store.isDarkMode
+                    )
 
                     Text(downloadingSubtitle)
                         .font(store.bodyFont(size: 10.5))
@@ -237,7 +228,7 @@ private struct DownloadPopoverRow: View {
                 if item.state == .downloading {
                     // % stays put; Cancel fades in beside it without shifting layout.
                     if item.totalBytes > 0 {
-                        Text("\(Int((item.fractionCompleted * 100).rounded()))%")
+                        Text(percentText)
                             .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
                             .foregroundColor(store.adaptiveTheme.secondaryText)
                     }
@@ -304,6 +295,11 @@ private struct DownloadPopoverRow: View {
         }
     }
 
+    private var percentText: String {
+        let pct = Int((item.fractionCompleted * 100).rounded())
+        return "\(pct)%"
+    }
+
     private var downloadingSubtitle: String {
         var parts: [String] = [DownloadFormat.progressText(received: item.receivedBytes, total: item.totalBytes)]
         let speed = DownloadFormat.speed(item.speedBytesPerSec)
@@ -329,6 +325,25 @@ private struct DownloadPopoverRow: View {
         case .downloading:
             return ""
         }
+    }
+}
+
+private struct DownloadProgressBar: View {
+    let fraction: Double
+    let isDark: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            Capsule()
+                .fill(isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08))
+                .frame(height: 3)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(isDark ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
+                        .frame(width: max(0, min(geo.size.width, geo.size.width * CGFloat(fraction))), height: 3)
+                }
+        }
+        .frame(height: 3)
     }
 }
 

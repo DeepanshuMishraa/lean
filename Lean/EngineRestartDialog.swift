@@ -1,4 +1,3 @@
-import PhosphorSwift
 import SwiftUI
 
 /// Restart-to-switch-engines dialog. Same card language as the popovers

@@ -1032,6 +1032,13 @@ extension LeanTab {
                 self.url = url
             }
             self.onStateChange?()
+            // YouTube watch->watch is a same-document SPA nav: no new V8
+            // context (Helper early patch) and no OnLoadStart/End
+            // (BrowserHost cosmetic inject) fire. Re-run the idempotent,
+            // hostname-guarded hooks so pruning + skip fallback survive.
+            if self.engineKind == .cef, self.adBlockingEnabled {
+                self.cefHost?.executeJavaScript(PageScripts.youtubeAds(enabled: true))
+            }
         }
         host.onLoadingState = { [weak self] loading, back, forward in
             guard let self else { return }
@@ -1046,6 +1053,9 @@ extension LeanTab {
                     self.cefHost?.executeJavaScript(PageScripts.fontSmoothing(enabled: true))
                 }
                 self.cefHost?.executeJavaScript(PageScripts.scrollbar(self.scrollbarStyle))
+                if self.engineKind == .cef, self.adBlockingEnabled {
+                    self.cefHost?.executeJavaScript(PageScripts.youtubeAds(enabled: true))
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                     self?.captureSnapshot()
                 }

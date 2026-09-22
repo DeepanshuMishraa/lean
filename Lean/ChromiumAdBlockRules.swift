@@ -190,17 +190,21 @@ enum ChromiumAdBlockRuleCompiler {
     }
 
     private static func plainSubstring(from pattern: String) -> String? {
-        // Never strip anchor semantics: `|`, `||`, `^`, and path separators
-        // carry host/position meaning. Stripping them turns an anchored or
-        // path-scoped filter into an unrestricted substring that blocks
-        // unrelated URLs — skip these patterns instead.
-        guard !pattern.contains("|"),
-              !pattern.contains("^"),
-              !pattern.contains("*"),
-              !pattern.contains("/")
-        else { return nil }
+        // Anchor semantics must survive: a `||host/path` domain anchor keeps
+        // its meaning as a host+path substring, but single leading/trailing
+        // `|` pins (start/end/exact match) would be lost by stripping — an
+        // unpinned `|ads` would block any URL merely containing "ads".
+        // Skip those instead of broadening them.
         var candidate = pattern
-        guard candidate.count >= 6,
+        if candidate.hasPrefix("||") {
+            candidate.removeFirst(2)
+        } else if candidate.hasPrefix("|") || candidate.hasSuffix("|") {
+            return nil
+        }
+        guard !candidate.contains("^"),
+              !candidate.contains("*"),
+              !candidate.contains("|"),
+              candidate.count >= 6,
               !candidate.contains(" "),
               !candidate.hasPrefix("/")
         else { return nil }

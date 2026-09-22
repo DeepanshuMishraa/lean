@@ -893,6 +893,14 @@ final class LeanStore: ObservableObject {
         }
         tab.onOpenNewTabURL = { [weak self] url in
             guard let self else { return }
+            // CEF popups bypass WK navigation policy, so gate external
+            // schemes here: hand them to the OS instead of loading them
+            // into a tab (CEF would fail them; WebKit re-gates at
+            // navigation time anyway).
+            if ExternalLinkPolicy.shouldOpenExternally(url) {
+                NSWorkspace.shared.open(url)
+                return
+            }
             let child = self.newTab(url: url)
             // CEF popups (window.open → plain tab) must be closable via
             // window.close() like their WebKit counterparts.

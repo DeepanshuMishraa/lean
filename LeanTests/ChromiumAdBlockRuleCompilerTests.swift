@@ -47,6 +47,22 @@ struct ChromiumAdBlockRuleCompilerTests {
         #expect(rules.blockedPatterns == ["cdn.example/ads/banner.js"])
     }
 
+    @Test("Domain-scoped cosmetic exceptions do not clear global selectors")
+    func scopedCosmeticExceptionsStayScoped() {
+        let rules = ChromiumAdBlockRuleCompiler.compile([
+            """
+            ##.ad
+            example.com##.ad
+            example.com#@#.ad
+            other.com##.ad
+            """
+        ])
+
+        #expect(rules.globalSelectors == [".ad"])
+        #expect(rules.domainSelectors["example.com"] == nil)
+        #expect(rules.domainSelectors["other.com"] == [".ad"])
+    }
+
     @Test("Skips unsupported procedural cosmetics and risky patterns")
     func skipsUnsupportedRules() {
         let rules = ChromiumAdBlockRuleCompiler.compile([

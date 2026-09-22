@@ -25,7 +25,7 @@ struct SidebarView: View {
                     icon: .sidebar,
                     helpText: store.isSidebarCollapsed ? "Pin Sidebar (Always Expanded) (⌘S)" : "Enable Auto-hide (⌘S)",
                     size: 24,
-                    iconSize: 13,
+                    iconSize: 12,
                     color: store.isSidebarCollapsed ? store.adaptiveTheme.secondaryText : store.adaptiveTheme.primaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
                     hoverBackground: store.adaptiveTheme.iconHoverBackground,
@@ -189,7 +189,7 @@ struct SidebarView: View {
                     icon: store.isDarkMode ? .sun : .moon,
                     helpText: store.isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
                     size: 24,
-                    iconSize: 11.5,
+                    iconSize: 12,
                     color: store.adaptiveTheme.secondaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
                     hoverBackground: store.adaptiveTheme.iconHoverBackground,
@@ -205,7 +205,7 @@ struct SidebarView: View {
                     icon: .gear,
                     helpText: "Settings (⌘,)",
                     size: 24,
-                    iconSize: 11.5,
+                    iconSize: 12,
                     color: store.isQuickSettingsPresented ? store.adaptiveTheme.primaryText : store.adaptiveTheme.secondaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
                     hoverBackground: store.adaptiveTheme.iconHoverBackground,
@@ -541,8 +541,9 @@ struct SidebarTabItem: View {
             if showsClose {
                 Button(action: onClose) {
                     Ph.x.bold
+                        .interpolation(.high)
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 8.5, height: 8.5)
+                        .frame(width: 8, height: 8)
                         .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
                         .frame(width: 20, height: 20)
                         .background(

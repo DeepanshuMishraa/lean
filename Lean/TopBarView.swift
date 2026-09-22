@@ -33,7 +33,7 @@ struct TopBarView: View {
                             icon: .plus,
                             helpText: "New Tab (⌘T)",
                             size: store.enableWindowBorder ? 26 : 24,
-                            iconSize: 11,
+                            iconSize: 12,
                             color: store.adaptiveTheme.secondaryText,
                             hoverColor: store.adaptiveTheme.primaryText,
                             disabledColor: store.adaptiveTheme.disabledIconText,
@@ -313,7 +313,9 @@ private struct TopBarTabItem: View {
         .overlay(alignment: .trailing) {
             // Sibling overlay, NOT nested inside the select Button label,
             // so both Buttons hit-test independently with stable frames.
-            if shouldShowClose {
+            // Icon-only draws its close centered in place of the favicon
+            // (see iconOnlyContent), so skip the trailing overlay there.
+            if shouldShowClose && store.tabDisplayMode != .iconOnly {
                 closeButton
                     .padding(.trailing, 6)
             }
@@ -382,15 +384,16 @@ private struct TopBarTabItem: View {
 
     @ViewBuilder
     private var iconOnlyContent: some View {
-        HStack(spacing: 5) {
+        // Swap favicon and close in the same centered box: no HStack
+        // spacing artifact, no reserved gap, no width shift on hover.
+        ZStack {
             TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
-            Spacer(minLength: 0)
-                .frame(width: shouldShowClose ? 16 : 0)
+                .opacity(shouldShowClose ? 0 : 1)
+            if shouldShowClose {
+                closeButton
+            }
         }
-        .padding(.horizontal, 8)
-        .padding(.trailing, shouldShowClose ? 18 : 0)
-        .frame(height: 26)
-        .frame(minWidth: 28)
+        .frame(width: 28, height: 26)
     }
 
     @ViewBuilder
@@ -417,6 +420,7 @@ private struct TopBarTabItem: View {
     private var closeButton: some View {
         Button(action: onClose) {
             Ph.x.bold
+                .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 8, height: 8)
                 .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
@@ -728,6 +732,7 @@ struct InteractiveIconButton: View {
     var body: some View {
         Button(action: action) {
             icon.uiIcon
+                .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
                 .frame(width: iconSize, height: iconSize)
                 .foregroundColor(foregroundColor)
@@ -813,8 +818,9 @@ struct DownloadToolbarButton: View {
         } label: {
             ZStack {
                 Ph.arrowCircleDown.fill
+                    .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: 13, height: 13)
+                    .frame(width: 12, height: 12)
                     .foregroundColor(foregroundColor)
                     .frame(width: 24, height: 24)
                     .background(

@@ -207,9 +207,7 @@ struct TopBarView: View {
                             pressedBackground: store.adaptiveTheme.iconPressedBackground,
                             isDark: store.adaptiveTheme.effectiveIsDark
                         ) {
-                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                                store.isQuickSettingsPresented.toggle()
-                            }
+                            store.isQuickSettingsPresented.toggle()
                         }
                         .background(
                             GeometryReader { proxy in
@@ -274,58 +272,69 @@ private struct TopBarTabItem: View {
     }
 
     var body: some View {
-        tabContent
-            .frame(height: store.enableWindowBorder ? 27 : 26)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(
-                        isSelected
-                            ? store.adaptiveTheme.activeTabBackground
-                            : (isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : store.adaptiveTheme.inactiveTabBackground)
-                    )
-                    .overlay(
-                        isSelected && store.enableWindowBorder
-                            ? RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
-                            : nil
-                    )
-                    .shadow(
-                        color: isSelected && store.enableWindowBorder ? store.adaptiveTheme.activeTabShadow : Color.clear,
-                        radius: store.adaptiveTheme.isFrameLight ? 2 : 4,
-                        x: 0,
-                        y: 1
-                    )
-            )
-            .contentShape(Rectangle())
-            .help(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
-            .onTapGesture {
-                if !isSelected {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                        onSelect()
-                    }
-                } else if !store.isInlineURLEditing {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                        store.isInlineURLEditing = true
-                    }
-                }
+        Button(action: handleTap) {
+            tabContent
+                .frame(height: store.enableWindowBorder ? 27 : 26)
+        }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(
+                    isSelected
+                        ? store.adaptiveTheme.activeTabBackground
+                        : (isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : store.adaptiveTheme.inactiveTabBackground)
+                )
+                .overlay(
+                    isSelected && store.enableWindowBorder
+                        ? RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
+                        : nil
+                )
+                .shadow(
+                    color: isSelected && store.enableWindowBorder ? store.adaptiveTheme.activeTabShadow : Color.clear,
+                    radius: store.adaptiveTheme.isFrameLight ? 2 : 4,
+                    x: 0,
+                    y: 1
+                )
+        )
+        .contentShape(Rectangle())
+        .help(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
+        .onHover { isHovered = $0 }
+        .contextMenu {
+            Button("Close Tab", action: onClose)
+            Button("Reload") { tab.reload() }
+            if tab.canGoBack {
+                Button("Back") { tab.goBack() }
             }
-            .onHover { hovered in
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    isHovered = hovered
-                }
+            if tab.canGoForward {
+                Button("Forward") { tab.goForward() }
             }
-            .contextMenu {
-                Button("Close Tab", action: onClose)
-                Button("Reload") { tab.reload() }
-                if tab.canGoBack {
-                    Button("Back") { tab.goBack() }
-                }
-                if tab.canGoForward {
-                    Button("Forward") { tab.goForward() }
-                }
+        }
+        .overlay(alignment: .trailing) {
+            // Sibling overlay, NOT nested inside the select Button label,
+            // so both Buttons hit-test independently with stable frames.
+            if shouldShowClose {
+                closeButton
+                    .padding(.trailing, 6)
             }
-            .animation(.spring(response: 0.24, dampingFraction: 0.82), value: showURLBar)
-            .animation(.spring(response: 0.22, dampingFraction: 0.82), value: isSelected)
+        }
+    }
+
+    private var shouldShowClose: Bool {
+        switch store.tabDisplayMode {
+        case .textOnly, .hybrid:
+            return isHovered && !showURLBar
+        case .iconOnly:
+            return showCloseOnHover
+        }
+    }
+
+    private func handleTap() {
+        if !isSelected {
+            onSelect()
+        } else if !store.isInlineURLEditing {
+            store.isInlineURLEditing = true
+        }
     }
 
     @ViewBuilder
@@ -363,31 +372,25 @@ private struct TopBarTabItem: View {
                         : store.adaptiveTheme.inactiveTabText
                 )
                 .lineLimit(1)
-
-            if isHovered {
-                closeButton
-            }
+            // Reserve close-button space so hover doesn't shift layout.
+            Spacer(minLength: 0)
+                .frame(width: shouldShowClose ? 16 : 0)
         }
-        .padding(.horizontal, isSelected ? 13 : 9)
+        .padding(.horizontal, 10)
+        .padding(.trailing, shouldShowClose ? 20 : 0)
     }
 
     @ViewBuilder
     private var iconOnlyContent: some View {
         HStack(spacing: 5) {
             TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
-
-            if showCloseOnHover {
-                closeButton
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.7)),
-                        removal: .opacity
-                    ))
-            }
+            Spacer(minLength: 0)
+                .frame(width: shouldShowClose ? 16 : 0)
         }
-        .padding(.horizontal, showCloseOnHover ? 8 : 7)
+        .padding(.horizontal, 8)
+        .padding(.trailing, shouldShowClose ? 18 : 0)
         .frame(height: 26)
         .frame(minWidth: 28)
-        .animation(.spring(response: 0.22, dampingFraction: 0.82), value: isHovered)
     }
 
     @ViewBuilder
@@ -404,33 +407,29 @@ private struct TopBarTabItem: View {
                 )
                 .lineLimit(1)
 
-            if isHovered {
-                closeButton
-            }
+            Spacer(minLength: 0)
+                .frame(width: shouldShowClose ? 16 : 0)
         }
-        .padding(.horizontal, isSelected ? 12 : 9)
+        .padding(.horizontal, 10)
+        .padding(.trailing, shouldShowClose ? 20 : 0)
     }
 
     private var closeButton: some View {
-        Button(action: {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                onClose()
-            }
-        }) {
+        Button(action: onClose) {
             Ph.x.bold
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 8, height: 8)
                 .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
-                .frame(width: 16, height: 16)
+                .frame(width: 18, height: 18)
                 .background(
-                    isHovered ? store.adaptiveTheme.tabCloseButtonHoverBackground : Color.clear,
+                    store.adaptiveTheme.tabCloseButtonHoverBackground,
                     in: Circle()
                 )
-                .contentShape(Circle())
+                // Rectangular hit area is larger and stable at the edges.
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .contentShape(Circle())
-        .transition(.scale.combined(with: .opacity))
+        .contentShape(Rectangle())
     }
 }
 
@@ -738,15 +737,25 @@ struct InteractiveIconButton: View {
                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                 )
                 .contentShape(Rectangle())
-                .scaleEffect(isPressed ? 0.92 : (isHovered ? 1.05 : 1.0))
-                .animation(.spring(response: 0.20, dampingFraction: 0.75), value: isHovered)
-                .animation(.spring(response: 0.15, dampingFraction: 0.8), value: isPressed)
+                // Stable hit area: never grow on hover. Only a subtle press
+                // shrink while held, so mouseUp always lands inside bounds.
+                .scaleEffect(isPressed ? 0.93 : 1.0)
+                .animation(.easeOut(duration: 0.08), value: isPressed)
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
         .disabled(!isEnabled)
         .help(helpText)
         .onHover { isHovered = isEnabled && $0 }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if isEnabled && !isPressed { isPressed = true }
+                }
+                .onEnded { _ in
+                    isPressed = false
+                }
+        )
     }
 }
 
@@ -799,10 +808,8 @@ struct DownloadToolbarButton: View {
 
     var body: some View {
         Button {
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                store.isQuickSettingsPresented = false
-                store.isDownloadsPresented.toggle()
-            }
+            store.isQuickSettingsPresented = false
+            store.isDownloadsPresented.toggle()
         } label: {
             ZStack {
                 Ph.arrowCircleDown.fill
@@ -814,22 +821,26 @@ struct DownloadToolbarButton: View {
                         backgroundColor,
                         in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                     )
-                    .scaleEffect(isPressed ? 0.92 : (isHovered ? 1.05 : 1.0))
+                    .scaleEffect(isPressed ? 0.93 : 1.0)
+                    .animation(.easeOut(duration: 0.08), value: isPressed)
 
                 if hasActive {
                     Capsule()
                         .fill(store.adaptiveTheme.secondaryText.opacity(0.25))
                         .frame(width: 12, height: 2)
                         .offset(y: 8)
+                        .allowsHitTesting(false)
                     Capsule()
                         .fill(store.isDarkMode ? Color.white : Color.black)
                         .frame(width: 12 * CGFloat(store.downloadManager.overallProgress), height: 2)
                         .offset(y: 8)
+                        .allowsHitTesting(false)
                 } else if !store.downloadManager.downloads.isEmpty {
                     Circle()
                         .fill(store.adaptiveTheme.secondaryText.opacity(0.55))
                         .frame(width: 4, height: 4)
                         .offset(x: 7, y: -7)
+                        .allowsHitTesting(false)
                 }
             }
             .contentShape(Rectangle())
@@ -838,9 +849,15 @@ struct DownloadToolbarButton: View {
         .contentShape(Rectangle())
         .help(downloadsHelpText)
         .onHover { isHovered = $0 }
-        .animation(.spring(response: 0.20, dampingFraction: 0.75), value: isHovered)
-        .animation(.spring(response: 0.15, dampingFraction: 0.8), value: isPressed)
-        .animation(.easeInOut(duration: 0.2), value: hasActive)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isPressed { isPressed = true }
+                }
+                .onEnded { _ in
+                    isPressed = false
+                }
+        )
     }
 
     private var downloadsHelpText: String {

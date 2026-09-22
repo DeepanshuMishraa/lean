@@ -537,7 +537,6 @@ struct CustomSegmentedPicker: View {
     let uiFont: LeanFont
     let onSelect: (String) -> Void
 
-    @Namespace private var segmentAnimation
     @State private var hoveredId: String? = nil
 
     private func textColor(isSelected: Bool, isHovered: Bool) -> Color {
@@ -553,60 +552,17 @@ struct CustomSegmentedPicker: View {
     var body: some View {
         HStack(spacing: 2) {
             ForEach(options) { opt in
-                let isSelected = opt.id == selectedId
-                let isHovered = opt.id == hoveredId
-
-                Button {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                        onSelect(opt.id)
+                SegmentButton(
+                    option: opt,
+                    isSelected: opt.id == selectedId,
+                    isHovered: opt.id == hoveredId,
+                    isDark: isDark,
+                    uiFont: uiFont,
+                    onSelect: { onSelect(opt.id) },
+                    onHover: { h in
+                        hoveredId = h ? opt.id : (hoveredId == opt.id ? nil : hoveredId)
                     }
-                } label: {
-                    HStack(spacing: 6) {
-                        if let icon = opt.icon {
-                            icon.fill
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 12, height: 12)
-                        }
-                        Text(opt.label)
-                            .font(uiFont.font(size: 12, weight: isSelected ? .semibold : .medium))
-                    }
-                    .foregroundColor(textColor(isSelected: isSelected, isHovered: isHovered))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 27)
-                    .background {
-                        if isSelected {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(
-                                    isDark
-                                        ? Color(white: 0.17)
-                                        : Color.white
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .stroke(
-                                            isDark
-                                                ? Color.white.opacity(0.12)
-                                                : Color.black.opacity(0.06),
-                                            lineWidth: 0.5
-                                        )
-                                )
-                                .shadow(
-                                    color: isDark ? Color.black.opacity(0.32) : Color.black.opacity(0.06),
-                                    radius: isDark ? 2 : 2.5,
-                                    y: 1
-                                )
-                                .matchedGeometryEffect(id: "activeSegment", in: segmentAnimation)
-                        } else if isHovered {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.025))
-                        }
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .onHover { h in
-                    hoveredId = h ? opt.id : (hoveredId == opt.id ? nil : hoveredId)
-                }
+                )
             }
         }
         .padding(2.5)
@@ -619,6 +575,72 @@ struct CustomSegmentedPicker: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.05), lineWidth: 0.5)
         )
+    }
+}
+
+private struct SegmentButton: View {
+    let option: SegmentOption
+    let isSelected: Bool
+    let isHovered: Bool
+    let isDark: Bool
+    let uiFont: LeanFont
+    let onSelect: () -> Void
+    let onHover: (Bool) -> Void
+
+    private var textColor: Color {
+        if isSelected { return isDark ? Color.white : Color(white: 0.08) }
+        if isHovered { return isDark ? Color.white.opacity(0.80) : Color.black.opacity(0.75) }
+        return isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.42)
+    }
+
+    private var fill: Color {
+        if isSelected { return isDark ? Color(white: 0.17) : Color.white }
+        if isHovered { return isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.025) }
+        return Color.clear
+    }
+
+    private var stroke: Color? {
+        guard isSelected else { return nil }
+        return isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.06)
+    }
+
+    private var shadow: Color {
+        guard isSelected else { return Color.clear }
+        return isDark ? Color.black.opacity(0.32) : Color.black.opacity(0.06)
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 6) {
+                if let icon = option.icon {
+                    icon.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
+                }
+                Text(option.label)
+                    .font(uiFont.font(size: 12, weight: isSelected ? .semibold : .medium))
+            }
+            .foregroundColor(textColor)
+            .frame(maxWidth: .infinity)
+            .frame(height: 27)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(fill)
+                    .overlay(
+                        Group {
+                            if let stroke {
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(stroke, lineWidth: 0.5)
+                            }
+                        }
+                    )
+                    .shadow(color: shadow, radius: 2, y: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .onHover(perform: onHover)
     }
 }
 
@@ -722,7 +744,6 @@ struct FrameWidthPickerRow: View {
     let isDark: Bool
     let uiFont: LeanFont
 
-    @Namespace private var frameWidthAnimation
     @State private var hoveredWidth: CGFloat? = nil
 
     private let widths: [(label: String, width: CGFloat, previewLine: CGFloat)] = [
@@ -760,9 +781,7 @@ struct FrameWidthPickerRow: View {
                     let isHovered = hoveredWidth == item.width
 
                     Button {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                            store.windowBorderWidth = item.width
-                        }
+                        store.windowBorderWidth = item.width
                     } label: {
                         HStack(spacing: 5) {
                             Capsule()
@@ -775,28 +794,18 @@ struct FrameWidthPickerRow: View {
                         .foregroundColor(textColor(isSelected: isSelected, isHovered: isHovered))
                         .padding(.horizontal, 10)
                         .frame(height: 26)
-                        .background {
-                            if isSelected {
-                                RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                                    .fill(isDark ? Color(white: 0.17) : Color.white)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                                            .stroke(isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.06), lineWidth: 0.5)
-                                    )
-                                    .shadow(
-                                        color: isDark ? Color.black.opacity(0.3) : Color.black.opacity(0.06),
-                                        radius: 2,
-                                        y: 1
-                                    )
-                                    .matchedGeometryEffect(id: "activeFrameWidth", in: frameWidthAnimation)
-                            } else if isHovered {
-                                RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                                    .fill(isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.025))
-                            }
-                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 5.5, style: .continuous)
+                                .fill(
+                                    isSelected
+                                        ? (isDark ? Color(white: 0.17) : Color.white)
+                                        : (isHovered ? (isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.025)) : Color.clear)
+                                )
+                        )
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
                     .onHover { h in
                         hoveredWidth = h ? item.width : (hoveredWidth == item.width ? nil : hoveredWidth)
                     }

@@ -236,8 +236,7 @@ final class LeanStore: ObservableObject {
 
     @Published var smoothScrollingEnabled: Bool {
         didSet {
-        persist(smoothScrollingEnabled, forKey: Self.smoothScrollingKey)
-        persist(fontSmoothingEnabled, forKey: Self.fontSmoothingKey)
+            persist(smoothScrollingEnabled, forKey: Self.smoothScrollingKey)
             updateAllTabsSmoothScrolling()
         }
     }
@@ -1141,6 +1140,7 @@ final class LeanStore: ObservableObject {
         persist(isSidebarCollapsed, forKey: Self.isSidebarCollapsedKey)
         persist(enableThumbnailsInTabSwitcher, forKey: Self.thumbnailsSwitcherKey)
         persist(smoothScrollingEnabled, forKey: Self.smoothScrollingKey)
+        persist(fontSmoothingEnabled, forKey: Self.fontSmoothingKey)
         persist(showFullTitleOnActiveTab, forKey: Self.showFullTitleKey)
         persist(leanUIFont.rawValue, forKey: Self.leanUIFontKey)
         persist(uiHeadingWeight.rawValue, forKey: Self.uiHeadingWeightKey)

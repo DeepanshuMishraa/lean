@@ -162,7 +162,17 @@ enum PageScripts {
     /// style node so pages fall back to the platform rasterizer.
     static func fontSmoothing(enabled: Bool) -> String {
         if !enabled {
-            return "document.getElementById('lean-font-smoothing-style')?.remove();"
+            return """
+            (function() {
+                function remove() {
+                    document.getElementById('lean-font-smoothing-style')?.remove();
+                }
+                remove();
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', remove, { once: true });
+                }
+            })();
+            """
         }
         let css = "html body, html body * { -webkit-font-smoothing: antialiased !important; -moz-osx-font-smoothing: grayscale !important; }"
         return """

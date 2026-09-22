@@ -114,6 +114,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             forMainFrameOnly: false
         )
         configuration.userContentController.addUserScript(smoothScript)
+        let fontSmoothingScript = WKUserScript(
+            source: PageScripts.fontSmoothing(enabled: fontSmoothing),
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: false
+        )
+        configuration.userContentController.addUserScript(fontSmoothingScript)
         configuration.userContentController.addUserScript(
             WKUserScript(
                 source: PageScripts.pageReady,

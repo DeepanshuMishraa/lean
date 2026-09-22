@@ -50,8 +50,6 @@ struct SettingsView: View {
     @ObservedObject var updater: AppUpdater
     @State private var selectedCategory: SettingsCategory = .general
     @StateObject private var dropdownState = DropdownMenuState()
-    @Namespace private var sidebarAnimation
-    @Namespace private var compactAnimation
 
     var body: some View {
         GeometryReader { geometry in
@@ -157,12 +155,9 @@ struct SettingsView: View {
                         isSelected: category == selectedCategory,
                         isDark: store.isDarkMode,
                         primaryText: primaryText,
-                        headingFont: store.headingFont,
-                        namespace: sidebarAnimation
+                        headingFont: store.headingFont
                     ) {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
-                            selectedCategory = category
-                        }
+                        selectedCategory = category
                     }
                 }
             }
@@ -189,12 +184,9 @@ struct SettingsView: View {
                         isSelected: category == selectedCategory,
                         isDark: store.isDarkMode,
                         primaryText: primaryText,
-                        headingFont: store.headingFont,
-                        namespace: compactAnimation
+                        headingFont: store.headingFont
                     ) {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
-                            selectedCategory = category
-                        }
+                        selectedCategory = category
                     }
                 }
             }
@@ -1174,9 +1166,7 @@ private struct TabLayoutPickerView: View {
                 isDark: store.isDarkMode,
                 uiFont: store.leanUIFont
             ) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                    store.tabLayout = .top
-                }
+                store.tabLayout = .top
             }
 
             TabLayoutCard(
@@ -1185,9 +1175,7 @@ private struct TabLayoutPickerView: View {
                 isDark: store.isDarkMode,
                 uiFont: store.leanUIFont
             ) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                    store.tabLayout = .sidebar
-                }
+                store.tabLayout = .sidebar
             }
         }
         .padding(.vertical, 4)
@@ -1248,9 +1236,6 @@ private struct TabLayoutCard: View {
                     x: 0,
                     y: 2
                 )
-                .scaleEffect(isHovered ? 1.02 : 1.0)
-                .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isHovered)
-                .animation(.spring(response: 0.24, dampingFraction: 0.82), value: isSelected)
 
                 // Label below card
                 Text(layout.title)
@@ -2405,10 +2390,30 @@ private struct SidebarCategoryButton: View {
     let isDark: Bool
     let primaryText: Color
     let headingFont: (CGFloat) -> Font
-    let namespace: Namespace.ID
     let onSelect: () -> Void
 
     @State private var isHovered = false
+
+    private var iconColor: Color {
+        if isSelected || isHovered { return primaryText }
+        return isDark ? Color.white.opacity(0.55) : Color.black.opacity(0.50)
+    }
+
+    private var labelColor: Color {
+        if isSelected || isHovered { return primaryText }
+        return isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.60)
+    }
+
+    private var rowFill: Color {
+        if isSelected { return isDark ? Color.white.opacity(0.09) : Color.black.opacity(0.06) }
+        if isHovered { return isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.035) }
+        return Color.clear
+    }
+
+    private var rowStroke: Color? {
+        guard isSelected else { return nil }
+        return isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04)
+    }
 
     var body: some View {
         Button(action: onSelect) {
@@ -2416,49 +2421,37 @@ private struct SidebarCategoryButton: View {
                 category.icon.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 14, height: 14)
-                    .foregroundColor(
-                        isSelected
-                            ? primaryText
-                            : (isHovered ? primaryText : (isDark ? Color.white.opacity(0.55) : Color.black.opacity(0.50)))
-                    )
+                    .foregroundColor(iconColor)
                     .frame(width: 18)
 
                 Text(category.rawValue)
                     .font(headingFont(13))
-                    .foregroundColor(
-                        isSelected
-                            ? primaryText
-                            : (isHovered ? primaryText : (isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.60)))
-                    )
+                    .foregroundColor(labelColor)
 
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 32)
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(isDark ? Color.white.opacity(0.09) : Color.black.opacity(0.06))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .stroke(isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04), lineWidth: 0.5)
-                        )
-                        .matchedGeometryEffect(id: "activeSidebarCategory", in: namespace)
-                } else if isHovered {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.035))
-                }
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            // Static background: no sliding pill, so the hit area never
+            // moves between mouseDown and mouseUp.
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(rowFill)
+                    .overlay(
+                        Group {
+                            if let stroke = rowStroke {
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .stroke(stroke, lineWidth: 0.5)
+                            }
+                        }
+                    )
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.12)) {
-                isHovered = hovering
-            }
-        }
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
     }
 }
 
@@ -2469,10 +2462,20 @@ private struct CompactCategoryButton: View {
     let isDark: Bool
     let primaryText: Color
     let headingFont: (CGFloat) -> Font
-    let namespace: Namespace.ID
     let onSelect: () -> Void
 
     @State private var isHovered = false
+
+    private var labelColor: Color {
+        if isSelected || isHovered { return primaryText }
+        return isDark ? Color.white.opacity(0.50) : Color.black.opacity(0.50)
+    }
+
+    private var rowFill: Color {
+        if isSelected { return isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.07) }
+        if isHovered { return isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.035) }
+        return Color.clear
+    }
 
     var body: some View {
         Button(action: onSelect) {
@@ -2483,35 +2486,17 @@ private struct CompactCategoryButton: View {
                 Text(category.rawValue)
             }
             .font(headingFont(12))
-            .foregroundColor(
-                isSelected
-                    ? primaryText
-                    : (isHovered ? primaryText : (isDark ? Color.white.opacity(0.50) : Color.black.opacity(0.50)))
-            )
+            .foregroundColor(labelColor)
             .padding(.horizontal, 12)
             .frame(height: 30)
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.07))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .stroke(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.05), lineWidth: 0.5)
-                        )
-                        .matchedGeometryEffect(id: "activeCompactCategory", in: namespace)
-                } else if isHovered {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.035))
-                }
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(rowFill)
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.12)) {
-                isHovered = hovering
-            }
-        }
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
     }
 }

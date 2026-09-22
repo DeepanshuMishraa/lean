@@ -212,9 +212,7 @@ struct SidebarView: View {
                     pressedBackground: store.adaptiveTheme.iconPressedBackground,
                     isDark: store.adaptiveTheme.effectiveIsDark
                 ) {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                        store.isQuickSettingsPresented.toggle()
-                    }
+                    store.isQuickSettingsPresented.toggle()
                 }
                 .background(
                     GeometryReader { proxy in
@@ -496,47 +494,33 @@ struct SidebarTabItem: View {
 
     @State private var isHovered = false
 
+    private var showsClose: Bool {
+        isHovered || isSelected
+    }
+
     var body: some View {
-        HStack(spacing: 8) {
-            TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
+        Button(action: onSelect) {
+            HStack(spacing: 8) {
+                TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
 
-            Text(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
-                .font(store.headingFont(size: 13))
-                .foregroundColor(
-                    isSelected
-                        ? store.adaptiveTheme.activeTabText
-                        : (isHovered ? store.adaptiveTheme.primaryText : store.adaptiveTheme.inactiveTabText)
-                )
-                .lineLimit(1)
-                .truncationMode(.tail)
+                Text(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
+                    .font(store.headingFont(size: 13))
+                    .foregroundColor(
+                        isSelected
+                            ? store.adaptiveTheme.activeTabText
+                            : (isHovered ? store.adaptiveTheme.primaryText : store.adaptiveTheme.inactiveTabText)
+                    )
+                    .lineLimit(1)
+                    .truncationMode(.tail)
 
-            Spacer(minLength: 4)
-
-            if isHovered || isSelected {
-                Button(action: {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
-                        onClose()
-                    }
-                }) {
-                    Ph.x.bold
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 8.5, height: 8.5)
-                        .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
-                        .frame(width: 18, height: 18)
-                        .background(
-                            isHovered ? store.adaptiveTheme.tabCloseButtonHoverBackground : Color.clear,
-                            in: Circle()
-                        )
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .contentShape(Circle())
-                .help("Close Tab (⌘W)")
-                .transition(.scale.combined(with: .opacity))
+                Spacer(minLength: 4)
+                // Always reserve close-button width so hover doesn't push text.
+                Color.clear.frame(width: 18, height: 18)
             }
+            .padding(.horizontal, 10)
+            .frame(height: 36)
         }
-        .padding(.horizontal, 10)
-        .frame(height: 36)
+        .buttonStyle(.plain)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(
@@ -552,14 +536,25 @@ struct SidebarTabItem: View {
                 )
         )
         .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                onSelect()
-            }
-        }
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.12)) {
-                isHovered = hovering
+        .onHover { isHovered = $0 }
+        .overlay(alignment: .trailing) {
+            if showsClose {
+                Button(action: onClose) {
+                    Ph.x.bold
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 8.5, height: 8.5)
+                        .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
+                        .frame(width: 20, height: 20)
+                        .background(
+                            store.adaptiveTheme.tabCloseButtonHoverBackground,
+                            in: Circle()
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .help("Close Tab (⌘W)")
+                .padding(.trailing, 8)
             }
         }
         .contextMenu {

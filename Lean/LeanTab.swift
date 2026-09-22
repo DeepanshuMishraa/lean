@@ -512,6 +512,15 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     func zoomOut() { webView.pageZoom = max(webView.pageZoom - 0.1, 0.5) }
     func resetZoom() { webView.pageZoom = 1 }
 
+    func printPage() {
+        guard !isSettingsPage, let window = webView.window else { return }
+        let printInfo = NSPrintInfo.shared
+        printInfo.horizontalPagination = .fit
+        printInfo.verticalPagination = .automatic
+        let operation = webView.printOperation(with: printInfo)
+        operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+    }
+
     func find(_ query: String) {
         guard !query.isEmpty else { return }
         webView.find(query, configuration: WKFindConfiguration()) { _ in }

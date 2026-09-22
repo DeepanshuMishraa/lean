@@ -27,6 +27,14 @@ struct LeanCommands: Commands {
             .keyboardShortcut("w", modifiers: .command)
         }
 
+        CommandGroup(replacing: .printItem) {
+            Button("Print...") {
+                store.selectedTab?.printPage()
+            }
+            .keyboardShortcut("p", modifiers: .command)
+            .disabled(store.selectedTab?.isSettingsPage ?? true)
+        }
+
         CommandGroup(replacing: .newItem) {
             Button("New Tab") { store.handleNewTabCommand() }
                 .keyboardShortcut("t", modifiers: .command)

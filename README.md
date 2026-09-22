@@ -40,8 +40,7 @@ missing browser chrome does not provide will not work. Verified by testing:
   high-resolution Netflix/Prime/Spotify playback is Safari-only.
 - **If a bank or SSO page breaks, try disabling ad blocking** in
   Settings before assuming anything else.
-- **No private windows, profiles, or print support.** Web Inspector is
-  available via right-click → Inspect Element.
+- **No private windows or profiles.**
 
 ## Install a release
 
@@ -84,6 +83,7 @@ Only a paid Developer ID certificate plus notarization removes step 3.
 - Right-click page menu (Open Link in New Tab, View Page Source, Inspect Element)
 - Native `alert` / `confirm` / `prompt`, HTTP Basic sign-in, external
   (`mailto:`, `tel:`, app schemes) links, and per-site camera/mic prompts
+- Printing via `⌘P` with the system print panel
 
 ## Run
 
@@ -107,6 +107,7 @@ Select the `Lean` scheme and run.
 | `⌘1`–`⌘9` | Select tab |
 | `⌘L` | Focus omnibar |
 | `⌘F` | Find on page |
+| `⌘P` | Print page |
 | `⌘,` | Settings |
 
 ## Structure

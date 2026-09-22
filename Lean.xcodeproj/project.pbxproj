@@ -33,6 +33,7 @@
 		8513BF00B4CABA9ED98F67DE /* CustomShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = E566A9FFD9A3DA622E49EC68 /* CustomShortcuts.swift */; };
 		85AF75933CD5073D9F2E185F /* AddressResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86BD95EC684E0650335C24A2 /* AddressResolver.swift */; };
 		8A6436AE37F332DE7548F77B /* AdBlockFilterConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD6B10DFBD20A8F10DF0B9C7 /* AdBlockFilterConverter.swift */; };
+		9042BF6C2D7CF8674CFDC1F0 /* LeanTabPopupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5907E6D8081598539D8437B5 /* LeanTabPopupTests.swift */; };
 		9189BD1604353EC11AD2E7BB /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A240F0FAABC15EC3C0D230E /* TestHelpers.swift */; };
 		9E43DF834EFD61D237BC05DA /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5268449F35E5A41542EEF02 /* AppUpdater.swift */; };
 		9F7CDF17FBB0540000928EA0 /* OmnibarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AC627B2D3E8E4EB789B7523 /* OmnibarView.swift */; };
@@ -85,6 +86,7 @@
 		4C7FCB01A3F3CCDE9AA9530E /* OmnibarSuggestionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmnibarSuggestionRow.swift; sourceTree = "<group>"; };
 		53149805E8E44A5ECCE884F3 /* LeanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanView.swift; sourceTree = "<group>"; };
 		55ACE65E20A203180C11BDDD /* TopBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopBarView.swift; sourceTree = "<group>"; };
+		5907E6D8081598539D8437B5 /* LeanTabPopupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanTabPopupTests.swift; sourceTree = "<group>"; };
 		5E07226B7BD97E945B43B227 /* NavigationControlsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationControlsTests.swift; sourceTree = "<group>"; };
 		5F223D3E0E5D21A9B6965446 /* PageLoadingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageLoadingTests.swift; sourceTree = "<group>"; };
 		6AC627B2D3E8E4EB789B7523 /* OmnibarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmnibarView.swift; sourceTree = "<group>"; };
@@ -206,6 +208,7 @@
 				0E245A44DB008A4A9C0E6A77 /* DownloadsTests.swift */,
 				CF6FE4814030CDFDD5C840C3 /* DropdownMenuTests.swift */,
 				7B6255463FA3D1604089AAF5 /* FontSettingsTests.swift */,
+				5907E6D8081598539D8437B5 /* LeanTabPopupTests.swift */,
 				990C495395F1F1C48EE3ABDA /* LeanTabTitleTests.swift */,
 				5E07226B7BD97E945B43B227 /* NavigationControlsTests.swift */,
 				E79752CAC905E311310040C7 /* OmnibarServiceTests.swift */,
@@ -322,6 +325,7 @@
 				58D83A3CC4AF7B1A83D97E2A /* DownloadsTests.swift in Sources */,
 				70FD8F5BEAB6A6AA09E92CDF /* DropdownMenuTests.swift in Sources */,
 				B2BE76A97BB55360B3E12B92 /* FontSettingsTests.swift in Sources */,
+				9042BF6C2D7CF8674CFDC1F0 /* LeanTabPopupTests.swift in Sources */,
 				33EFA190F234F3C2C2A3D380 /* LeanTabTitleTests.swift in Sources */,
 				DB4831CB6B88926C41A5D902 /* NavigationControlsTests.swift in Sources */,
 				F20F5A75FB1AE3B3F4EFF939 /* OmnibarServiceTests.swift in Sources */,

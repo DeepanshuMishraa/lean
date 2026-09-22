@@ -60,7 +60,21 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         self.pageHeadingWeight = pageHeadingWeight
         self.pageBodyWeight = pageBodyWeight
         self.adBlockingEnabled = adBlockingEnabled
-        let configuration = configuration ?? WKWebViewConfiguration()
+        // Popup configurations from `createWebViewWith` arrive carrying the
+        // opener's user content (scripts + the `pageReady` message handler).
+        // Re-adding our handler onto that controller throws a duplicate-name
+        // NSException and crashes, so start popups from a clean controller
+        // and re-register everything below. The configuration object itself
+        // is kept: it shares the opener's process pool, which OAuth/SSO
+        // popups need for the same session/cookies.
+        let effectiveConfiguration: WKWebViewConfiguration
+        if let popupConfiguration = configuration {
+            popupConfiguration.userContentController = WKUserContentController()
+            effectiveConfiguration = popupConfiguration
+        } else {
+            effectiveConfiguration = WKWebViewConfiguration()
+        }
+        let configuration = effectiveConfiguration
         configuration.websiteDataStore = dataStore
         configuration.preferences.isElementFullscreenEnabled = true
 

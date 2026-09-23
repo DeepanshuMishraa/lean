@@ -933,6 +933,16 @@ struct SettingsValueSlider: View {
                     }
             )
             .help("\(value)\(valueSuffix)")
+            .accessibilityElement()
+            .accessibilityLabel(label)
+            .accessibilityValue("\(value)\(valueSuffix)")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: value = min(range.upperBound, value + step)
+                case .decrement: value = max(range.lowerBound, value - step)
+                @unknown default: break
+                }
+            }
         }
         .frame(width: width, height: height)
     }

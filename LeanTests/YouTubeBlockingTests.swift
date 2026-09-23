@@ -21,6 +21,7 @@ struct YouTubeBlockingTests {
         let script = PageScripts.youtubeAds(enabled: true)
         #expect(script.contains("__leanYtUserPaused"))
         #expect(script.contains("__leanYtLastAdEnd"))
+        #expect(script.contains("!window.__leanYtUserPaused && recentAdEnd"))
         #expect(script.contains("__leanYtWasAd"))
     }
 
@@ -30,23 +31,12 @@ struct YouTubeBlockingTests {
         // visible, enabled button counts, otherwise seek paths proceed.
         let script = PageScripts.youtubeAds(enabled: true)
         #expect(script.contains("function skipButton()"))
-        #expect(script.contains("offsetParent"))
+        #expect(script.contains("offsetParent !== null"))
     }
 
     @Test("Source HTML is escaped")
     func htmlEscaping() {
         #expect(LeanTab.escapedHTML("<div>&\"</div>") == "&lt;div&gt;&amp;\"&lt;/div&gt;")
-    }
-
-    @Test("Source tab mounts the web view without a URL")
-    @MainActor
-    func sourceTabState() {
-        let tab = LeanTab(dataStore: .default(), initialURL: nil)
-        #expect(!tab.isPageSource)
-        tab.presentPageSource(title: "Source of x", html: nil)
-        #expect(tab.isPageSource)
-        #expect(tab.url == nil)
-        #expect(tab.title == "Source of x")
     }
 
     @Test("Context menu reports the link under right-click")

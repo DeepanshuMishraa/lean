@@ -109,6 +109,8 @@ struct SidebarView: View {
 
                 Spacer(minLength: 0)
                     .background(WindowDragView())
+                WindowDragView()
+                    .frame(width: 8)
             }
             .frame(height: store.scaled(36))
             .padding(.top, store.scaled(4))

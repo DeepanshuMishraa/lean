@@ -6,14 +6,6 @@ struct LeanApp: App {
     @StateObject private var store = LeanStore()
     @StateObject private var updater = AppUpdater()
 
-    init() {
-        // Belt & suspenders with `isInspectable`: enables WebKit developer
-        // extras (right-click Inspect Element, Safari remote inspection).
-        // Persisted, not just registered: the default must be visible to
-        // WebKit helper processes via cfprefsd, and in-memory registration
-        // never leaves this process. Scoped to Lean's own domain.
-        UserDefaults.standard.set(true, forKey: "WebKitDeveloperExtrasEnabled")
-    }
 
     var body: some Scene {
         WindowGroup {

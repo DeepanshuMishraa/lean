@@ -138,7 +138,7 @@ struct AdBlockFilterConverterTests {
         #expect(!result.rules.isEmpty)
         let hasEndpointBlock = result.rules.contains {
             action($0)["type"] as? String == "block"
-                && (triggers($0)["url-filter"] as? String ?? "").contains("youtube\\.com")
+                && (triggers($0)["url-filter"] as? String ?? "").contains("youtube\\.com/api/stats/ads")
         }
         #expect(hasEndpointBlock)
         let hasSlotHiding = result.rules.contains {

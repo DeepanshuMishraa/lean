@@ -272,8 +272,10 @@ private struct TopBarTabItem: View {
 
     var body: some View {
         Button(action: handleTap) {
-            tabContent
-                .frame(height: store.scaled(store.enableWindowBorder ? 27 : 26))
+            Group {
+                if showURLBar { Color.clear } else { tabContent }
+            }
+            .frame(height: store.scaled(store.enableWindowBorder ? 27 : 26))
         }
         .buttonStyle(.plain)
         .background(
@@ -296,6 +298,17 @@ private struct TopBarTabItem: View {
                     y: 1
                 )
         )
+        .overlay {
+            if showURLBar {
+                InlineURLBar(
+                    tab: tab,
+                    store: store,
+                    autoFocus: store.isInlineURLEditing,
+                    isFocusedBinding: $isFieldFocused,
+                    onClose: onClose
+                )
+            }
+        }
         .contentShape(Rectangle())
         .help(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
         .onHover { isHovered = $0 }
@@ -413,10 +426,10 @@ private struct TopBarTabItem: View {
                 .lineLimit(1)
 
             Spacer(minLength: 0)
-                .frame(width: shouldShowClose ? 16 : 0)
+                .frame(width: 16)
         }
         .padding(.horizontal, 10)
-        .padding(.trailing, shouldShowClose ? 20 : 0)
+        .padding(.trailing, 20)
     }
 
     private var closeButton: some View {
@@ -447,6 +460,7 @@ struct InlineURLBar: View {
     let onClose: () -> Void
 
     @FocusState private var isFieldFocused: Bool
+    @Environment(\.browserUIScale) private var browserUIScale
     @State private var text = ""
     @State private var selectedIndex = 0
 
@@ -540,7 +554,7 @@ struct InlineURLBar: View {
         .overlay(alignment: .topLeading) {
             if !suggestions.isEmpty && isFieldFocused {
                 suggestionsDropdown
-                    .offset(y: 32)
+                    .offset(y: 32 * browserUIScale)
             }
         }
         .onAppear {
@@ -602,7 +616,7 @@ struct InlineURLBar: View {
             }
         }
         .padding(4)
-        .frame(width: 380)
+        .frame(width: 380 * browserUIScale)
         .background(
             store.adaptiveTheme.dropdownBackground,
             in: RoundedRectangle(cornerRadius: 10, style: .continuous)

@@ -41,6 +41,7 @@ struct DownloadPolicyTests {
     func inline() {
         #expect(!DownloadPolicy.shouldDownload(contentDisposition: nil, mimeType: "text/html"))
         #expect(!DownloadPolicy.shouldDownload(contentDisposition: "inline", mimeType: "application/pdf"))
+        #expect(!DownloadPolicy.shouldDownload(contentDisposition: "inline; filename=\"attachment.pdf\"", mimeType: "application/pdf"))
         #expect(!DownloadPolicy.shouldDownload(contentDisposition: nil, mimeType: nil))
     }
 }
@@ -49,6 +50,8 @@ struct MediaPermissionStoreTests {
     @Test("Origin keys are scheme + host scoped")
     func originKeys() {
         #expect(MediaPermissionStore.originKey(for: URL(string: "https://meet.google.com/x")!) == "https://meet.google.com")
+        #expect(MediaPermissionStore.originKey(for: URL(string: "https://meet.google.com:443")!) == "https://meet.google.com")
+        #expect(MediaPermissionStore.originKey(for: URL(string: "http://localhost:80")!) == "http://localhost")
         #expect(MediaPermissionStore.originKey(for: URL(string: "http://localhost:3000/")!) == "http://localhost:3000")
         #expect(MediaPermissionStore.originKey(for: URL(string: "about:blank")!) == nil)
     }

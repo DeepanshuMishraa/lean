@@ -32,7 +32,7 @@ struct LeanCommands: Commands {
                 store.selectedTab?.printPage()
             }
             .keyboardShortcut("p", modifiers: .command)
-            .disabled(store.selectedTab?.isSettingsPage ?? true)
+            .disabled(store.selectedTab.map { $0.isSettingsPage || ($0.url == nil && !$0.isPageSource) || $0.webView.window == nil } ?? true)
         }
 
         CommandGroup(replacing: .newItem) {

@@ -334,6 +334,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     func load(_ url: URL) {
+        isPageSource = false
         self.url = url
         if title == "New Tab" || title.isEmpty {
             self.title = url.host ?? "Loading..."
@@ -432,6 +433,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
     @objc private func pageMenuShowSource() { showPageSource() }
     @objc private func pageMenuPrint() { printPage() }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(pageMenuPrint) { return !isSettingsPage }
+        return true
+    }
 
     func showPageSource() {
         // Open the tab synchronously so it paints instantly; the DOM
@@ -584,7 +590,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         title = webView.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             ?? webView.url?.host
             ?? "New Tab"
-        url = webView.url
+        if !isPageSource {
+            url = webView.url
+        }
         onStateChange?()
     }
 }

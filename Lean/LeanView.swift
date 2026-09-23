@@ -145,6 +145,7 @@ struct LeanView: View {
                 Color.clear
                     .frame(width: 18)
                     .contentShape(Rectangle())
+                    .background(WindowDragView())
                     .onHover { hovering in
                         if hovering {
                             setSidebarHoverState(isHovering: true)
@@ -158,6 +159,7 @@ struct LeanView: View {
                 Color.clear
                     .frame(height: 28)
                     .contentShape(Rectangle())
+                    .background(WindowDragView())
                     .onHover { hovering in
                         if hovering {
                             setZenHoverState(isHoveringTop: true)
@@ -528,8 +530,14 @@ struct LeanView: View {
                 effectivePaletteFrame = paletteFrame
             } else {
                 let windowWidth = window.contentView?.frame.width ?? window.frame.width
-                let x = max(0, (windowWidth - 580) / 2)
-                effectivePaletteFrame = CGRect(x: x, y: 72, width: 580, height: 350)
+                let paletteWidth = store.scaled(580)
+                let x = max(0, (windowWidth - paletteWidth) / 2)
+                effectivePaletteFrame = CGRect(
+                    x: x,
+                    y: store.scaled(72),
+                    width: paletteWidth,
+                    height: store.scaled(350)
+                )
             }
 
             if effectivePaletteFrame.contains(swiftUIPoint) {

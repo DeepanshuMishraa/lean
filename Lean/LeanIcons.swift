@@ -101,7 +101,12 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
         guard let data = svgString.data(using: .utf8),
               let image = NSImage(data: data) else {
             NSLog("Failed to decode Lean icon: %@", rawValue)
-            return NSImage(systemSymbolName: "questionmark.square", accessibilityDescription: rawValue) ?? NSImage(size: NSSize(width: 24, height: 24))
+            let fallback = NSImage(systemSymbolName: "questionmark.square", accessibilityDescription: rawValue)
+                ?? NSImage(size: NSSize(width: 24, height: 24))
+            fallback.size = NSSize(width: 24, height: 24)
+            fallback.isTemplate = true
+            Self.imageCache.setObject(fallback, forKey: key)
+            return fallback
         }
         image.size = NSSize(width: 24, height: 24)
         image.isTemplate = true
@@ -121,22 +126,9 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
         fill
     }
 
-    /// Regular weight icon variant.
-    public var regular: Image {
-        fill
-    }
-
     /// Standard UI icon.
     public var uiIcon: Image {
         fill
-    }
-
-    /// Convenient scaled view helper.
-    public func view(size: CGFloat? = nil, color: Color? = nil) -> some View {
-        fill
-            .aspectRatio(contentMode: .fit)
-            .frame(width: size, height: size)
-            .foregroundColor(color)
     }
 
     /// Underlying SVG source string.

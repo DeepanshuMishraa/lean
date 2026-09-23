@@ -27,8 +27,9 @@ struct LeanTabPopupTests {
                 forMainFrameOnly: true
             )
         )
+        let handler = DummyMessageHandler()
         popupConfiguration.userContentController.add(
-            DummyMessageHandler(),
+            handler,
             name: PageScripts.pageReadyMessageName
         )
 
@@ -37,6 +38,8 @@ struct LeanTabPopupTests {
             initialURL: nil,
             configuration: popupConfiguration
         )
+        #expect(tab.webView.configuration.userContentController !== popupConfiguration.userContentController)
+        #expect(tab.webView.configuration.userContentController.userScripts.count == 6)
         #expect(tab.url == nil)
         #expect(tab.title == "New Tab")
     }

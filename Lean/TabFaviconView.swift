@@ -177,12 +177,12 @@ struct SiteFaviconView: View {
         if let url = url, url.absoluteString.hasPrefix("lean://settings") {
             Ph.gear.fill
                 .aspectRatio(contentMode: .fit)
-                .frame(width: size * 0.85, height: size * 0.85)
+                .frame(width: scaledSize * 0.85, height: scaledSize * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
         } else if url == nil {
             Ph.browser.fill
                 .aspectRatio(contentMode: .fit)
-                .frame(width: size * 0.85, height: size * 0.85)
+                .frame(width: scaledSize * 0.85, height: scaledSize * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
         } else {
             SiteFallbackGlyph(host: host, isDark: isDark, size: scaledSize)

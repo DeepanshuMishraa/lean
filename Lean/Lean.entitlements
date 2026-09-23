@@ -28,13 +28,6 @@
     <true/>
     <key>com.apple.security.device.audio-input</key>
     <true/>
-    <!-- Debuggable in all builds: WebKit only offers right-click Inspect
-    Element (and Safari DevTools attach) for debuggable apps. Xcode injects
-    this for Debug automatically; Release/ad-hoc builds need it declared or
-    inspection silently stays unavailable outside Xcode. Safe here:
-    distribution is ad-hoc, never the App Store. -->
-    <key>com.apple.security.get-task-allow</key>
-    <true/>
     <!-- Ad-hoc signed (no Team ID): dyld derives each binary's team from its
     cdhash, so the app and embedded Sparkle can never match teams under the
     hardened runtime's library validation. Disable it or every Release build

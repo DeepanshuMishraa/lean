@@ -28,6 +28,16 @@ struct LeanTabTitleTests {
     }
 
     @MainActor
+    @Test("Page source remains outside session navigation state")
+    func sourceTabState() {
+        let tab = LeanTab(dataStore: .default(), initialURL: nil)
+        tab.presentPageSource(title: "Source of x", html: nil)
+        #expect(tab.isPageSource)
+        #expect(tab.url == nil)
+        #expect(tab.title == "Source of x")
+    }
+
+    @MainActor
     @Test("New Tab shows New Tab both when selected and inactive")
     func newTabTitle() {
         let tab = LeanTab(dataStore: .default(), initialURL: nil)

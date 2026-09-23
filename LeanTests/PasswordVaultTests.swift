@@ -25,6 +25,12 @@ struct PasswordVaultTests {
         #expect(PasswordVault.originString(for: try #require(URL(string: "http://example.com:80/login"))) == "http://example.com")
     }
 
+    @Test("IPv6 origins normalize with brackets")
+    func normalizesIPv6() throws {
+        let origin = try #require(URL(string: "https://[2001:db8::1]:8443/login"))
+        #expect(PasswordVault.originString(for: origin) == "https://[2001:db8::1]:8443")
+    }
+
     @Test("Password origins reject non-web schemes")
     func rejectsNonWebOrigins() throws {
         #expect(PasswordVault.originString(for: try #require(URL(string: "file:///tmp/passwords"))) == nil)

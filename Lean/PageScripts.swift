@@ -57,15 +57,21 @@ enum PageScripts {
         document.addEventListener('submit', function(event) {
             try {
                 var form = event.target;
-                if (!form || !form.querySelector) return;
-                var password = form.querySelector('input[type="password"]');
-                if (!password || !password.value) return;
-                var username = form.querySelector('input[autocomplete="username"], input[type="email"], input[name*="user" i], input[name*="email" i], input[name*="login" i]');
-                window.webkit.messageHandlers.\(passwordFormMessageName).postMessage({
-                    host: location.hostname,
-                    username: username ? username.value : '',
-                    password: password.value
-                });
+                if (!form || !form.querySelectorAll) return;
+                setTimeout(function() {
+                    if (event.defaultPrevented) return;
+                    var passwords = Array.from(form.querySelectorAll('input[type="password"]'));
+                    var current = passwords.filter(function(field) { return field.autocomplete === 'current-password'; });
+                    if (!current.length && passwords.length !== 1) return;
+                    var password = current[0] || passwords[0];
+                    if (!password || !password.value || password.autocomplete === 'new-password') return;
+                    var username = form.querySelector('input[autocomplete="username"], input[type="email"], input[name*="user" i], input[name*="email" i], input[name*="login" i]');
+                    window.webkit.messageHandlers.\(passwordFormMessageName).postMessage({
+                        host: location.hostname,
+                        username: username ? username.value : '',
+                        password: password.value
+                    });
+                }, 0);
             } catch (error) {}
         }, true);
     })();

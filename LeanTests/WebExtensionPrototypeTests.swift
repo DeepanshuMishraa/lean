@@ -49,10 +49,12 @@ struct WebExtensionPrototypeTests {
         try controller.unload(context)
         #expect(!context.isLoaded)
 
-        try controller.load(context)
-        #expect(context.isLoaded)
-        try controller.unload(context)
-        context.setPermissionStatus(.deniedExplicitly, for: .storage)
-        #expect(context.permissionStatus(for: .storage) == .deniedExplicitly)
+        let reloadedContext = WKWebExtensionContext(for: extensionModel)
+        reloadedContext.setPermissionStatus(.grantedExplicitly, for: .storage)
+        try controller.load(reloadedContext)
+        #expect(reloadedContext.isLoaded)
+        try controller.unload(reloadedContext)
+        reloadedContext.setPermissionStatus(.deniedExplicitly, for: .storage)
+        #expect(reloadedContext.permissionStatus(for: .storage) == .deniedExplicitly)
     }
 }

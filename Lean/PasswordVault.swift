@@ -45,9 +45,9 @@ enum PasswordVault {
             .lowercased()
             .trimmingCharacters(in: CharacterSet(charactersIn: "."))
         guard !host.isEmpty,
-              host.rangeOfCharacter(from: CharacterSet(charactersIn: "/\\@:%?#")) == nil,
+              host.rangeOfCharacter(from: CharacterSet(charactersIn: "/\\@%?#")) == nil,
               host.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
-              let components = URLComponents(string: "https://\(host)"),
+              let components = URLComponents(string: "https://\(host.contains(":") ? "[\(host)]" : host)"),
               components.query == nil,
               components.fragment == nil,
               components.user == nil,
@@ -202,7 +202,6 @@ enum PasswordVault {
                 kSecReturnData as String: true,
                 kSecMatchLimit as String: kSecMatchLimitOne,
             ]
-            if let port = login.port { legacyQuery[kSecAttrPort as String] = port }
             status = SecItemCopyMatching(legacyQuery as CFDictionary, &result)
         }
         guard status == errSecSuccess, let data = result as? Data else {
@@ -221,7 +220,6 @@ enum PasswordVault {
                 kSecAttrAccount as String: login.username,
                 kSecAttrLabel as String: label,
             ]
-            if let port = login.port { legacyIdentity[kSecAttrPort as String] = port }
             let legacyStatus = SecItemDelete(legacyIdentity as CFDictionary)
             guard legacyStatus == errSecSuccess || legacyStatus == errSecItemNotFound else {
                 return .failure(.keychain(legacyStatus))

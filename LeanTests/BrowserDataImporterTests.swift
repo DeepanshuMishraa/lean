@@ -46,6 +46,7 @@ struct BrowserDataImporterTests {
         #expect(preview.history.count == 1)
         #expect(preview.history.first?.title == "Helium")
         #expect(preview.history.first?.url.host == "helium.example")
+        #expect(preview.history.first?.timestamp == Date(timeIntervalSince1970: 1_755_526_400))
     }
 
     @Test("Helium import uses its macOS Chromium data directory")
@@ -58,25 +59,23 @@ struct BrowserDataImporterTests {
     func discoversProfiles() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let bookmarks = #"{"roots":{"bookmark_bar":{"children":[{"type":"url","name":"Docs","url":"https://docs.example/"}]}}}"#
-        for name in ["Default", "Profile 1"] {
+        for (name, host) in [("Default", "default.example"), ("Profile 1", "profile.example")] {
             let profile = root.appendingPathComponent(name)
             try FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true)
+            let bookmarks = #"{"roots":{"bookmark_bar":{"children":[{"type":"url","name":"Docs","url":"https://\#(host)/"}]}}}"#
             try Data(bookmarks.utf8).write(to: profile.appendingPathComponent("Bookmarks"))
         }
 
         let preview = try BrowserDataImporter.readProfiles(at: root)
-        #expect(preview.bookmarks.count == 1)
-        #expect(preview.bookmarks.first?.url.absoluteString == "https://docs.example/")
+        #expect(preview.bookmarks.count == 2)
     }
 
     @Test("History CSV imports valid web addresses and timestamps")
     func parsesHistoryCSV() throws {
-        let csv = "url,title,timestamp\nhttps://example.com,Example,1700000000\nfile:///tmp/page,Local,1700000000"
+        let csv = "url,title,timestamp\nhttps://example.com,Example,1700000000\nhttps://millis.example,Millis,1700000000000\nfile:///tmp/page,Local,1700000000"
         let history = try BrowserDataImporter.readHistoryCSV(Data(csv.utf8))
-        #expect(history.count == 1)
-        #expect(history.first?.title == "Example")
-        #expect(history.first?.timestamp == Date(timeIntervalSince1970: 1_700_000_000))
+        #expect(history.count == 2)
+        #expect(history.first(where: { $0.title == "Millis" })?.timestamp == Date(timeIntervalSince1970: 1_700_000_000))
     }
 
     @Test("Password CSV keeps credentials for different origins separate")

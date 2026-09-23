@@ -3,6 +3,7 @@ import SwiftUI
 struct DotMatrixLoader: View {
     let color: Color
     var size: CGFloat = 14
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isAnimating = false
 
     private var dotSize: CGFloat {
@@ -23,7 +24,7 @@ struct DotMatrixLoader: View {
                             .frame(width: dotSize, height: dotSize)
                             .opacity(isAnimating ? 0.90 : 0.20)
                             .animation(
-                                .easeInOut(duration: 0.45)
+                                reduceMotion ? nil : .easeInOut(duration: 0.45)
                                     .repeatForever(autoreverses: true)
                                     .delay(Double(row * 3 + column) * 0.045),
                                 value: isAnimating
@@ -34,6 +35,7 @@ struct DotMatrixLoader: View {
         }
         .frame(width: size, height: size)
         .onAppear {
+            guard !reduceMotion else { return }
             isAnimating = false
             DispatchQueue.main.async {
                 isAnimating = true

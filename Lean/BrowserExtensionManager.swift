@@ -46,6 +46,7 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
     @Published private(set) var isInstallingFromStore = false
 
     private var contexts: [String: WKWebExtensionContext] = [:]
+    private var startupLoadTask: Task<Void, Never>?
     private var pending: [String: PendingInstall] = [:]
     private let directory = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
         ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true))
@@ -62,10 +63,12 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
                 errorMessage = "Lean couldn't read its installed extensions list: \(error.localizedDescription)"
             }
         }
-        for item in installed where item.enabled {
-            Task { await load(item.id) }
+        startupLoadTask = Task {
+            for item in installed where item.enabled { _ = await load(item.id) }
         }
     }
+
+    func waitUntilReady() async { await startupLoadTask?.value }
 
     func prepareInstallation(from source: URL, installationID: String? = nil, fromStore: Bool = false) async -> InstallationReview? {
         errorMessage = nil
@@ -123,12 +126,20 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
                 optionalPermissions: review.optionalPermissions,
                 requiredHosts: review.requiredHosts,
                 optionalHosts: review.optionalHosts,
-                grantedPermissions: permissions.sorted(),
-                grantedHosts: hosts.sorted(),
+                grantedPermissions: permissions.union(review.requiredPermissions).sorted(),
+                grantedHosts: hosts.union(review.requiredHosts).sorted(),
                 fromStore: review.fromStore
             )
             installed.append(item)
-            try save()
+            do { try save() } catch {
+                installed.removeAll { $0.id == item.id }
+                do {
+                    try FileManager.default.moveItem(at: folder(for: item.id), to: pendingInstall.stagedFolder)
+                } catch {
+                    try? FileManager.default.removeItem(at: folder(for: item.id))
+                }
+                throw error
+            }
             guard await load(item.id) else {
                 errorMessage = "\(item.name) was added, but WebKit couldn't start it. See its diagnostics."
                 return
@@ -158,7 +169,9 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let package = try await ChromeWebStoreInstaller.fetch(id)
-            try ChromeWebStoreInstaller.unpack(package, expectedID: id, to: staged)
+            try await Task.detached(priority: .userInitiated) {
+                try ChromeWebStoreInstaller.unpack(package, expectedID: id, to: staged)
+            }.value
             return await prepareInstallation(from: staged, installationID: id, fromStore: true)
         } catch {
             errorMessage = error.localizedDescription
@@ -208,6 +221,7 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
         } catch {
             installed.insert(removed, at: index)
             do { try save() } catch { errorMessage = error.localizedDescription }
+            if removed.enabled { Task { await load(id) } }
             errorMessage = "Couldn't remove the extension files: \(error.localizedDescription)"
         }
     }

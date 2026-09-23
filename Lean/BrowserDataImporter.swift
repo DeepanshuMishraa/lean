@@ -112,7 +112,7 @@ enum BrowserDataImporter {
                   ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return nil }
             let title = titleIndex.flatMap { row.indices.contains($0) ? row[$0] : nil }
                 .flatMap { $0.isEmpty ? nil : $0 } ?? url.host ?? url.absoluteString
-            let date = dateIndex.flatMap { row.indices.contains($0) ? parseDate(row[$0]) : nil } ?? .distantPast
+            let date = dateIndex.flatMap { row.indices.contains($0) ? parseDate(row[$0], chromium: header[$0] == "last_visit_time") : nil } ?? .distantPast
             return HistoryItem(url: url, title: title, timestamp: date)
         }
     }
@@ -139,7 +139,8 @@ enum BrowserDataImporter {
         let previews = try folders.sorted { $0.path < $1.path }.compactMap { folder -> BrowserImportPreview? in
             guard FileManager.default.fileExists(atPath: folder.appendingPathComponent("Bookmarks").path)
                     || FileManager.default.fileExists(atPath: folder.appendingPathComponent("History").path) else { return nil }
-            return try readProfile(at: folder)
+            do { return try readProfile(at: folder) }
+            catch ImportError.invalidProfile { return nil }
         }
         guard !previews.isEmpty else { throw ImportError.invalidProfile }
         var bookmarks: [ImportedBookmark] = []
@@ -293,14 +294,14 @@ enum BrowserDataImporter {
             throw ImportError.unreadableHistory
         }
         defer { sqlite3_close(destination) }
-        sqlite3_busy_timeout(source, 5_000)
-        sqlite3_busy_timeout(destination, 5_000)
+        sqlite3_busy_timeout(source, 500)
+        sqlite3_busy_timeout(destination, 500)
         guard let backup = sqlite3_backup_init(destination, "main", source, "main") else {
             throw ImportError.unreadableHistory
         }
         var result = sqlite3_backup_step(backup, -1)
         var retries = 0
-        while (result == SQLITE_BUSY || result == SQLITE_LOCKED) && retries < 100 {
+        while (result == SQLITE_BUSY || result == SQLITE_LOCKED) && retries < 4 {
             Thread.sleep(forTimeInterval: 0.05)
             result = sqlite3_backup_step(backup, -1)
             retries += 1
@@ -309,11 +310,10 @@ enum BrowserDataImporter {
         guard result == SQLITE_DONE, finishResult == SQLITE_OK else { throw ImportError.unreadableHistory }
     }
 
-    private static func parseDate(_ text: String) -> Date? {
-        if let seconds = Double(text) {
-            return seconds > 10_000_000_000
-                ? Date(timeIntervalSince1970: seconds / 1_000_000 - 11_644_473_600)
-                : Date(timeIntervalSince1970: seconds)
+    private static func parseDate(_ text: String, chromium: Bool) -> Date? {
+        if let value = Double(text) {
+            if chromium { return Date(timeIntervalSince1970: value / 1_000_000 - 11_644_473_600) }
+            return Date(timeIntervalSince1970: value > 100_000_000_000 ? value / 1_000 : value)
         }
         return ISO8601DateFormatter().date(from: text)
     }

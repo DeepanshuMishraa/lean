@@ -152,7 +152,7 @@ struct SidebarView: View {
 
             // 5. Vertical Tab Strip
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 4) {
+                LazyVStack(spacing: 4) {
                     ForEach(store.tabs) { tab in
                         SidebarTabItem(
                             tab: tab,
@@ -577,7 +577,7 @@ struct SidebarTabItem: View {
                 Button("Wake Tab", action: onSelect)
             } else {
                 Button("Sleep Tab") { store.sleepTab(tab, notifyOnFailure: true) }
-                    .disabled(isSelected || !tab.canSleep)
+                    .disabled(isSelected)
             }
             Button("Close Tab", action: onClose)
             Button("Close Other Tabs") {

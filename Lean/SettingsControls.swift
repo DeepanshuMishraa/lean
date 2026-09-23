@@ -42,6 +42,7 @@ struct SettingsActionButton: View {
     let action: () -> Void
 
     @Environment(\.leanSettingsFont) private var uiFont
+    @Environment(\.isEnabled) private var isEnabled
     @State private var hovering = false
 
     init(_ title: String, isDark: Bool, prominent: Bool = false, destructive: Bool = false, isLoading: Bool = false, action: @escaping () -> Void) {
@@ -83,6 +84,7 @@ struct SettingsActionButton: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+        .opacity(isEnabled ? 1 : 0.45)
         .animation(.easeOut(duration: 0.14), value: hovering)
     }
 }

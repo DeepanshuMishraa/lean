@@ -383,6 +383,7 @@ final class LeanStore: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var inactiveSince: [LeanTab.ID: Date] = [:]
     private var sleepWorkItems: [LeanTab.ID: DispatchWorkItem] = [:]
+    private var sleepWorkTokens: [LeanTab.ID: UUID] = [:]
     private var memoryPressureSource: DispatchSourceMemoryPressure?
 
     init(dataStore: WKWebsiteDataStore? = nil, database: AppDatabase? = nil) {
@@ -743,6 +744,7 @@ final class LeanStore: ObservableObject {
             inactiveSince[current] = nil
             sleepWorkItems[current]?.cancel()
             sleepWorkItems[current] = nil
+            sleepWorkTokens[current] = nil
         }
         scheduleAutoSleep()
     }
@@ -750,14 +752,18 @@ final class LeanStore: ObservableObject {
     private func scheduleAutoSleep() {
         sleepWorkItems.values.forEach { $0.cancel() }
         sleepWorkItems.removeAll()
+        sleepWorkTokens.removeAll()
         guard autoSleepTabsEnabled else { return }
         let timeout = TimeInterval(autoSleepAfterMinutes * 60)
         for tab in tabs where tab.id != selectedID {
             let inactiveAt = inactiveSince[tab.id] ?? Date()
             inactiveSince[tab.id] = inactiveAt
             let delay = max(0, timeout - Date().timeIntervalSince(inactiveAt))
+            let token = UUID()
+            sleepWorkTokens[tab.id] = token
             let work = DispatchWorkItem { [weak self, weak tab] in
-                guard let self, let tab else { return }
+                guard let self, let tab, self.sleepWorkTokens[tab.id] == token else { return }
+                self.sleepWorkTokens[tab.id] = nil
                 self.sleepWorkItems[tab.id] = nil
                 self.attemptAutoSleep(tab)
             }
@@ -781,12 +787,15 @@ final class LeanStore: ObservableObject {
 
     private func scheduleSleepRetry(for tab: LeanTab) {
         guard autoSleepTabsEnabled, selectedID != tab.id else { return }
+        sleepWorkItems[tab.id]?.cancel()
+        let token = UUID()
+        sleepWorkTokens[tab.id] = token
         let retry = DispatchWorkItem { [weak self, weak tab] in
-            guard let self, let tab else { return }
+            guard let self, let tab, self.sleepWorkTokens[tab.id] == token else { return }
+            self.sleepWorkTokens[tab.id] = nil
             self.sleepWorkItems[tab.id] = nil
             self.attemptAutoSleep(tab)
         }
-        sleepWorkItems[tab.id]?.cancel()
         sleepWorkItems[tab.id] = retry
         DispatchQueue.main.asyncAfter(deadline: .now() + 300, execute: retry)
     }
@@ -795,6 +804,7 @@ final class LeanStore: ObservableObject {
         guard selectedID != tab.id, tabs.contains(where: { $0.id == tab.id }) else { return }
         sleepWorkItems[tab.id]?.cancel()
         sleepWorkItems[tab.id] = nil
+        sleepWorkTokens[tab.id] = nil
         tab.requestSleep(while: { [weak self, weak tab] in
             guard let self, let tab else { return false }
             return self.selectedID != tab.id && self.tabs.contains(where: { $0.id == tab.id })
@@ -810,7 +820,7 @@ final class LeanStore: ObservableObject {
         source.setEventHandler { [weak self] in
             Task { @MainActor in
                 guard let self, self.autoSleepTabsEnabled else { return }
-                for tab in self.tabs where tab.id != self.selectedID && tab.canSleep {
+                for tab in self.tabs where tab.id != self.selectedID {
                     self.attemptAutoSleep(tab)
                 }
             }
@@ -1091,6 +1101,7 @@ final class LeanStore: ObservableObject {
 
         sleepWorkItems[tab.id]?.cancel()
         sleepWorkItems[tab.id] = nil
+        sleepWorkTokens[tab.id] = nil
         inactiveSince[tab.id] = nil
         let wasSelected = selectedID == tab.id
         let closedTab = tabs.remove(at: index)

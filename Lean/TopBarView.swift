@@ -359,7 +359,7 @@ private struct TopBarTabItem: View {
                 Button("Wake Tab", action: onSelect)
             } else {
                 Button("Sleep Tab") { store.sleepTab(tab, notifyOnFailure: true) }
-                    .disabled(isSelected || !tab.canSleep)
+                    .disabled(isSelected)
             }
             Button("Close Tab", action: onClose)
             Button("Reload") { tab.reload() }
@@ -1174,7 +1174,9 @@ struct QuickSettingsPopover: View {
                     onHoverChanged: handleNonHistoryHovered
                 )
 
-                if let host = store.selectedTab?.url?.host {
+                if let url = store.selectedTab?.url,
+                   ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+                   let host = url.host {
                     QuickToggleItem(
                         icon: .shield,
                         title: "Block on this site",

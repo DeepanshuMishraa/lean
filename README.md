@@ -34,8 +34,9 @@ missing browser chrome does not provide will not work. Verified by testing:
 - **No passkeys, autofill, or Apple Pay.** Safari-only integrations
   (iCloud Passwords autofill, Touch ID passkeys, `ApplePaySession`) are
   unavailable in a third-party `WKWebView`.
-- **No web push notifications or extensions.** Password-manager and
-  blocker extensions cannot be installed; use copy-paste.
+- **No web push notifications.** WebKit extension support is available on
+  macOS 15.4 and later for installation, content scripts, and permissions.
+  Extension toolbar popups and tab/window APIs are not wired up.
 - **DRM video is limited.** Widevine does not exist on WebKit, and
   high-resolution Netflix/Prime/Spotify playback is Safari-only.
 - **If a bank or SSO page breaks, try disabling ad blocking** in

@@ -2749,8 +2749,12 @@ private struct PasswordManagerSection: View {
             set: { if !$0 { pendingRemoval = nil } }
         )) {
             Button("Remove", role: .destructive) {
-                if let pendingRemoval, case .failure(let error) = PasswordVault.remove(pendingRemoval) {
-                    errorMessage = error.localizedDescription
+                if let pendingRemoval {
+                    if case .failure(let error) = PasswordVault.remove(pendingRemoval) {
+                        errorMessage = error.localizedDescription
+                    } else {
+                        revealed.removeValue(forKey: pendingRemoval.id)
+                    }
                 }
                 pendingRemoval = nil
             }
@@ -3110,6 +3114,10 @@ private struct ExtensionInstallReviewSheet: View {
         .padding(20)
         .frame(width: 480, height: 520)
         .background(isDark ? Color(white: 0.10) : Color(white: 0.98))
+        .onAppear {
+            grantedPermissions = Set(review.requiredPermissions)
+            grantedHosts = Set(review.requiredHosts)
+        }
     }
 
     private var allPermissions: Set<String> {
@@ -3256,6 +3264,7 @@ private struct ImportDataSection: View {
                                 let result = BrowserDataImporter.saveCredentials(credentialPreview.credentials)
                                 let skipped = result.skipped + credentialPreview.skippedRows
                                 message = "Imported \(result.saved) credentials; \(skipped) skipped."
+                                error = nil
                                 self.credentialPreview = nil
                             }
                         }
@@ -3287,6 +3296,7 @@ private struct ImportDataSection: View {
                                     Ph.x.uiIcon
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityLabel("Remove bookmark")
                                 .help("Remove bookmark")
                             }
                             .padding(12)
@@ -3398,6 +3408,7 @@ private struct ImportDataSection: View {
             let result = "Imported \(imported.bookmarks) bookmarks and \(imported.history) history entries."
             browserImportResult = result
             message = result
+            error = nil
             browserImportStage = .complete
         }
     }
@@ -3435,6 +3446,7 @@ private struct ImportDataSection: View {
         panel.allowedContentTypes = bookmarks ? [.json] : [.commaSeparatedText, .plainText]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         error = nil
+        profilePreview = nil
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
         do {
@@ -3446,6 +3458,7 @@ private struct ImportDataSection: View {
             } else {
                 let parsed = try BrowserDataImporter.readHistoryCSV(Data(contentsOf: url))
                 guard !parsed.isEmpty else {
+                    profilePreview = nil
                     error = "No usable history entries were found in that file."
                     return
                 }
@@ -3454,6 +3467,7 @@ private struct ImportDataSection: View {
                 importHistory = true
             }
         } catch {
+            profilePreview = nil
             self.error = error.localizedDescription
         }
     }
@@ -3468,6 +3482,7 @@ private struct ImportDataSection: View {
         panel.allowedContentTypes = [.commaSeparatedText, .plainText]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         error = nil
+        credentialPreview = nil
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
         do {
@@ -3477,6 +3492,7 @@ private struct ImportDataSection: View {
                 credentialPreview = nil
             }
         } catch {
+            credentialPreview = nil
             self.error = error.localizedDescription
         }
     }

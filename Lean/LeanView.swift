@@ -439,13 +439,11 @@ struct LeanView: View {
                         }
                     }
                     .overlay(alignment: .top) {
-                        if store.enableZenMode {
-                            PageLoadingBar(
-                                isLoading: tab.isLoading,
-                                progress: tab.loadingProgress,
-                                isDark: store.isDarkMode
-                            )
-                        }
+                        PageLoadingBar(
+                            isLoading: tab.isLoading,
+                            progress: tab.loadingProgress,
+                            isDark: store.isDarkMode
+                        )
                     }
                     .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
                     .overlay(
@@ -627,20 +625,6 @@ struct LeanView: View {
             }
 
             let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if modifiers.contains(.control), !modifiers.contains(.command), !modifiers.contains(.option) {
-                if event.keyCode == 24 || event.keyCode == 69 {
-                    store.zoomIn()
-                    return nil
-                }
-                if event.keyCode == 27 || event.keyCode == 78 {
-                    store.zoomOut()
-                    return nil
-                }
-                if event.keyCode == 29 || event.keyCode == 82 {
-                    store.resetZoom()
-                    return nil
-                }
-            }
 
             // Check custom shortcuts
             for action in ShortcutAction.allCases {
@@ -654,6 +638,20 @@ struct LeanView: View {
                 }
             }
 
+            if modifiers.contains(.control), !modifiers.contains(.command), !modifiers.contains(.option) {
+                switch event.charactersIgnoringModifiers {
+                case "+", "=": store.zoomIn(); return nil
+                case "-": store.zoomOut(); return nil
+                case "0": store.resetZoom(); return nil
+                default:
+                    if event.keyCode == 69 || event.keyCode == 78 || event.keyCode == 82 {
+                        if event.keyCode == 69 { store.zoomIn() }
+                        else if event.keyCode == 78 { store.zoomOut() }
+                        else { store.resetZoom() }
+                        return nil
+                    }
+                }
+            }
             return event
         }
 
@@ -937,6 +935,9 @@ private struct PageLoadingBar: View {
         }
         .frame(height: isVisible ? barHeight : 0)
         .clipped()
+        .onAppear {
+            if isLoading { handleLoadStart() }
+        }
         .onChange(of: isLoading) { _, loading in
             if loading {
                 handleLoadStart()

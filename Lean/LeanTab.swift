@@ -10,17 +10,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private var isDark: Bool
     private var storedWebView: LeanWebView?
     private var sleepingInteractionState: Any?
+    private var pendingNavigationID = UUID()
     var popupOpenerID: LeanTab.ID?
     var hasActivePopup = false
 
     var hasWebView: Bool { storedWebView != nil }
-
-    var canSleep: Bool {
-        guard let webView = storedWebView,
-              let scheme = url?.scheme?.lowercased(),
-              ["http", "https"].contains(scheme) else { return false }
-        return sleepConditions(in: webView, isSelected: false, isPlayingMedia: false, hasUnsavedFormInput: false).canSleep
-    }
 
     var webView: LeanWebView {
         if let storedWebView { return storedWebView }
@@ -217,7 +211,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         progressObserver = webView.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
             let progress = webView.estimatedProgress
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, self.storedWebView === webView, webView.estimatedProgress == progress else { return }
                 self.loadingProgress = progress
                 if progress >= 0.7, self.isLoading {
                     self.isLoading = false
@@ -253,13 +247,16 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     func applyAdBlocking(_ enabled: Bool, excluding excludedHosts: Set<String>) {
+        let wasBlocking = isBlockingEnabledForCurrentHost
         adBlockingEnabled = enabled
         adBlockingExcludedHosts = excludedHosts
         guard let webView = storedWebView else { return }
         let shouldBlock = isBlockingEnabledForCurrentHost
         rebuildUserScripts(syncRuleLists: false)
         webView.evaluateJavaScript(PageScripts.youtubeAdsLive(enabled: shouldBlock)) { _, _ in }
-        syncContentRuleLists()
+        syncContentRuleLists {
+            if wasBlocking != shouldBlock, !self.isLoading { webView.reload() }
+        }
     }
 
     private var isBlockingEnabledForCurrentHost: Bool {
@@ -424,6 +421,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     func load(_ url: URL) {
+        pendingNavigationID = UUID()
+        let navigationID = pendingNavigationID
         if isSleeping {
             isSleeping = false
             sleepingInteractionState = nil
@@ -447,7 +446,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         isLoading = true
         onStateChange?()
         updateFavicon(for: url)
-        webView.load(URLRequest(url: url))
+        Task { @MainActor [weak self] in
+            if #available(macOS 15.4, *) { await BrowserExtensionManager.shared.waitUntilReady() }
+            guard let self, self.pendingNavigationID == navigationID, self.url == url else { return }
+            self.webView.load(URLRequest(url: url))
+        }
     }
 
     func submit(_ input: String) {
@@ -667,7 +670,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     func resetZoom() { setPageZoom(1.0) }
 
     private func setPageZoom(_ zoom: Double) {
-        guard !isSettingsPage, url != nil else { return }
+        guard !isSettingsPage, url != nil || isPageSource else { return }
         let clamped = min(max((zoom * 10).rounded() / 10, 0.5), 3.0)
         pageZoom = clamped
         webView.pageZoom = clamped
@@ -679,6 +682,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             withAnimation(.easeInOut(duration: 0.28)) {
                 self?.isZoomIndicatorVisible = false
             }
+            self?.onStateChange?()
         }
         zoomIndicatorWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: workItem)
@@ -774,6 +778,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             const dirty = Array.from(doc.querySelectorAll('input, textarea, select')).some(field => {
               if (field.disabled || field.type === 'hidden') return false;
               if (field.type === 'checkbox' || field.type === 'radio') return field.checked !== field.defaultChecked;
+              if (field instanceof HTMLSelectElement) return Array.from(field.options).some(option => option.selected !== option.defaultSelected);
               return field.value !== field.defaultValue;
             }) || Array.from(doc.querySelectorAll('[contenteditable=true]')).some(field => field.textContent.trim().length > 0);
             let blocked = false;
@@ -877,7 +882,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     func captureSnapshot() {
-        guard url != nil, webView.bounds.width > 0 && webView.bounds.height > 0 else { return }
+        guard (url != nil || isPageSource), webView.bounds.width > 0 && webView.bounds.height > 0 else { return }
         let config = WKSnapshotConfiguration()
         config.snapshotWidth = 220 // The switcher displays thumbnails at 196 points wide.
         webView.takeSnapshot(with: config) { [weak self] image, _ in

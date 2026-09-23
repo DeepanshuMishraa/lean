@@ -4,7 +4,17 @@ import WebKit
 @MainActor
 final class LeanTab: NSObject, ObservableObject, Identifiable {
     let id = UUID()
-    let webView: LeanWebView
+    private let dataStore: WKWebsiteDataStore
+    private let initialConfiguration: WKWebViewConfiguration?
+    private var isDark: Bool
+    private var storedWebView: LeanWebView?
+
+    var hasWebView: Bool { storedWebView != nil }
+
+    var webView: LeanWebView {
+        if let storedWebView { return storedWebView }
+        return createWebView()
+    }
 
     @Published private(set) var title = "New Tab"
     @Published private(set) var url: URL?
@@ -61,26 +71,36 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         adBlockingEnabled: Bool = true,
         configuration: WKWebViewConfiguration? = nil
     ) {
+        self.dataStore = dataStore
+        if let configuration {
+            configuration.userContentController = WKUserContentController()
+        }
+        self.initialConfiguration = configuration
+        self.isDark = isDark
         self.scrollbarStyle = scrollbarStyle
         self.smoothScrollingEnabled = smoothScrolling
         self.pageFont = pageFont
         self.pageHeadingWeight = pageHeadingWeight
         self.pageBodyWeight = pageBodyWeight
         self.adBlockingEnabled = adBlockingEnabled
-        // Popup configurations from `createWebViewWith` arrive carrying the
-        // opener's user content (scripts + the `pageReady` message handler).
-        // Re-adding our handler onto that controller throws a duplicate-name
-        // NSException and crashes, so start popups from a clean controller
-        // and re-register everything below. The configuration object itself
-        // is kept: it shares the opener's process pool, which OAuth/SSO
-        // popups need for the same session/cookies.
-        let effectiveConfiguration: WKWebViewConfiguration
-        if let popupConfiguration = configuration {
-            popupConfiguration.userContentController = WKUserContentController()
-            effectiveConfiguration = popupConfiguration
-        } else {
-            effectiveConfiguration = WKWebViewConfiguration()
+        super.init()
+        self.url = initialURL
+        if initialURL?.scheme == "lean" && (initialURL?.host == "settings" || initialURL?.absoluteString == "lean://settings") {
+            self.title = "Settings"
+        } else if let host = initialURL?.host {
+            self.title = host
+            updateFavicon()
         }
+
+        if let initialURL {
+            self.load(initialURL)
+        }
+    }
+
+    private func createWebView() -> LeanWebView {
+        // The popup configuration was sanitized in init, but keeping the
+        // configuration preserves its process pool for shared OAuth/SSO state.
+        let effectiveConfiguration = initialConfiguration ?? WKWebViewConfiguration()
         let configuration = effectiveConfiguration
         configuration.websiteDataStore = dataStore
         configuration.preferences.isElementFullscreenEnabled = true
@@ -102,7 +122,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
         // Register custom smooth scrolling script at document end
         let smoothScript = WKUserScript(
-            source: PageScripts.smoothScrolling(enabled: smoothScrolling),
+            source: PageScripts.smoothScrolling(enabled: smoothScrollingEnabled),
             injectionTime: .atDocumentEnd,
             forMainFrameOnly: false
         )
@@ -128,21 +148,13 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             )
         )
 
-        webView = LeanWebView(frame: .zero, configuration: configuration)
-        super.init()
+        let webView = LeanWebView(frame: .zero, configuration: configuration)
+        storedWebView = webView
         webView.configuration.userContentController.add(self, name: PageScripts.pageReadyMessageName)
         webView.configuration.userContentController.add(self, name: PageScripts.contextMenuMessageName)
         webView.contextMenuHook = { [weak self] menu in
             self?.appendPageMenuItems(to: menu)
         }
-        self.url = initialURL
-        if initialURL?.scheme == "lean" && (initialURL?.host == "settings" || initialURL?.absoluteString == "lean://settings") {
-            self.title = "Settings"
-        } else if let host = initialURL?.host {
-            self.title = host
-            updateFavicon()
-        }
-
         // Enable full opaque hardware acceleration and layer backing
         webView.wantsLayer = true
         webView.layer?.drawsAsynchronously = true
@@ -191,11 +203,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             }
         ]
 
-        applyAdBlocking(adBlockingEnabled)
-
-        if let initialURL {
-            self.load(initialURL)
-        }
+        syncContentRuleLists()
+        return webView
     }
 
     func applyAdBlocking(_ enabled: Bool) {
@@ -205,6 +214,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         // and re-syncs the rule lists. Idempotent; safe to call on toggles.
         // User scripts only affect future navigations, so also patch the
         // live page: install/uninstall the YouTube hooks in place.
+        guard let webView = storedWebView else { return }
         rebuildUserScripts()
         webView.evaluateJavaScript(PageScripts.youtubeAdsLive(enabled: enabled)) { _, _ in }
     }
@@ -212,6 +222,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     /// Adds/removes the compiled content-rule lists without touching scripts.
     private func syncContentRuleLists() {
         let enabled = adBlockingEnabled
+        guard let webView = storedWebView else { return }
         Task { [weak self] in
             let ruleLists = await ContentBlocker.ruleLists()
             guard let self, self.adBlockingEnabled == enabled else { return }
@@ -219,18 +230,20 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
                 for ruleList in ruleLists {
                     // Remove-then-add keeps this idempotent: rebuildUserScripts()
                     // preserves rule lists, so re-enabling must not stack duplicates.
-                    self.webView.configuration.userContentController.remove(ruleList)
-                    self.webView.configuration.userContentController.add(ruleList)
+                    webView.configuration.userContentController.remove(ruleList)
+                    webView.configuration.userContentController.add(ruleList)
                 }
             } else {
                 for ruleList in ruleLists {
-                    self.webView.configuration.userContentController.remove(ruleList)
+                    webView.configuration.userContentController.remove(ruleList)
                 }
             }
         }
     }
 
     func applyTheme(isDark: Bool) {
+        self.isDark = isDark
+        guard let webView = storedWebView else { return }
         if #available(macOS 12.0, *) {
             webView.underPageBackgroundColor = isDark ? NSColor.black : NSColor.white
         }
@@ -284,6 +297,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     func applyScrollbarStyle(_ style: ScrollbarStyle) {
         self.scrollbarStyle = style
+        guard let webView = storedWebView else { return }
         rebuildUserScripts()
         let script = PageScripts.scrollbar(style)
         webView.evaluateJavaScript(script) { _, _ in }
@@ -291,6 +305,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     func applySmoothScrolling(_ enabled: Bool) {
         self.smoothScrollingEnabled = enabled
+        guard let webView = storedWebView else { return }
         rebuildUserScripts()
         let script = PageScripts.smoothScrolling(enabled: enabled)
         webView.evaluateJavaScript(script) { _, _ in }
@@ -300,6 +315,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         pageFont = font
         pageHeadingWeight = headingWeight
         pageBodyWeight = bodyWeight
+        guard let webView = storedWebView else { return }
         rebuildUserScripts()
         webView.evaluateJavaScript(PageScripts.font(font, headingWeight: headingWeight, bodyWeight: bodyWeight)) { _, _ in }
     }
@@ -498,6 +514,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         onCloseTab = nil
         onOpenURLInNewTab = nil
         onOpenSourceTab = nil
+        guard let webView = storedWebView else { return }
         webView.contextMenuHook = nil
 
         // 1. Pause and remove all audio/video elements immediately
@@ -557,9 +574,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     func captureSnapshot() {
-        guard webView.bounds.width > 0 && webView.bounds.height > 0 else { return }
+        guard url != nil, webView.bounds.width > 0 && webView.bounds.height > 0 else { return }
         let config = WKSnapshotConfiguration()
-        config.snapshotWidth = 440 // High DPI thumbnail width
+        config.snapshotWidth = 220 // The switcher displays thumbnails at 196 points wide.
         webView.takeSnapshot(with: config) { [weak self] image, _ in
             guard let self, let image else { return }
             self.snapshot = image

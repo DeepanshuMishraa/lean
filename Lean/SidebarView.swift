@@ -144,9 +144,7 @@ struct SidebarView: View {
                     pressedBackground: store.adaptiveTheme.iconPressedBackground,
                     isDark: store.adaptiveTheme.effectiveIsDark
                 ) {
-                    withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
-                        _ = store.newTab()
-                    }
+                    _ = store.newTab()
                 }
             }
             .padding(.horizontal, 12)

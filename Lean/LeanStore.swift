@@ -885,7 +885,7 @@ final class LeanStore: ObservableObject {
         isFloatingOmnibarVisible = false
         floatingPaletteFrame = .zero
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
+            guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
             tab.webView.window?.makeFirstResponder(tab.webView)
         }
     }
@@ -904,7 +904,7 @@ final class LeanStore: ObservableObject {
         inlineURLBarFrame = .zero
         inlineSuggestionsFrame = .zero
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
+            guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
             tab.webView.evaluateJavaScript("window.getSelection()?.removeAllRanges()", completionHandler: nil)
             tab.webView.window?.makeFirstResponder(tab.webView)
         }
@@ -920,7 +920,7 @@ final class LeanStore: ObservableObject {
         selectedID = id
         saveSession()
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
+            guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
             tab.webView.window?.makeFirstResponder(tab.webView)
         }
     }
@@ -933,7 +933,7 @@ final class LeanStore: ObservableObject {
         self.selectedID = tabs[(index + offset) % tabs.count].id
         saveSession()
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
+            guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
             tab.webView.window?.makeFirstResponder(tab.webView)
         }
     }
@@ -959,9 +959,10 @@ final class LeanStore: ObservableObject {
         guard !validTabs.isEmpty else { return }
 
         // If thumbnail previews are enabled, capture snapshot asynchronously in background so switcher opens with 0ms lag
-        if enableThumbnailsInTabSwitcher {
+        if enableThumbnailsInTabSwitcher, selectedTab?.snapshot == nil {
             DispatchQueue.main.async { [weak self] in
-                self?.selectedTab?.captureSnapshot()
+                guard let self, self.selectedTab?.snapshot == nil else { return }
+                self.selectedTab?.captureSnapshot()
             }
         }
 

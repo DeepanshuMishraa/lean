@@ -12,6 +12,14 @@ private final class DummyMessageHandler: NSObject, WKScriptMessageHandler {
 
 struct LeanTabPopupTests {
     @MainActor
+    @Test("Blank tabs defer WebView creation")
+    func blankTabDefersWebViewCreation() {
+        let tab = LeanTab(dataStore: .default(), initialURL: nil)
+        #expect(!tab.hasWebView)
+        #expect(tab.title == "New Tab")
+    }
+
+    @MainActor
     @Test("Popup configuration carrying opener handlers does not crash init")
     func popupConfigurationInit() {
         // Reproduces what WebKit hands `createWebViewWith` for window.open

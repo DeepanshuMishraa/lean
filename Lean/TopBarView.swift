@@ -40,9 +40,7 @@ struct TopBarView: View {
                             pressedBackground: store.adaptiveTheme.iconPressedBackground,
                             isDark: store.adaptiveTheme.effectiveIsDark
                         ) {
-                            withAnimation(.spring(response: 0.26, dampingFraction: 0.8)) {
-                                _ = store.newTab()
-                            }
+                            _ = store.newTab()
                         }
                     }
                 }
@@ -52,7 +50,6 @@ struct TopBarView: View {
                         Color.clear.preference(key: TabContentWidthKey.self, value: geometry.size.width)
                     }
                 }
-                .animation(.spring(response: 0.28, dampingFraction: 0.82), value: store.tabs.map(\.id))
             }
             .background(HorizontalScrollWheelBridge(metrics: $tabScrollMetrics))
             .background {
@@ -275,6 +272,11 @@ private struct TopBarTabItem: View {
             Group {
                 if showURLBar { Color.clear } else { tabContent }
             }
+            .frame(
+                minWidth: showURLBar ? store.scaled(260) : nil,
+                idealWidth: showURLBar ? store.scaled(320) : nil,
+                maxWidth: showURLBar ? store.scaled(440) : nil
+            )
             .frame(height: store.scaled(store.enableWindowBorder ? 27 : 26))
         }
         .buttonStyle(.plain)
@@ -331,8 +333,7 @@ private struct TopBarTabItem: View {
             }
         }
         .overlay(alignment: .center) {
-            // Icon-only close replaces the favicon in place. Centered
-            // sibling overlay for the same nested-Button reason: a close
+            // Icon-only close replaces the favicon in place. Centered sibling overlay for the same nested-Button reason: a close
             // Button inside iconOnlyContent (the select Button's label)
             // would never fire — the outer Button consumes the click.
             if shouldShowClose && store.tabDisplayMode == .iconOnly {

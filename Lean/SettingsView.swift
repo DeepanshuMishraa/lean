@@ -12,6 +12,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case shortcuts = "Shortcuts"
     case history = "History"
     case downloads = "Downloads"
+    case importData = "Import Data"
 
     var id: String { rawValue }
 
@@ -26,6 +27,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .shortcuts: return .command
         case .history: return .clock
         case .downloads: return .arrowCircleDown
+        case .importData: return .arrowCircleDown
         }
     }
 
@@ -40,6 +42,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .shortcuts: return "Keyboard shortcuts, navigation hotkeys, and quick actions"
         case .history: return "Recently visited pages"
         case .downloads: return "Download location and file history"
+        case .importData: return "Bring bookmarks, history, and passwords into Lean"
         }
     }
 }
@@ -231,6 +234,8 @@ struct SettingsView: View {
             HistorySection(store: store)
         case .downloads:
             DownloadsSection(store: store)
+        case .importData:
+            ImportDataSection(store: store)
         }
     }
 }
@@ -2468,5 +2473,247 @@ private struct CompactCategoryButton: View {
         .buttonStyle(.plain)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
+    }
+}
+
+private struct ImportDataSection: View {
+    @ObservedObject var store: LeanStore
+    @State private var profilePreview: BrowserImportPreview?
+    @State private var importBookmarks = true
+    @State private var importHistory = true
+    @State private var credentialPreview: PasswordCSVPreview?
+    @State private var message: String?
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("From a browser profile", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                SettingsGroup(isDark: store.isDarkMode) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .center) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Bookmarks and history")
+                                    .font(store.leanUIFont.font(size: 13, weight: .medium))
+                                Text("Choose a Chromium profile folder containing Bookmarks and/or History. Use this when the browser is installed on this Mac.")
+                                    .font(store.leanUIFont.font(size: 11.5))
+                                    .foregroundColor(secondaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 12)
+                            Button("Choose profile…", action: chooseProfile)
+                                .buttonStyle(.bordered)
+                        }
+                        if let profilePreview {
+                            SettingsRowDivider(isDark: store.isDarkMode)
+                            Toggle("Bookmarks (\(profilePreview.bookmarks.count))", isOn: $importBookmarks)
+                                .toggleStyle(.checkbox)
+                                .disabled(profilePreview.bookmarks.isEmpty)
+                            Toggle(
+                                "History (\(profilePreview.history.count) found; up to \(max(0, 200 - store.historyItems.count)) can fit)",
+                                isOn: $importHistory
+                            )
+                                .toggleStyle(.checkbox)
+                                .disabled(profilePreview.history.isEmpty)
+                            HStack {
+                                Spacer()
+                                Button("Cancel") { self.profilePreview = nil }
+                                    .buttonStyle(.plain)
+                                Button("Import") {
+                                    let selected = BrowserImportPreview(
+                                        bookmarks: importBookmarks ? profilePreview.bookmarks : [],
+                                        history: importHistory ? profilePreview.history : []
+                                    )
+                                    let imported = store.importBrowserData(selected)
+                                    message = "Imported \(imported.bookmarks) bookmarks and \(imported.history) history entries."
+                                    self.profilePreview = nil
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(!importBookmarks && !importHistory)
+                            }
+                        }
+                    }
+                    .padding(14)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("From an export file", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                SettingsGroup(isDark: store.isDarkMode) {
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Passwords (CSV)")
+                                .font(store.leanUIFont.font(size: 13, weight: .medium))
+                            Text("Import a CSV with URL, username, and password columns. Credentials are written to the macOS Keychain.")
+                                .font(store.leanUIFont.font(size: 11.5))
+                                .foregroundColor(secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 12)
+                        Button("Choose file…", action: choosePasswordFile)
+                            .buttonStyle(.bordered)
+                    }
+                    .padding(14)
+                    SettingsRowDivider(isDark: store.isDarkMode)
+                    HStack {
+                        Text("Bookmarks JSON or history CSV (url, title, timestamp)")
+                            .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                        Spacer()
+                        Button("Bookmarks…") { chooseBrowserExport(bookmarks: true) }
+                            .buttonStyle(.bordered)
+                        Button("History…") { chooseBrowserExport(bookmarks: false) }
+                            .buttonStyle(.bordered)
+                    }
+                    .padding(14)
+                    if let credentialPreview {
+                        SettingsRowDivider(isDark: store.isDarkMode)
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(credentialPreview.credentials.count) credentials ready to import · \(credentialPreview.skippedRows) invalid rows")
+                                    .font(store.leanUIFont.font(size: 11.5))
+                                    .foregroundColor(secondaryText)
+                                Text(credentialPreview.credentials.prefix(3).map { "\($0.host) · \($0.username)" }.joined(separator: ", "))
+                                    .font(store.leanUIFont.font(size: 10.5))
+                                    .foregroundColor(secondaryText)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            Button("Cancel") { self.credentialPreview = nil }
+                                .buttonStyle(.plain)
+                            Button("Import") {
+                                let result = BrowserDataImporter.saveCredentials(credentialPreview.credentials)
+                                let skipped = result.skipped + credentialPreview.skippedRows
+                                message = "Imported \(result.saved) credentials; \(skipped) skipped."
+                                self.credentialPreview = nil
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .padding(14)
+                    }
+                }
+            }
+
+            if !store.importedBookmarks.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    SettingsHeaderLabel("Imported bookmarks", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                    SettingsGroup(isDark: store.isDarkMode) {
+                        ForEach(store.importedBookmarks) { bookmark in
+                            HStack(spacing: 10) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(bookmark.title)
+                                        .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                                        .lineLimit(1)
+                                    Text(bookmark.url.host ?? bookmark.url.absoluteString)
+                                        .font(store.leanUIFont.font(size: 11))
+                                        .foregroundColor(secondaryText)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                Button("Open") { store.openURL(bookmark.url) }
+                                    .buttonStyle(.bordered)
+                                Button {
+                                    store.deleteImportedBookmark(id: bookmark.id)
+                                } label: {
+                                    Ph.x.uiIcon
+                                }
+                                .buttonStyle(.plain)
+                                .help("Remove bookmark")
+                            }
+                            .padding(12)
+                            if bookmark.id != store.importedBookmarks.last?.id {
+                                SettingsRowDivider(isDark: store.isDarkMode)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let error {
+                Text(error).font(store.leanUIFont.font(size: 11.5)).foregroundColor(.red)
+            } else if let message {
+                Text(message).font(store.leanUIFont.font(size: 11.5)).foregroundColor(secondaryText)
+            }
+        }
+    }
+
+    private var secondaryText: Color {
+        store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48)
+    }
+
+    private func chooseProfile() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose a browser profile folder"
+        panel.message = "Select a Chromium profile folder, such as Default. Lean reads bookmarks and history only."
+        panel.prompt = "Choose Profile"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        error = nil
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+        do {
+            profilePreview = try BrowserDataImporter.readProfile(at: url)
+            importBookmarks = true
+            importHistory = true
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func chooseBrowserExport(bookmarks: Bool) {
+        let panel = NSOpenPanel()
+        panel.title = bookmarks ? "Choose a bookmarks JSON export" : "Choose a history CSV export"
+        panel.prompt = "Import"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = bookmarks ? [.json] : [.commaSeparatedText, .plainText]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        error = nil
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+        do {
+            if bookmarks {
+                let parsed = try BrowserDataImporter.readBookmarkExport(Data(contentsOf: url))
+                profilePreview = BrowserImportPreview(bookmarks: parsed, history: [])
+                importBookmarks = true
+                importHistory = false
+            } else {
+                let parsed = try BrowserDataImporter.readHistoryCSV(Data(contentsOf: url))
+                guard !parsed.isEmpty else {
+                    error = "No usable history entries were found in that file."
+                    return
+                }
+                profilePreview = BrowserImportPreview(bookmarks: [], history: parsed)
+                importBookmarks = false
+                importHistory = true
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func choosePasswordFile() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose a password CSV export"
+        panel.prompt = "Import"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.commaSeparatedText, .plainText]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        error = nil
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+        do {
+            credentialPreview = try BrowserDataImporter.readPasswordCSV(Data(contentsOf: url))
+            if credentialPreview?.credentials.isEmpty == true {
+                error = "No usable credentials were found; \(credentialPreview?.skippedRows ?? 0) rows were skipped."
+                credentialPreview = nil
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 }

@@ -497,18 +497,33 @@ struct SidebarTabItem: View {
         isHovered || isSelected
     }
 
+    private var tabItemForeground: Color {
+        isSelected
+            ? store.adaptiveTheme.activeTabText
+            : (isHovered ? store.adaptiveTheme.primaryText : store.adaptiveTheme.inactiveTabText)
+    }
+
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 8) {
-                TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
+                ZStack {
+                    if tab.isLoading {
+                        DotMatrixLoader(
+                            color: tabItemForeground,
+                            size: store.scaled(16)
+                        )
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                    } else {
+                        TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
+                            .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                    }
+                }
+                .frame(width: store.scaled(16), height: store.scaled(16))
+                .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
 
                 Text(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
                     .font(store.headingFont(size: 13))
-                    .foregroundColor(
-                        isSelected
-                            ? store.adaptiveTheme.activeTabText
-                            : (isHovered ? store.adaptiveTheme.primaryText : store.adaptiveTheme.inactiveTabText)
-                    )
+                    .foregroundColor(tabItemForeground)
                     .lineLimit(1)
                     .truncationMode(.tail)
 

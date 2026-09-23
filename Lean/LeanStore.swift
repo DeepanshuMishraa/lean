@@ -157,6 +157,7 @@ final class LeanStore: ObservableObject {
     @Published var isTabSwitcherVisible = false
     @Published var switcherSelectedIndex = 0
     @Published var historyItems: [HistoryItem] = []
+    @Published private(set) var importedBookmarks: [ImportedBookmark] = []
     @Published var selectedSettingsCategory: SettingsCategory = .general
     @Published var isQuickSettingsPresented = false
     @Published var quickSettingsPopoverFrame: CGRect = .zero
@@ -379,6 +380,8 @@ final class LeanStore: ObservableObject {
                 return HistoryItem(url: url, title: title, timestamp: Date())
             }
         }
+
+        self.importedBookmarks = databaseValue(self.database, [ImportedBookmark].self, forKey: Self.importedBookmarksKey) ?? []
 
         // Load saved theme (default to light or saved preference)
         let savedTheme = databaseValue(self.database, String.self, forKey: Self.themeKey)
@@ -708,6 +711,29 @@ final class LeanStore: ObservableObject {
             historyItems = Array(historyItems.prefix(200))
         }
         saveHistory()
+    }
+
+    func importBrowserData(_ preview: BrowserImportPreview) -> (bookmarks: Int, history: Int) {
+        var seenURLs = Set(importedBookmarks.map { $0.url.absoluteString })
+        let newBookmarks = preview.bookmarks.filter { seenURLs.insert($0.url.absoluteString).inserted }
+        importedBookmarks.append(contentsOf: newBookmarks)
+        persist(importedBookmarks, forKey: Self.importedBookmarksKey)
+
+        let previousHistoryCount = historyItems.count
+        var seenHistory = Set(historyItems.map { $0.url.absoluteString })
+        let newHistory = preview.history
+            .filter { seenHistory.insert($0.url.absoluteString).inserted }
+            .sorted { $0.timestamp > $1.timestamp }
+        let capacity = max(0, 200 - historyItems.count)
+        historyItems.append(contentsOf: newHistory.prefix(capacity))
+        historyItems.sort { $0.timestamp > $1.timestamp }
+        saveHistory()
+        return (newBookmarks.count, historyItems.count - previousHistoryCount)
+    }
+
+    func deleteImportedBookmark(id: ImportedBookmark.ID) {
+        importedBookmarks.removeAll { $0.id == id }
+        persist(importedBookmarks, forKey: Self.importedBookmarksKey)
     }
 
     func deleteHistoryItem(id: UUID) {
@@ -1083,6 +1109,7 @@ final class LeanStore: ObservableObject {
     private static let sessionStateKey = "browserSession_v1"
     private static let recentlyClosedKey = "recentlyClosedURLs"
     private static let historyKey = "visitedHistory"
+    private static let importedBookmarksKey = "importedBookmarks_v1"
     private static let searchEngineKey = "searchEngine"
     private static let adBlockingKey = "adBlockingEnabled"
     private static let themeKey = "appTheme"

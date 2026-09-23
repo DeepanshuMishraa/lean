@@ -438,6 +438,15 @@ struct LeanView: View {
                             floatingFindBar
                         }
                     }
+                    .overlay(alignment: .top) {
+                        if store.enableZenMode {
+                            PageLoadingBar(
+                                isLoading: tab.isLoading,
+                                progress: tab.loadingProgress,
+                                isDark: store.isDarkMode
+                            )
+                        }
+                    }
                     .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
@@ -845,5 +854,172 @@ private struct ZoomIndicatorView: View {
             x: 0,
             y: 3
         )
+    }
+}
+
+// MARK: - Page Loading Bar
+/// A luminous 2px hairline progress beam at the top edge of the web content card.
+/// Visible in all modes (including Zen mode with no tab bar) since it lives
+/// inside the content area itself, not in browser chrome.
+///
+/// Uses an internal `displayProgress` that follows real progress while loading,
+/// then snaps to 1.0 when loading ends so the bar always visually completes
+/// before fading — even when `isLoading` cuts off early at 70%.
+private struct PageLoadingBar: View {
+    let isLoading: Bool
+    let progress: Double
+    let isDark: Bool
+
+    @State private var isVisible = false
+    @State private var displayProgress: Double = 0
+    @State private var shimmerPhase: CGFloat = -0.4
+    @State private var isShimmering = false
+    @State private var showDelayElapsed = false
+    @State private var showWorkItem: DispatchWorkItem?
+    @State private var dismissWorkItem: DispatchWorkItem?
+
+    private let barHeight: CGFloat = 2
+
+    private var progressColor: Color {
+        isDark
+            ? Color(red: 0.55, green: 0.65, blue: 1.0)
+            : Color(red: 0.20, green: 0.40, blue: 0.95)
+    }
+
+    private var glowColor: Color {
+        progressColor.opacity(isDark ? 0.50 : 0.35)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let totalWidth = geo.size.width
+
+            if isVisible {
+                ZStack(alignment: .leading) {
+                    Color.clear.frame(height: barHeight)
+
+                    // Progress fill
+                    progressColor
+                        .frame(width: totalWidth * max(displayProgress, 0.02), height: barHeight)
+
+                    // Luminous shimmer sweep
+                    if isShimmering {
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0),
+                                .init(color: progressColor.opacity(0.6), location: 0.4),
+                                .init(color: .white.opacity(isDark ? 0.5 : 0.7), location: 0.5),
+                                .init(color: progressColor.opacity(0.6), location: 0.6),
+                                .init(color: .clear, location: 1)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(width: totalWidth * 0.35, height: barHeight)
+                        .offset(x: shimmerPhase * totalWidth)
+                        .mask(
+                            Rectangle()
+                                .frame(width: totalWidth * max(displayProgress, 0.02), height: barHeight)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        )
+                    }
+                }
+                .frame(height: barHeight)
+                .shadow(color: glowColor, radius: 4, x: 0, y: 2)
+                .allowsHitTesting(false)
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.animation(.easeOut(duration: 0.15)),
+                        removal: .opacity.animation(.easeInOut(duration: 0.30))
+                    )
+                )
+            }
+        }
+        .frame(height: isVisible ? barHeight : 0)
+        .clipped()
+        .onChange(of: isLoading) { _, loading in
+            if loading {
+                handleLoadStart()
+            } else {
+                handleLoadEnd()
+            }
+        }
+        .onChange(of: progress) { _, newProgress in
+            // Only follow real progress while actively loading
+            guard isLoading else { return }
+            withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
+                displayProgress = min(newProgress, 0.95)
+            }
+        }
+    }
+
+    private func handleLoadStart() {
+        dismissWorkItem?.cancel()
+        dismissWorkItem = nil
+        showWorkItem?.cancel()
+        displayProgress = 0
+
+        // Small delay to avoid flashing on instant navigations (cache hits)
+        let workItem = DispatchWorkItem {
+            showDelayElapsed = true
+            withAnimation(.easeOut(duration: 0.12)) {
+                isVisible = true
+            }
+            startShimmer()
+        }
+        showWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.10, execute: workItem)
+    }
+
+    private func handleLoadEnd() {
+        showWorkItem?.cancel()
+        showWorkItem = nil
+
+        guard showDelayElapsed else {
+            // Navigation was so fast the bar never appeared — skip entirely
+            isVisible = false
+            showDelayElapsed = false
+            return
+        }
+
+        // Step 1: Snap the bar to 100% with a fast spring
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.80)) {
+            displayProgress = 1.0
+        }
+
+        // Step 2: Stop shimmer
+        stopShimmer()
+
+        // Step 3: Fade out after the fill animation visually completes
+        dismissWorkItem?.cancel()
+        let workItem = DispatchWorkItem {
+            withAnimation(.easeInOut(duration: 0.28)) {
+                isVisible = false
+            }
+            showDelayElapsed = false
+        }
+        dismissWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
+    }
+
+    private func startShimmer() {
+        isShimmering = true
+        shimmerPhase = -0.4
+        withAnimation(
+            .linear(duration: 1.1)
+            .repeatForever(autoreverses: false)
+        ) {
+            shimmerPhase = 1.1
+        }
+    }
+
+    private func stopShimmer() {
+        withAnimation(.easeOut(duration: 0.25)) {
+            shimmerPhase = 1.1
+        }
+        // Remove shimmer layer after animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            isShimmering = false
+        }
     }
 }

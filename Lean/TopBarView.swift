@@ -238,8 +238,10 @@ struct TopBarView: View {
 
     private func handleTabSelection(_ tab: LeanTab) {
         if tab.id == store.selectedID {
-            if !store.isInlineURLEditing {
-                withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                if store.isInlineURLEditing {
+                    store.dismissInlineURLEditing()
+                } else {
                     store.isInlineURLEditing = true
                 }
             }
@@ -258,13 +260,10 @@ private struct TopBarTabItem: View {
 
     @State private var isHovered = false
     @State private var isCloseHovered = false
-    @State private var isHoverRevealed = false
     @State private var isFieldFocused = false
-    @State private var hoverWorkItem: DispatchWorkItem?
-    @State private var exitWorkItem: DispatchWorkItem?
 
     private var showURLBar: Bool {
-        isSelected && (isHoverRevealed || store.isInlineURLEditing || isFieldFocused)
+        isSelected && (store.isInlineURLEditing || isFieldFocused)
     }
 
     private var shouldShowClose: Bool {
@@ -273,44 +272,6 @@ private struct TopBarTabItem: View {
 
     private func handleHoverChange(_ hovering: Bool) {
         isHovered = hovering
-        hoverWorkItem?.cancel()
-        hoverWorkItem = nil
-        exitWorkItem?.cancel()
-        exitWorkItem = nil
-
-        guard isSelected else {
-            isHoverRevealed = false
-            return
-        }
-
-        if hovering {
-            if store.isInlineURLEditing || isFieldFocused {
-                isHoverRevealed = true
-                return
-            }
-            // In iconOnly mode, require an intentional dwell so accidental mouse sweeps don't trigger layout shifts
-            let dwellDelay: Double = store.tabDisplayMode == .iconOnly ? 0.22 : 0.16
-            let workItem = DispatchWorkItem {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
-                    isHoverRevealed = true
-                }
-            }
-            hoverWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + dwellDelay, execute: workItem)
-        } else {
-            if store.isInlineURLEditing || isFieldFocused {
-                // Keep open while user is editing or field is focused
-                return
-            }
-            let exitDelay: Double = store.tabDisplayMode == .iconOnly ? 0.14 : 0.08
-            let workItem = DispatchWorkItem {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                    isHoverRevealed = false
-                }
-            }
-            exitWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + exitDelay, execute: workItem)
-        }
     }
 
     var body: some View {
@@ -387,12 +348,8 @@ private struct TopBarTabItem: View {
         .help(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
         .onHover { handleHoverChange($0) }
         .onChange(of: isSelected) { _, selected in
-            if !selected {
-                hoverWorkItem?.cancel()
-                hoverWorkItem = nil
-                exitWorkItem?.cancel()
-                exitWorkItem = nil
-                isHoverRevealed = false
+            if !selected && store.isInlineURLEditing {
+                store.dismissInlineURLEditing()
             }
         }
         .animation(.spring(response: 0.30, dampingFraction: 0.82), value: showURLBar)
@@ -410,15 +367,7 @@ private struct TopBarTabItem: View {
     }
 
     private func handleTap() {
-        if !isSelected {
-            onSelect()
-        } else if !store.isInlineURLEditing {
-            hoverWorkItem?.cancel()
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                isHoverRevealed = true
-                store.isInlineURLEditing = true
-            }
-        }
+        onSelect()
     }
 
     @ViewBuilder
@@ -433,11 +382,25 @@ private struct TopBarTabItem: View {
         }
     }
 
+    private var tabItemForeground: Color {
+        isSelected
+            ? store.adaptiveTheme.activeTabText
+            : (isHovered ? store.adaptiveTheme.primaryText : store.adaptiveTheme.inactiveTabText)
+    }
+
     // MARK: - Subviews for Modes
 
     @ViewBuilder
     private var textOnlyContent: some View {
         HStack(spacing: 6) {
+            if tab.isLoading {
+                DotMatrixLoader(
+                    color: tabItemForeground,
+                    size: store.scaled(13)
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            }
+
             Text(tab.displayTitle(isSelected: isSelected, showFullTitle: store.showFullTitleOnActiveTab))
                 .font(store.headingFont(size: 12.5))
                 .foregroundColor(
@@ -450,22 +413,48 @@ private struct TopBarTabItem: View {
             Spacer(minLength: 0)
                 .frame(width: 16)
         }
+        .animation(.spring(response: 0.30, dampingFraction: 0.84), value: tab.isLoading)
         .padding(.horizontal, 10)
         .padding(.trailing, 20)
     }
 
     @ViewBuilder
     private var iconOnlyContent: some View {
-        // Fixed centered box: favicon remains 100% visible on hover so the tab's
-        // identity is never lost, and the tab body remains clickable for selection.
-        TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
-            .frame(width: store.scaled(28), height: store.scaled(store.enableWindowBorder ? 27 : 26))
+        // Fixed centered box: favicon or loading state is centered so the tab's
+        // body remains clickable for selection and close badge floats at corner.
+        ZStack {
+            if tab.isLoading {
+                DotMatrixLoader(
+                    color: tabItemForeground,
+                    size: store.scaled(14)
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            } else {
+                TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
+        .frame(width: store.scaled(28), height: store.scaled(store.enableWindowBorder ? 27 : 26))
     }
 
     @ViewBuilder
     private var hybridContent: some View {
         HStack(spacing: 6) {
-            TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
+            ZStack {
+                if tab.isLoading {
+                    DotMatrixLoader(
+                        color: tabItemForeground,
+                        size: store.scaled(14)
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                } else {
+                    TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                }
+            }
+            .frame(width: store.scaled(14), height: store.scaled(14))
+            .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
 
             Text(tab.displayTitle(isSelected: isSelected, showFullTitle: store.showFullTitleOnActiveTab))
                 .font(store.headingFont(size: 12.5))
@@ -585,7 +574,24 @@ struct InlineURLBar: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 13)
+            ZStack {
+                if tab.isLoading {
+                    DotMatrixLoader(
+                        color: store.adaptiveTheme.primaryText,
+                        size: store.scaled(13)
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                } else {
+                    TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 13)
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                }
+            }
+            .frame(width: store.scaled(13), height: store.scaled(13))
+            .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                dismiss()
+            }
 
             TextField("Search or enter URL...", text: $text)
                 .textFieldStyle(.plain)

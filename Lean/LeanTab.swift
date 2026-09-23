@@ -20,6 +20,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     @Published private(set) var title = "New Tab"
     @Published private(set) var url: URL?
     @Published private(set) var isLoading = false
+    @Published private(set) var loadingProgress: Double = 0
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
     @Published private(set) var pageZoom = 1.0
@@ -182,9 +183,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         }
 
         progressObserver = webView.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
-            if webView.estimatedProgress >= 0.7 {
-                DispatchQueue.main.async {
-                    guard let self, self.isLoading else { return }
+            let progress = webView.estimatedProgress
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.loadingProgress = progress
+                if progress >= 0.7, self.isLoading {
                     self.isLoading = false
                     self.refreshState()
                 }
@@ -368,6 +371,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             onStateChange?()
             return
         }
+        loadingProgress = 0
         isLoading = true
         onStateChange?()
         updateFavicon(for: url)
@@ -664,6 +668,7 @@ extension LeanTab: WKScriptMessageHandler {
 
 extension LeanTab: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
+        loadingProgress = 0
         isLoading = true
         refreshState()
     }
@@ -682,6 +687,7 @@ extension LeanTab: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
+        loadingProgress = 1.0
         isLoading = false
         refreshState()
         applyScrollbarStyle(scrollbarStyle)

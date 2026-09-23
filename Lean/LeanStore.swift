@@ -841,9 +841,11 @@ final class LeanStore: ObservableObject {
         return tab
     }
 
-        func openPageSource(title: String, html: String) {
+        @discardableResult
+    func openPageSource(title: String, html: String?) -> LeanTab {
         let tab = newTab(focusAddress: false)
         tab.presentPageSource(title: title, html: html)
+        return tab
     }
 
     func close(_ tab: LeanTab) {

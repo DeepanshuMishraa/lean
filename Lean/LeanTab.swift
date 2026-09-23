@@ -29,7 +29,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
     var onCloseTab: (() -> Void)?
     var onOpenURLInNewTab: ((URL) -> Void)?
-    var onOpenSourceTab: ((String, String) -> Void)?
+    var onOpenSourceTab: ((String, String?) -> LeanTab?)?
     var downloadManager: DownloadManager?
     var mediaPermissionStore: MediaPermissionStore?
     private var progressObserver: NSKeyValueObservation?
@@ -425,26 +425,31 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     @objc private func pageMenuPrint() { printPage() }
 
     func showPageSource() {
+        // Open the tab synchronously so it paints instantly; the DOM
+        // serialization roundtrip fills it in when it lands.
+        let title = "Source of \(self.webView.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? self.url?.host ?? "page")"
+        let tab = onOpenSourceTab?(title, nil)
         webView.evaluateJavaScript(
             "document.documentElement ? document.documentElement.outerHTML : ''"
-        ) { [weak self] result, _ in
-            guard let self, let html = result as? String, !html.isEmpty else { return }
-            let title = "Source of \(self.webView.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? self.url?.host ?? "page")"
-            self.onOpenSourceTab?(title, html)
+        ) { [weak tab] result, _ in
+            guard let html = result as? String, !html.isEmpty else { return }
+            tab?.presentPageSource(title: title, html: html)
         }
     }
 
-    /// Presents already-fetched source HTML in this tab.
-    func presentPageSource(title: String, html: String) {
+    /// Presents source HTML in this tab. A nil body shows a loading
+    /// placeholder until the real source arrives.
+    func presentPageSource(title: String, html: String?) {
         self.title = title
         self.url = nil
         self.favicon = nil
         self.isLoading = false
+        let body = html.map(Self.escapedHTML) ?? "Loading page source…"
         let page = """
         <html><head><meta charset="utf-8"><title>\(Self.escapedHTML(title))</title>\
         <style>body{background:#fff;color:#222;font:12px/1.5 -apple-system,monospace;margin:16px;white-space:pre-wrap;word-break:break-all}\
         @media(prefers-color-scheme:dark){body{background:#1e1e1e;color:#d4d4d4}}</style>\
-        </head><body>\(Self.escapedHTML(html))</body></html>
+        </head><body>\(body)</body></html>
         """
         webView.loadHTMLString(page, baseURL: nil)
         onStateChange?()

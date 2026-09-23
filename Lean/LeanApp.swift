@@ -9,8 +9,10 @@ struct LeanApp: App {
     init() {
         // Belt & suspenders with `isInspectable`: enables WebKit developer
         // extras (right-click Inspect Element, Safari remote inspection).
-        // Registered, not persisted — no footprint in user defaults.
-        UserDefaults.standard.register(defaults: ["WebKitDeveloperExtrasEnabled": true])
+        // Persisted, not just registered: the default must be visible to
+        // WebKit helper processes via cfprefsd, and in-memory registration
+        // never leaves this process. Scoped to Lean's own domain.
+        UserDefaults.standard.set(true, forKey: "WebKitDeveloperExtrasEnabled")
     }
 
     var body: some Scene {

@@ -439,11 +439,13 @@ struct LeanView: View {
                         }
                     }
                     .overlay(alignment: .top) {
-                        PageLoadingBar(
-                            isLoading: tab.isLoading,
-                            progress: tab.loadingProgress,
-                            isDark: store.isDarkMode
-                        )
+                        if store.enableZenMode {
+                            PageLoadingBar(
+                                isLoading: tab.isLoading,
+                                progress: tab.loadingProgress,
+                                isDark: store.isDarkMode
+                            )
+                        }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
                     .overlay(

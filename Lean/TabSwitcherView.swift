@@ -197,7 +197,17 @@ struct TabThumbnailCard: View {
         ZStack {
             isDark ? Color(white: 0.12) : Color(white: 0.92)
 
-            if let snapshot = tab.snapshot {
+            if tab.isSettingsPage {
+                VStack(spacing: 8) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
+                    Text("Settings")
+                        .font(uiFont.font(size: 13, weight: headingWeight.fontWeight))
+                        .foregroundStyle(isDark ? Color.white.opacity(0.75) : Color.black.opacity(0.70))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let snapshot = tab.snapshot {
                 Image(nsImage: snapshot)
                     .resizable()
                     .aspectRatio(contentMode: .fill)

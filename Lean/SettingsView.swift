@@ -2869,48 +2869,41 @@ private struct ExtensionsSettingsSection: View {
                         ForEach(manager.installed) { item in
                             VStack(alignment: .leading, spacing: 0) {
                                 HStack(spacing: 10) {
+                                    Image(systemName: "puzzlepiece.extension.fill")
+                                        .font(.system(size: 18, weight: .medium))
+                                        .foregroundStyle(store.adaptiveTheme.secondaryText)
+                                        .frame(width: 28, height: 28)
+                                        .accessibilityHidden(true)
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(item.name)
                                             .font(store.leanUIFont.font(size: 13, weight: .medium))
-                                        Text("Version \(item.version) · \(item.fromStore == true ? "Chrome Web Store" : "Unpacked extension")")
+                                        Text("Version \(item.version) · \(item.fromStore == true ? "Chrome Web Store" : "Unpacked extension") · \(manager.loadedIDs.contains(item.id) ? "Running" : "Stopped")")
                                             .font(store.leanUIFont.font(size: 11))
                                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
                                     }
                                     Spacer(minLength: 8)
-                                    SettingsActionButton("Reload", isDark: store.isDarkMode) { manager.reload(item.id) }
+                                    Menu {
+                                        Button("Reload") { manager.reload(item.id) }
+                                        Toggle("Enabled", isOn: Binding(
+                                            get: { item.enabled },
+                                            set: { manager.setEnabled(item.id, to: $0) }
+                                        ))
+                                        Button("Permissions and site access") {
+                                            if expandedExtensions.contains(item.id) {
+                                                expandedExtensions.remove(item.id)
+                                            } else {
+                                                expandedExtensions.insert(item.id)
+                                            }
+                                        }
+                                    } label: {
+                                        Label("Options", systemImage: "ellipsis.circle")
+                                    }
+                                    .menuStyle(.borderlessButton)
                                     SettingsActionButton("Remove", isDark: store.isDarkMode, destructive: true) { manager.remove(item.id) }
                                 }
                                 .padding(14)
-                                SettingsRowDivider(isDark: store.isDarkMode)
-                                CustomToggleRow(
-                                    title: "Enabled",
-                                    subtitle: manager.loadedIDs.contains(item.id) ? "Running in WebKit" : "Currently stopped",
-                                    isOn: Binding(
-                                        get: { item.enabled },
-                                        set: { manager.setEnabled(item.id, to: $0) }
-                                    ),
-                                    isDark: store.isDarkMode,
-                                    uiFont: store.leanUIFont
-                                )
-                                SettingsRowDivider(isDark: store.isDarkMode)
-                                HStack {
-                                    Text("Permissions and site access")
-                                        .font(store.leanUIFont.font(size: 12, weight: .medium))
-                                    Spacer()
-                                    SettingsActionButton(
-                                        expandedExtensions.contains(item.id) ? "Hide" : "Review",
-                                        isDark: store.isDarkMode
-                                    ) {
-                                        if expandedExtensions.contains(item.id) {
-                                            expandedExtensions.remove(item.id)
-                                        } else {
-                                            expandedExtensions.insert(item.id)
-                                        }
-                                    }
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 9)
                                 if expandedExtensions.contains(item.id) {
+                                    SettingsRowDivider(isDark: store.isDarkMode)
                                     permissionControls(for: item)
                                 }
                                 if let diagnostics = manager.errors[item.id], !diagnostics.isEmpty {

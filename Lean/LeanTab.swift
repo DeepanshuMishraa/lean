@@ -240,7 +240,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         if isSleeping, let restoreURL = url {
             DispatchQueue.main.async { [weak self, weak webView] in
                 guard let self, let webView else { return }
-                self.restoreSleepingWebView(webView, url: restoreURL, attempt: 0)
+                self.restoreSleepingWebView(webView, url: restoreURL)
             }
         }
         return webView
@@ -832,15 +832,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         )
     }
 
-    private func restoreSleepingWebView(_ webView: LeanWebView, url: URL, attempt: Int) {
+    private func restoreSleepingWebView(_ webView: LeanWebView, url: URL) {
         guard storedWebView === webView, isSleeping else { return }
-        if webView.window == nil, attempt < 50 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self, weak webView] in
-                guard let self, let webView else { return }
-                self.restoreSleepingWebView(webView, url: url, attempt: attempt + 1)
-            }
-            return
-        }
         isLoading = true
         loadingProgress = 0
         if let state = sleepingInteractionState {

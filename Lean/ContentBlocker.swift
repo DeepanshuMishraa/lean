@@ -118,7 +118,8 @@ enum ContentBlocker {
         }
 
         let task = Task {
-            let stored = await loadStoredRuleLists()
+            let schemaVersion = UserDefaults.standard.integer(forKey: schemaVersionKey)
+            let stored = schemaVersion >= currentSchemaVersion ? await loadStoredRuleLists() : []
             if !stored.isEmpty {
                 return stored
             }
@@ -151,8 +152,7 @@ enum ContentBlocker {
         if schemaVersion >= currentSchemaVersion {
             let lastUpdated = lastUpdatedDate
             let cached = loadCachedFilterTexts()
-            let hasEverySource = filterSources.allSatisfy { cached[$0.id] != nil }
-            if hasEverySource,
+            if !cached.isEmpty,
                let lastUpdated,
                Date().timeIntervalSince(lastUpdated) < updateInterval {
                 return
@@ -198,7 +198,7 @@ enum ContentBlocker {
         }
         guard !merged.isEmpty else { return nil }
 
-        let texts = filterSources.compactMap { merged[$0.id] }
+        let texts = filterSources.compactMap { merged[$0.id] } + [curatedYouTubeFilters]
         let encoded = await encode(texts: texts)
         guard !encoded.json.isEmpty else { return nil }
 

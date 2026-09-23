@@ -216,17 +216,13 @@ enum PageScripts {
                 } catch (e) {}
                 if (!looksPlayer) return;
                 var stack = [obj];
-                var seen = [];
+                var seen = new WeakSet();
                 var budget = 20000;
                 while (stack.length && budget-- > 0) {
                     var o = stack.pop();
                     if (!o || typeof o !== 'object') continue;
-                    var dup = false;
-                    for (var s = 0; s < seen.length; s++) {
-                        if (seen[s] === o) { dup = true; break; }
-                    }
-                    if (dup) continue;
-                    seen.push(o);
+                    if (seen.has(o)) continue;
+                    seen.add(o);
                     stripShallow(o);
                     if (o instanceof Array) {
                         for (var a = 0; a < o.length; a++) { stack.push(o[a]); }
@@ -282,7 +278,7 @@ enum PageScripts {
             // Safety net for fetch(...).then(r => r.json()): native JSON
             // parsing bypasses the JSON.parse wrapper above.
             try {
-                if (window.Response && Response.prototype && !Response.prototype.__leanYtWrapped) {
+                if (window.Response && Response.prototype && !window.__leanYtOrigRespJson) {
                     var origRespJson = Response.prototype.json;
                     if (origRespJson) {
                         var wrappedRespJson = function() {
@@ -292,6 +288,7 @@ enum PageScripts {
                             });
                         };
                         try { wrappedRespJson.__leanYtWrapped = true; } catch (e) {}
+                        try { window.__leanYtOrigRespJson = origRespJson; } catch (e) {}
                         Response.prototype.json = wrappedRespJson;
                     }
                 }
@@ -588,6 +585,20 @@ enum PageScripts {
         (function() {
             try { window.__leanYtAdsEnabled = false; } catch (e) {}
             try {
+                var videos = document.querySelectorAll('video');
+                for (var i = 0; i < videos.length; i++) {
+                    var video = videos[i];
+                    if (video.dataset.leanMuted) {
+                        video.muted = false;
+                        delete video.dataset.leanMuted;
+                    }
+                    if (video.dataset.leanOrigRate !== undefined) {
+                        video.playbackRate = parseFloat(video.dataset.leanOrigRate) || 1;
+                        delete video.dataset.leanOrigRate;
+                    }
+                }
+            } catch (e) {}
+            try {
                 try {
                     if (window.__leanYtOrigParse) {
                         try { JSON.parse = window.__leanYtOrigParse; } catch (e) {}
@@ -601,6 +612,12 @@ enum PageScripts {
                     }
                 } catch (e) {}
                 try { window.__leanYtFetchPatched = false; } catch (e) {}
+                try {
+                    if (window.__leanYtOrigRespJson && window.Response) {
+                        Response.prototype.json = window.__leanYtOrigRespJson;
+                        window.__leanYtOrigRespJson = null;
+                    }
+                } catch (e) {}
                 try {
                     if (window.__leanYtSkipTimer) {
                         try { clearInterval(window.__leanYtSkipTimer); } catch (e) {}

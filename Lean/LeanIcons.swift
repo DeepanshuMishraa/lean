@@ -100,8 +100,10 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
         }
         guard let data = svgString.data(using: .utf8),
               let image = NSImage(data: data) else {
-            return NSImage()
+            NSLog("Failed to decode Lean icon: %@", rawValue)
+            return NSImage(systemSymbolName: "questionmark.square", accessibilityDescription: rawValue) ?? NSImage(size: NSSize(width: 24, height: 24))
         }
+        image.size = NSSize(width: 24, height: 24)
         image.isTemplate = true
         Self.imageCache.setObject(image, forKey: key)
         return image

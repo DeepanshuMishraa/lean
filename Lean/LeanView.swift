@@ -353,6 +353,7 @@ struct LeanView: View {
 
     private var isCurrentTabWebPage: Bool {
         store.selectedTab?.url != nil || store.selectedTab?.isSettingsPage == true
+            || store.selectedTab?.isPageSource == true
     }
 
     private var cardLeadingPadding: CGFloat {
@@ -392,7 +393,7 @@ struct LeanView: View {
                         .padding(.trailing, cardTrailingPadding)
                         .padding(.bottom, cardBottomPadding)
                         .padding(.top, cardTopPadding)
-                } else if tab.url != nil {
+                } else if tab.url != nil || tab.isPageSource {
                     // Web Page Loaded
                     ZStack(alignment: .topTrailing) {
                         WebView(tab: tab)

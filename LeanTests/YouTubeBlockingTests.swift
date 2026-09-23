@@ -38,6 +38,17 @@ struct YouTubeBlockingTests {
         #expect(LeanTab.escapedHTML("<div>&\"</div>") == "&lt;div&gt;&amp;\"&lt;/div&gt;")
     }
 
+    @Test("Source tab mounts the web view without a URL")
+    @MainActor
+    func sourceTabState() {
+        let tab = LeanTab(dataStore: .default(), initialURL: nil)
+        #expect(!tab.isPageSource)
+        tab.presentPageSource(title: "Source of x", html: nil)
+        #expect(tab.isPageSource)
+        #expect(tab.url == nil)
+        #expect(tab.title == "Source of x")
+    }
+
     @Test("Context menu reports the link under right-click")
     func contextMenuTracker() {
         #expect(PageScripts.contextMenuLinkTracker.contains("closest('a[href]')"))

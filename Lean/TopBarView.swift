@@ -382,10 +382,10 @@ private struct TopBarTabItem: View {
                 .lineLimit(1)
             // Reserve close-button space so hover doesn't shift layout.
             Spacer(minLength: 0)
-                .frame(width: shouldShowClose ? 16 : 0)
+                .frame(width: 16)
         }
         .padding(.horizontal, 10)
-        .padding(.trailing, shouldShowClose ? 20 : 0)
+        .padding(.trailing, 20)
     }
 
     @ViewBuilder
@@ -838,19 +838,19 @@ struct DownloadToolbarButton: View {
                 if hasActive {
                     Capsule()
                         .fill(store.adaptiveTheme.secondaryText.opacity(0.25))
-                        .frame(width: 12, height: 2)
-                        .offset(y: 8)
+                        .frame(width: 12 * browserUIScale, height: 2 * browserUIScale)
+                        .offset(y: 8 * browserUIScale)
                         .allowsHitTesting(false)
                     Capsule()
                         .fill(store.isDarkMode ? Color.white : Color.black)
-                        .frame(width: 12 * CGFloat(store.downloadManager.overallProgress), height: 2)
-                        .offset(y: 8)
+                        .frame(width: 12 * CGFloat(store.downloadManager.overallProgress) * browserUIScale, height: 2 * browserUIScale)
+                        .offset(y: 8 * browserUIScale)
                         .allowsHitTesting(false)
                 } else if !store.downloadManager.downloads.isEmpty {
                     Circle()
                         .fill(store.adaptiveTheme.secondaryText.opacity(0.55))
-                        .frame(width: 4, height: 4)
-                        .offset(x: 7, y: -7)
+                        .frame(width: 4 * browserUIScale, height: 4 * browserUIScale)
+                        .offset(x: 7 * browserUIScale, y: -7 * browserUIScale)
                         .allowsHitTesting(false)
                 }
             }

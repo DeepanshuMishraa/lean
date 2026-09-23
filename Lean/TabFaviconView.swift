@@ -142,6 +142,9 @@ struct SiteFaviconView: View {
     var size: CGFloat = 18
 
     @State private var loadedFavicon: NSImage?
+    @Environment(\.browserUIScale) private var browserUIScale
+
+    private var scaledSize: CGFloat { size * browserUIScale }
 
     private var host: String {
         guard let url = url, let host = url.host?.lowercased() else { return "" }
@@ -154,11 +157,11 @@ struct SiteFaviconView: View {
                 .resizable()
                 .interpolation(.high)
                 .scaledToFit()
-                .frame(width: size, height: size)
-                .clipShape(RoundedRectangle(cornerRadius: 3.5, style: .continuous))
+                .frame(width: scaledSize, height: scaledSize)
+                .clipShape(RoundedRectangle(cornerRadius: 3.5 * browserUIScale, style: .continuous))
         } else {
             fallbackIcon
-                .frame(width: size, height: size)
+                .frame(width: scaledSize, height: scaledSize)
                 .onAppear {
                     FaviconService.shared.loadFavicon(for: url) { img in
                         if let img {
@@ -182,7 +185,7 @@ struct SiteFaviconView: View {
                 .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
         } else {
-            SiteFallbackGlyph(host: host, isDark: isDark, size: size)
+            SiteFallbackGlyph(host: host, isDark: isDark, size: scaledSize)
         }
     }
 }

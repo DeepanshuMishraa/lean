@@ -10,6 +10,8 @@ import xml.etree.ElementTree as ET
 
 from icons_data import ICONS
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 def validate_all():
     print(f"Validating {len(ICONS)} icons...")
@@ -24,7 +26,7 @@ def validate_all():
     print("All icons successfully validated as valid SVG XML!")
 
 def export_svg_files():
-    out_dir = os.path.abspath("icons/svg")
+    out_dir = os.path.join(ROOT, "icons/svg")
     os.makedirs(out_dir, exist_ok=True)
     for name, svg in ICONS.items():
         with open(os.path.join(out_dir, f"{name}.svg"), "w") as f:
@@ -32,7 +34,7 @@ def export_svg_files():
     print(f"Exported {len(ICONS)} SVG files to {out_dir}")
 
 def generate_swift_file():
-    swift_path = os.path.abspath("Lean/LeanIcons.swift")
+    swift_path = os.path.join(ROOT, "Lean/LeanIcons.swift")
     cases = sorted(ICONS.keys())
 
     swift_code = [
@@ -67,9 +69,11 @@ def generate_swift_file():
         "        }",
         "        guard let data = svgString.data(using: .utf8),",
         "              let image = NSImage(data: data) else {",
-        "            return NSImage()",
+        "            NSLog(\"Failed to decode Lean icon: %@\", rawValue)",
+        "            return NSImage(systemSymbolName: \"questionmark.square\", accessibilityDescription: rawValue) ?? NSImage(size: NSSize(width: 24, height: 24))",
         "        }",
-        "        image.isTemplate = true",
+        "        image.size = NSSize(width: 24, height: 24)",
+        "        image.isTemplate = true"
         "        Self.imageCache.setObject(image, forKey: key)",
         "        return image",
         "    }",
@@ -133,7 +137,7 @@ def generate_swift_file():
     print(f"Generated Swift icons file at {swift_path}")
 
 def generate_react_file():
-    react_path = os.path.abspath("marketing/src/icons/index.tsx")
+    react_path = os.path.join(ROOT, "marketing/src/icons/index.tsx")
     os.makedirs(os.path.dirname(react_path), exist_ok=True)
 
     lines = [
@@ -162,7 +166,6 @@ def generate_react_file():
         lines.append(f"export const {pascal_name}: React.FC<IconProps> = ({{")
         lines.append(f"  size = 24,")
         lines.append(f"  className,")
-        lines.append(f"  weight,")
         lines.append(f"  ...props")
         lines.append(f"}}) => (")
         lines.append(f"  <svg")

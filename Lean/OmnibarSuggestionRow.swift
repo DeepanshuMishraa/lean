@@ -242,7 +242,7 @@ private struct BrandFaviconView: View {
             SearchEngineFaviconView(engine: match.searchEngine ?? .google, isDark: isDark)
 
         case .generic:
-            Ph.browser.fill
+            (match.isSwitchToTab ? Ph.appWindow.fill : Ph.browser.fill)
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 13, height: 13)
                 .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))

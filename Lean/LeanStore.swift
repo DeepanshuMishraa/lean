@@ -261,11 +261,11 @@ final class LeanStore: ObservableObject {
     func scaled(_ value: CGFloat) -> CGFloat { value * browserUIScale }
 
     func headingFont(size: CGFloat) -> Font {
-        leanUIFont.font(size: size, weight: uiHeadingWeight.fontWeight)
+        leanUIFont.font(size: scaled(size), weight: uiHeadingWeight.fontWeight)
     }
 
     func bodyFont(size: CGFloat) -> Font {
-        leanUIFont.font(size: size, weight: uiBodyWeight.fontWeight)
+        leanUIFont.font(size: scaled(size), weight: uiBodyWeight.fontWeight)
     }
 
     @Published var webPageFont: LeanFont {
@@ -841,7 +841,7 @@ final class LeanStore: ObservableObject {
         return tab
     }
 
-        @discardableResult
+    @discardableResult
     func openPageSource(title: String, html: String?) -> LeanTab {
         let tab = newTab(focusAddress: false)
         tab.presentPageSource(title: title, html: html)

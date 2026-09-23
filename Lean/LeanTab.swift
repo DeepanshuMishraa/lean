@@ -25,6 +25,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         return url.absoluteString == "lean://settings" || (url.scheme == "lean" && url.host == "settings")
     }
 
+    /// Source-viewer tab. Keeps `url == nil` (so it never pollutes history
+    /// or session restore) — LeanView mounts the web view for these
+    /// explicitly instead of via `url != nil`.
+    private(set) var isPageSource = false
+
     var onStateChange: (() -> Void)?
     var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
     var onCloseTab: (() -> Void)?
@@ -419,7 +424,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     @objc private func pageMenuOpenLink(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let url = URL(string: raw) else { return }
-        onOpenURLInNewTab?(url)
+        if ExternalLinkPolicy.shouldOpenExternally(url) {
+            NSWorkspace.shared.open(url)
+        } else {
+            onOpenURLInNewTab?(url)
+        }
     }
     @objc private func pageMenuShowSource() { showPageSource() }
     @objc private func pageMenuPrint() { printPage() }
@@ -432,8 +441,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.evaluateJavaScript(
             "document.documentElement ? document.documentElement.outerHTML : ''"
         ) { [weak tab] result, _ in
-            guard let html = result as? String, !html.isEmpty else { return }
-            tab?.presentPageSource(title: title, html: html)
+            guard let tab else { return }
+            guard let html = result as? String, !html.isEmpty else {
+                tab.presentPageSource(title: title, html: "Unable to retrieve page source.")
+                return
+            }
+            tab.presentPageSource(title: title, html: html)
         }
     }
 
@@ -442,6 +455,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     func presentPageSource(title: String, html: String?) {
         self.title = title
         self.url = nil
+        self.isPageSource = true
         self.favicon = nil
         self.isLoading = false
         let body = html.map(Self.escapedHTML) ?? "Loading page source…"
@@ -674,9 +688,8 @@ extension LeanTab: WKNavigationDelegate {
             presentCredentialsSheet(for: challenge, completionHandler: completionHandler)
             return
         }
-        // Client certificates and other methods have no in-app UI: fail fast
-        // instead of hanging the page silently.
-        completionHandler(.cancelAuthenticationChallenge, nil)
+        // Let WebKit handle authentication methods this UI does not implement.
+        completionHandler(.performDefaultHandling, nil)
     }
 
     private func presentCredentialsSheet(
@@ -754,6 +767,10 @@ extension LeanTab: WKUIDelegate {
         // URL: the store lets WebKit drive the load through the returned
         // web view, so a placeholder is enough here.
         let url = navigationAction.request.url ?? URL(string: "about:blank")!
+        if ExternalLinkPolicy.shouldOpenExternally(url) {
+            NSWorkspace.shared.open(url)
+            return nil
+        }
         return onOpenNewTab?(url, configuration)
     }
 
@@ -804,13 +821,33 @@ extension LeanTab: WKUIDelegate {
         type: WKMediaCaptureType,
         decisionHandler: @escaping (WKPermissionDecision) -> Void
     ) {
-        let originKey: String = {
-            if origin.port != 0 {
-                return "\(origin.protocol)://\(origin.host):\(origin.port)"
-            }
-            return "\(origin.protocol)://\(origin.host)"
-        }()
-        if let stored = mediaPermissionStore?.decision(forOriginKey: originKey) {
+        var components = URLComponents()
+        components.scheme = origin.protocol
+        components.host = origin.host
+        components.port = origin.port == 0 ? nil : origin.port
+        guard let url = components.url,
+              let originKey = MediaPermissionStore.originKey(for: url) else {
+            decisionHandler(.deny)
+            return
+        }
+        let captureTypeKey: String
+        let requestedMedia: String
+        switch type {
+        case .camera:
+            captureTypeKey = "camera"
+            requestedMedia = "camera"
+        case .microphone:
+            captureTypeKey = "microphone"
+            requestedMedia = "microphone"
+        case .cameraAndMicrophone:
+            captureTypeKey = "cameraAndMicrophone"
+            requestedMedia = "camera and microphone"
+        @unknown default:
+            decisionHandler(.deny)
+            return
+        }
+        let decisionKey = "\(originKey)|\(captureTypeKey)"
+        if let stored = mediaPermissionStore?.decision(forOriginKey: decisionKey) {
             decisionHandler(stored ? .grant : .deny)
             return
         }
@@ -819,14 +856,14 @@ extension LeanTab: WKUIDelegate {
             return
         }
         let alert = NSAlert()
-        alert.messageText = "Allow camera and microphone?"
-        alert.informativeText = "\(origin.host) wants to use your camera and microphone."
+        alert.messageText = "Allow \(requestedMedia)?"
+        alert.informativeText = "\(origin.host) wants to use your \(requestedMedia)."
         alert.addButton(withTitle: "Allow")
         alert.addButton(withTitle: "Don't Allow")
         alert.alertStyle = .informational
         alert.beginSheetModal(for: window) { [weak self] response in
             let allowed = response == .alertFirstButtonReturn
-            self?.mediaPermissionStore?.setDecision(allowed, forOriginKey: originKey)
+            self?.mediaPermissionStore?.setDecision(allowed, forOriginKey: decisionKey)
             decisionHandler(allowed ? .grant : .deny)
         }
     }

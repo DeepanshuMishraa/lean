@@ -868,7 +868,8 @@ struct SettingsValueSlider: View {
         let fraction = (clampedX - minThumbX) / max(maxThumbX - minThumbX, 1)
         let raw = Double(range.lowerBound) + Double(fraction) * Double(range.upperBound - range.lowerBound)
         let stepped = Int((raw / Double(step)).rounded()) * step
-        value = min(range.upperBound, max(range.lowerBound, stepped))
+        let nextValue = min(range.upperBound, max(range.lowerBound, stepped))
+        if nextValue != value { value = nextValue }
     }
 
     var body: some View {

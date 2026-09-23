@@ -2834,7 +2834,7 @@ private struct ExtensionsSettingsSection: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 7)
                             .background(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        SettingsActionButton(manager.isInstallingFromStore ? "Downloading…" : "Add", isDark: store.isDarkMode, prominent: true) {
+                        SettingsActionButton(manager.isInstallingFromStore ? "Downloading…" : "Add", isDark: store.isDarkMode, prominent: true, isLoading: manager.isInstallingFromStore) {
                             Task {
                                 if let review = await manager.prepareStoreInstallation(from: storeLink) {
                                     pendingReview = review
@@ -2941,7 +2941,7 @@ private struct ExtensionsSettingsSection: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 8)
-                    SettingsActionButton(isPreparing ? "Reading…" : "Choose…", isDark: store.isDarkMode) {
+                    SettingsActionButton(isPreparing ? "Reading…" : "Choose…", isDark: store.isDarkMode, isLoading: isPreparing) {
                         chooseExtensionFolder()
                     }
                     .disabled(isPreparing)
@@ -2966,8 +2966,8 @@ private struct ExtensionsSettingsSection: View {
                 manager.cancelInstallation(review)
                 pendingReview = nil
             } install: { permissions, hosts in
+                await manager.install(review, permissions: permissions, hosts: hosts)
                 pendingReview = nil
-                Task { await manager.install(review, permissions: permissions, hosts: hosts) }
             }
             .interactiveDismissDisabled()
         }
@@ -3046,10 +3046,11 @@ private struct ExtensionInstallReviewSheet: View {
     let isDark: Bool
     let uiFont: LeanFont
     let cancel: () -> Void
-    let install: (Set<String>, Set<String>) -> Void
+    let install: (Set<String>, Set<String>) async -> Void
 
     @State private var grantedPermissions = Set<String>()
     @State private var grantedHosts = Set<String>()
+    @State private var isInstalling = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -3062,6 +3063,19 @@ private struct ExtensionInstallReviewSheet: View {
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
+                    CustomChecklistRow(
+                        title: "Select all permissions and sites",
+                        isOn: Binding(
+                            get: { allAccessSelected },
+                            set: { selectAll in
+                                grantedPermissions = selectAll ? allPermissions : []
+                                grantedHosts = selectAll ? allHosts : []
+                            }
+                        ),
+                        isDark: isDark,
+                        uiFont: uiFont
+                    )
+                    .disabled(allPermissions.isEmpty && allHosts.isEmpty)
                     reviewChecklist("Requested permissions", values: review.requiredPermissions, selection: $grantedPermissions)
                     reviewChecklist("Optional permissions", values: review.optionalPermissions, selection: $grantedPermissions)
                     reviewChecklist("Requested site access", values: review.requiredHosts, selection: $grantedHosts)
@@ -3083,14 +3097,32 @@ private struct ExtensionInstallReviewSheet: View {
             HStack {
                 Spacer()
                 SettingsActionButton("Cancel", isDark: isDark, action: cancel)
-                SettingsActionButton("Install", isDark: isDark, prominent: true) {
-                    install(grantedPermissions, grantedHosts)
+                SettingsActionButton(isInstalling ? "Installing…" : "Install", isDark: isDark, prominent: true, isLoading: isInstalling) {
+                    Task {
+                        isInstalling = true
+                        await install(grantedPermissions, grantedHosts)
+                        isInstalling = false
+                    }
                 }
+                .disabled(isInstalling)
             }
         }
         .padding(20)
         .frame(width: 480, height: 520)
         .background(isDark ? Color(white: 0.10) : Color(white: 0.98))
+    }
+
+    private var allPermissions: Set<String> {
+        Set(review.requiredPermissions + review.optionalPermissions)
+    }
+
+    private var allHosts: Set<String> {
+        Set(review.requiredHosts + review.optionalHosts)
+    }
+
+    private var allAccessSelected: Bool {
+        let hasAccess = !allPermissions.isEmpty || !allHosts.isEmpty
+        return hasAccess && allPermissions.isSubset(of: grantedPermissions) && allHosts.isSubset(of: grantedHosts)
     }
 
     @ViewBuilder
@@ -3126,8 +3158,14 @@ private struct ImportDataSection: View {
     @ObservedObject var store: LeanStore
     @State private var selectedBrowser = BrowserImportSource.chrome
     @State private var profilePreview: BrowserImportPreview?
+    @State private var browserImportPreview: BrowserImportPreview?
     @State private var importBookmarks = true
     @State private var importHistory = true
+    @State private var browserImportStage: BrowserImportStage = .access
+    @State private var showsBrowserImportDialog = false
+    @State private var isReadingBrowserData = false
+    @State private var browserImportError: String?
+    @State private var browserImportResult: String?
     @State private var credentialPreview: PasswordCSVPreview?
     @State private var message: String?
     @State private var error: String?
@@ -3147,6 +3185,8 @@ private struct ImportDataSection: View {
                             guard let source = BrowserImportSource(rawValue: id) else { return }
                             selectedBrowser = source
                             profilePreview = nil
+                            browserImportPreview = nil
+                            browserImportError = nil
                             error = nil
                         }
                         HStack(alignment: .center, spacing: 12) {
@@ -3159,40 +3199,13 @@ private struct ImportDataSection: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer(minLength: 8)
-                            SettingsActionButton("Import from \(selectedBrowser.title)", isDark: store.isDarkMode, prominent: true) {
+                            SettingsActionButton(
+                                "Import from \(selectedBrowser.title)",
+                                isDark: store.isDarkMode,
+                                prominent: true,
+                                isLoading: isReadingBrowserData
+                            ) {
                                 importFromSelectedBrowser()
-                            }
-                        }
-                        if let profilePreview {
-                            SettingsRowDivider(isDark: store.isDarkMode)
-                            CustomChecklistRow(
-                                title: "Bookmarks (\(profilePreview.bookmarks.count))",
-                                isOn: $importBookmarks,
-                                isDark: store.isDarkMode,
-                                uiFont: store.leanUIFont
-                            )
-                            .disabled(profilePreview.bookmarks.isEmpty)
-                            CustomChecklistRow(
-                                title: "History (\(profilePreview.history.count) found; up to \(max(0, 200 - store.historyItems.count)) can fit)",
-                                isOn: $importHistory,
-                                isDark: store.isDarkMode,
-                                uiFont: store.leanUIFont
-                            )
-                            .disabled(profilePreview.history.isEmpty)
-                            HStack(spacing: 8) {
-                                Spacer()
-                                SettingsActionButton("Choose another folder", isDark: store.isDarkMode) { chooseBrowserDataFolder() }
-                                SettingsActionButton("Cancel", isDark: store.isDarkMode) { self.profilePreview = nil }
-                                SettingsActionButton("Import", isDark: store.isDarkMode, prominent: true) {
-                                    let selected = BrowserImportPreview(
-                                        bookmarks: importBookmarks ? profilePreview.bookmarks : [],
-                                        history: importHistory ? profilePreview.history : []
-                                    )
-                                    let imported = store.importBrowserData(selected)
-                                    message = "Imported \(imported.bookmarks) bookmarks and \(imported.history) history entries."
-                                    self.profilePreview = nil
-                                }
-                                .disabled(!importBookmarks && !importHistory)
                             }
                         }
                     }
@@ -3289,11 +3302,28 @@ private struct ImportDataSection: View {
                 HStack(spacing: 10) {
                     Text(error).font(store.leanUIFont.font(size: 11.5)).foregroundColor(.red)
                     Spacer(minLength: 8)
-                    SettingsActionButton("Choose again", isDark: store.isDarkMode) { chooseBrowserDataFolder() }
+                    SettingsActionButton("Dismiss", isDark: store.isDarkMode) { self.error = nil }
                 }
             } else if let message {
                 Text(message).font(store.leanUIFont.font(size: 11.5)).foregroundColor(secondaryText)
             }
+        }
+        .sheet(isPresented: $showsBrowserImportDialog) {
+            BrowserImportProgressDialog(
+                sourceTitle: selectedBrowser.title,
+                isDark: store.isDarkMode,
+                uiFont: store.leanUIFont,
+                stage: $browserImportStage,
+                preview: $browserImportPreview,
+                includeBookmarks: $importBookmarks,
+                includeHistory: $importHistory,
+                errorMessage: $browserImportError,
+                resultMessage: $browserImportResult,
+                availableHistorySlots: max(0, 200 - store.historyItems.count),
+                chooseFolder: chooseBrowserDataFolder,
+                importSelected: importSelectedBrowserData,
+                cancel: { showsBrowserImportDialog = false }
+            )
         }
     }
 
@@ -3302,8 +3332,14 @@ private struct ImportDataSection: View {
     }
 
     private func importFromSelectedBrowser() {
+        error = nil
+        message = nil
+        browserImportError = nil
+        browserImportResult = nil
+        browserImportPreview = nil
+        showsBrowserImportDialog = true
         guard let data = UserDefaults.standard.data(forKey: selectedBrowser.bookmarkKey) else {
-            chooseBrowserDataFolder()
+            browserImportStage = .access
             return
         }
         var isStale = false
@@ -3314,18 +3350,55 @@ private struct ImportDataSection: View {
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )
-            let didAccess = url.startAccessingSecurityScopedResource()
-            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-            profilePreview = try BrowserDataImporter.readProfiles(at: url)
             if isStale {
+                let didAccess = url.startAccessingSecurityScopedResource()
+                defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
                 let renewed = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
                 UserDefaults.standard.set(renewed, forKey: selectedBrowser.bookmarkKey)
             }
-            importBookmarks = true
-            importHistory = true
-            error = nil
+            startBrowserScan(at: url)
         } catch {
-            self.error = "Couldn't read the saved \(selectedBrowser.title) data folder. Choose it again to restore access."
+            browserImportError = "Couldn't restore access to the saved \(selectedBrowser.title) folder. Choose it again."
+            browserImportStage = .access
+        }
+    }
+
+    private func startBrowserScan(at url: URL) {
+        browserImportStage = .scanning
+        isReadingBrowserData = true
+        Task {
+            do {
+                let preview = try await Task.detached(priority: .userInitiated) {
+                    let didAccess = url.startAccessingSecurityScopedResource()
+                    defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+                    return try BrowserDataImporter.readProfiles(at: url)
+                }.value
+                browserImportPreview = preview
+                importBookmarks = !preview.bookmarks.isEmpty
+                importHistory = !preview.history.isEmpty
+                browserImportStage = .selection
+            } catch {
+                browserImportError = error.localizedDescription
+                browserImportStage = .failed
+            }
+            isReadingBrowserData = false
+        }
+    }
+
+    private func importSelectedBrowserData() {
+        guard let preview = browserImportPreview else { return }
+        browserImportStage = .importing
+        Task {
+            await Task.yield()
+            let selected = BrowserImportPreview(
+                bookmarks: importBookmarks ? preview.bookmarks : [],
+                history: importHistory ? preview.history : []
+            )
+            let imported = store.importBrowserData(selected)
+            let result = "Imported \(imported.bookmarks) bookmarks and \(imported.history) history entries."
+            browserImportResult = result
+            message = result
+            browserImportStage = .complete
         }
     }
 
@@ -3339,18 +3412,16 @@ private struct ImportDataSection: View {
         panel.allowsMultipleSelection = false
         panel.directoryURL = selectedBrowser.userDataDirectory
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        error = nil
-        let didAccess = url.startAccessingSecurityScopedResource()
-        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
         do {
-            let preview = try BrowserDataImporter.readProfiles(at: url)
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
             let bookmark = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
             UserDefaults.standard.set(bookmark, forKey: selectedBrowser.bookmarkKey)
-            profilePreview = preview
-            importBookmarks = true
-            importHistory = true
+            browserImportError = nil
+            startBrowserScan(at: url)
         } catch {
-            self.error = error.localizedDescription
+            browserImportError = error.localizedDescription
+            browserImportStage = .access
         }
     }
 

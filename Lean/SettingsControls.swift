@@ -38,16 +38,18 @@ struct SettingsActionButton: View {
     let isDark: Bool
     var prominent = false
     var destructive = false
+    var isLoading = false
     let action: () -> Void
 
     @Environment(\.leanSettingsFont) private var uiFont
     @State private var hovering = false
 
-    init(_ title: String, isDark: Bool, prominent: Bool = false, destructive: Bool = false, action: @escaping () -> Void) {
+    init(_ title: String, isDark: Bool, prominent: Bool = false, destructive: Bool = false, isLoading: Bool = false, action: @escaping () -> Void) {
         self.title = title
         self.isDark = isDark
         self.prominent = prominent
         self.destructive = destructive
+        self.isLoading = isLoading
         self.action = action
     }
 
@@ -59,11 +61,14 @@ struct SettingsActionButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(uiFont.font(size: 11.5, weight: prominent ? .medium : .regular))
-                .foregroundColor(textColor)
-                .padding(.horizontal, 10)
-                .frame(height: 26)
+            HStack(spacing: 6) {
+                if isLoading { DotMatrixLoader(color: textColor, size: 11) }
+                Text(title)
+                    .font(uiFont.font(size: 11.5, weight: prominent ? .medium : .regular))
+                    .foregroundColor(textColor)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 26)
                 .background(
                     prominent ? (isDark ? Color.white : Color.black.opacity(0.82))
                         : (hovering ? (isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.055)) : .clear),

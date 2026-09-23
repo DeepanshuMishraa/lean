@@ -8,7 +8,7 @@ Add an **Import Data** category in Settings.
 
 - Offer Chromium browsers, including Helium, as source choices. On first import, request access to the selected browser's data folder, remember that access, and discover its profiles automatically. Also accept a browser bookmark JSON file and a history CSV with `url`, `title`, and optional `timestamp` columns.
 - Accept password CSV exports with URL, username, and password columns. Write passwords only to the macOS Keychain; show site/account names in the preview, never password values.
-- Preview counts before importing and let users choose bookmarks, history, or both. Password CSV imports have their own confirmation.
+- Use a four-step access, scan, select, and import dialog. Let users choose bookmarks, history, or both; password CSV imports keep a separate confirmation.
 - Keep imports local. Read only user-selected browser folders or files, never alter source data, snapshot Chromium history databases so browsers can remain open, and report invalid rows and Keychain write failures. Settings action buttons inherit Lean's configured UI font.
 - Show imported bookmarks in Settings with open and remove actions. Merge history into Lean's existing history store, which currently retains up to 200 entries.
 - Do not import cookies, open tabs, or encrypted browser password databases in this phase.
@@ -52,7 +52,7 @@ Implemented:
 
 ## Phase 5: extension support
 
-**Implemented first slice:** WebKit extension support is gated to macOS 15.4+, preserving Lean's macOS 14 minimum. Settings can install verified Chrome Web Store extensions from a URL or ID and load unpacked local extensions, review and selectively grant required/optional permissions and site access, enable, reload, remove, and read initial diagnostics. Lean copies extensions into app-controlled storage, persists the installed list and grants, and attaches the shared WebKit extension controller to tab configurations. Store packages are signature-checked against their extension IDs before unpacking. A focused lifecycle test covers load, unload, reload, and permission revocation.
+**Implemented first slice:** WebKit extension support is gated to macOS 15.4+, preserving Lean's macOS 14 minimum. Settings can install verified Chrome Web Store extensions from a URL or ID and load unpacked local extensions, review and selectively grant required/optional permissions and site access, select all requested access at once, enable, reload, remove, and read initial diagnostics. Lean copies extensions into app-controlled storage, persists the installed list and grants, and attaches the shared WebKit extension controller to tab configurations. Store packages are signature-checked against their extension IDs before unpacking. A focused lifecycle test covers load, unload, reload, and permission revocation.
 
 **Limitations:** extension toolbar popups and browser tab/window integrations are not wired up. Optional runtime permission requests are denied until granted in Settings. Diagnostics currently show parse/load errors, not a live error stream. Verify folder access and content injection manually under the sandbox before release; keep support availability-gated and do not raise Lean's overall OS floor.
 

@@ -65,6 +65,7 @@
 		B03000000000000000000003 /* TabSleepPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B03000000000000000000004 /* TabSleepPolicyTests.swift */; };
 		B04000000000000000000001 /* BrowserExtensionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04000000000000000000002 /* BrowserExtensionManager.swift */; };
 		C04000000000000000000001 /* ChromeWebStoreInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04000000000000000000002 /* ChromeWebStoreInstaller.swift */; };
+		D05000000000000000000001 /* BrowserImportProgressDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05000000000000000000002 /* BrowserImportProgressDialog.swift */; };
 		C03000000000000000000003 /* WebExtensionPrototypeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03000000000000000000004 /* WebExtensionPrototypeTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -97,6 +98,7 @@
 		B03000000000000000000004 /* TabSleepPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabSleepPolicyTests.swift; sourceTree = "<group>"; };
 		B04000000000000000000002 /* BrowserExtensionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserExtensionManager.swift; sourceTree = "<group>"; };
 		C04000000000000000000002 /* ChromeWebStoreInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromeWebStoreInstaller.swift; sourceTree = "<group>"; };
+		D05000000000000000000002 /* BrowserImportProgressDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserImportProgressDialog.swift; sourceTree = "<group>"; };
 		C03000000000000000000004 /* WebExtensionPrototypeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebExtensionPrototypeTests.swift; sourceTree = "<group>"; };
 		28482E243F19BC7282F14B6F /* lean.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = lean.icon; sourceTree = "<group>"; };
 		329359943D08761604195E40 /* AddressResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressResolverTests.swift; sourceTree = "<group>"; };
@@ -193,6 +195,7 @@
 				B03000000000000000000002 /* TabSleepPolicy.swift */,
 				B04000000000000000000002 /* BrowserExtensionManager.swift */,
 				C04000000000000000000002 /* ChromeWebStoreInstaller.swift */,
+				D05000000000000000000002 /* BrowserImportProgressDialog.swift */,
 				D5268449F35E5A41542EEF02 /* AppUpdater.swift */,
 				14191AAB2D796CC5DE1EA6CB /* ContentBlocker.swift */,
 				E566A9FFD9A3DA622E49EC68 /* CustomShortcuts.swift */,
@@ -399,6 +402,7 @@
 				B03000000000000000000001 /* TabSleepPolicy.swift in Sources */,
 				B04000000000000000000001 /* BrowserExtensionManager.swift in Sources */,
 				C04000000000000000000001 /* ChromeWebStoreInstaller.swift in Sources */,
+				D05000000000000000000001 /* BrowserImportProgressDialog.swift in Sources */,
 				BDA7E266340C8AF371134E07 /* LeanTab.swift in Sources */,
 				571263C8F841874C413F13EB /* LeanTheme.swift in Sources */,
 				EF81104AE976E2079F2656FE /* LeanView.swift in Sources */,

@@ -127,7 +127,7 @@ private struct BrowserSession: Codable {
     var selectedIndex: Int
 }
 
-struct HistoryItem: Identifiable, Equatable, Hashable, Codable {
+struct HistoryItem: Identifiable, Equatable, Hashable, Codable, Sendable {
     let id: UUID
     let url: URL
     let title: String

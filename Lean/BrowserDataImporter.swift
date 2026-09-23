@@ -1,7 +1,7 @@
 import Foundation
 import SQLite3
 
-struct ImportedBookmark: Codable, Identifiable, Hashable {
+struct ImportedBookmark: Codable, Identifiable, Hashable, Sendable {
     var id = UUID()
     let title: String
     let url: URL
@@ -24,7 +24,7 @@ struct PasswordCSVPreview {
     let skippedRows: Int
 }
 
-struct BrowserImportPreview {
+struct BrowserImportPreview: Sendable {
     let bookmarks: [ImportedBookmark]
     let history: [HistoryItem]
 }

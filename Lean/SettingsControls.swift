@@ -22,6 +22,66 @@ struct SettingsGroup<Content: View>: View {
     }
 }
 
+private struct LeanSettingsFontKey: EnvironmentKey {
+    static let defaultValue = LeanFont.system
+}
+
+extension EnvironmentValues {
+    var leanSettingsFont: LeanFont {
+        get { self[LeanSettingsFontKey.self] }
+        set { self[LeanSettingsFontKey.self] = newValue }
+    }
+}
+
+struct SettingsActionButton: View {
+    let title: String
+    let isDark: Bool
+    var prominent = false
+    var destructive = false
+    let action: () -> Void
+
+    @Environment(\.leanSettingsFont) private var uiFont
+    @State private var hovering = false
+
+    init(_ title: String, isDark: Bool, prominent: Bool = false, destructive: Bool = false, action: @escaping () -> Void) {
+        self.title = title
+        self.isDark = isDark
+        self.prominent = prominent
+        self.destructive = destructive
+        self.action = action
+    }
+
+    private var textColor: Color {
+        if destructive { return .red }
+        if prominent { return isDark ? .black : .white }
+        return isDark ? Color.white.opacity(0.82) : Color.black.opacity(0.76)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(uiFont.font(size: 11.5, weight: prominent ? .medium : .regular))
+                .foregroundColor(textColor)
+                .padding(.horizontal, 10)
+                .frame(height: 26)
+                .background(
+                    prominent ? (isDark ? Color.white : Color.black.opacity(0.82))
+                        : (hovering ? (isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.055)) : .clear),
+                    in: Capsule()
+                )
+                .overlay {
+                    if !prominent {
+                        Capsule().strokeBorder(isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.09), lineWidth: 0.75)
+                    }
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.14), value: hovering)
+    }
+}
+
 // MARK: - Settings Row Divider
 struct SettingsRowDivider: View {
     let isDark: Bool
@@ -724,6 +784,53 @@ struct CustomToggleRow: View {
                 isOn.toggle()
             }
         }
+    }
+}
+
+struct CustomChecklistRow: View {
+    let title: String
+    @Binding var isOn: Bool
+    let isDark: Bool
+    let uiFont: LeanFont
+
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovered = false
+
+    var body: some View {
+        Button {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) { isOn.toggle() }
+        } label: {
+            HStack(spacing: 10) {
+                Text(title)
+                    .font(uiFont.font(size: 12.5, weight: isOn ? .medium : .regular))
+                    .foregroundColor(isDark ? Color.white.opacity(0.88) : Color.black.opacity(0.78))
+                Spacer()
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(isOn ? (isDark ? Color.white : Color.black.opacity(0.82)) : .clear)
+                    .frame(width: 15, height: 15)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .strokeBorder(isOn ? .clear : (isDark ? Color.white.opacity(0.24) : Color.black.opacity(0.20)), lineWidth: 0.8)
+                    }
+                    .overlay {
+                        if isOn {
+                            Ph.check.bold
+                                .foregroundColor(isDark ? .black : .white)
+                                .frame(width: 9, height: 9)
+                        }
+                    }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .background(isHovered ? (isDark ? Color.white.opacity(0.025) : Color.black.opacity(0.018)) : .clear)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.45)
+        .onHover { isHovered = $0 }
+        .accessibilityLabel(title)
+        .accessibilityValue(isOn ? "Selected" : "Not selected")
     }
 }
 

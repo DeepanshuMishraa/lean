@@ -144,7 +144,9 @@ struct HistoryItem: Identifiable, Equatable, Hashable, Codable {
 @MainActor
 final class LeanStore: ObservableObject {
     @Published private(set) var tabs: [LeanTab] = []
-    @Published var selectedID: LeanTab.ID?
+    @Published var selectedID: LeanTab.ID? {
+        didSet { handleTabSelectionChange(from: oldValue, to: selectedID) }
+    }
     @Published var showsFindBar = false
     @Published var isFloatingOmnibarVisible = false
     @Published var floatingOmnibarMode: FloatingOmnibarMode = .newTab
@@ -186,6 +188,35 @@ final class LeanStore: ObservableObject {
         didSet {
             persist(adBlockingEnabled, forKey: Self.adBlockingKey)
             updateAllTabsAdBlocking()
+        }
+    }
+    @Published private(set) var adBlockingExcludedHosts: Set<String> = []
+
+    @Published var passwordSavePromptsEnabled = true {
+        didSet {
+            persist(passwordSavePromptsEnabled, forKey: Self.passwordSavePromptsKey)
+            updateAllTabsPasswordPreferences()
+        }
+    }
+
+    @Published var passwordSuggestionsEnabled = true {
+        didSet {
+            persist(passwordSuggestionsEnabled, forKey: Self.passwordSuggestionsKey)
+            updateAllTabsPasswordPreferences()
+        }
+    }
+
+    @Published var autoSleepTabsEnabled = false {
+        didSet {
+            persist(autoSleepTabsEnabled, forKey: Self.autoSleepTabsEnabledKey)
+            scheduleAutoSleep()
+        }
+    }
+
+    @Published var autoSleepAfterMinutes = 30 {
+        didSet {
+            persist(autoSleepAfterMinutes, forKey: Self.autoSleepAfterMinutesKey)
+            scheduleAutoSleep()
         }
     }
 
@@ -265,6 +296,14 @@ final class LeanStore: ObservableObject {
         leanUIFont.font(size: scaled(size), weight: uiHeadingWeight.fontWeight)
     }
 
+    var tabTitleTypeface: LeanFont {
+        webPageFont == .system ? leanUIFont : webPageFont
+    }
+
+    func tabTitleFont(size: CGFloat) -> Font {
+        tabTitleTypeface.font(size: scaled(size), weight: uiHeadingWeight.fontWeight)
+    }
+
     func bodyFont(size: CGFloat) -> Font {
         leanUIFont.font(size: scaled(size), weight: uiBodyWeight.fontWeight)
     }
@@ -338,10 +377,13 @@ final class LeanStore: ObservableObject {
 
     private let dataStore: WKWebsiteDataStore
     private let database: AppDatabase?
-    private let mediaPermissionStore: MediaPermissionStore
+    let mediaPermissionStore: MediaPermissionStore
     private var recentlyClosed: [URL] = []
     private var adBlockUpdateObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
+    private var inactiveSince: [LeanTab.ID: Date] = [:]
+    private var sleepWorkItems: [LeanTab.ID: DispatchWorkItem] = [:]
+    private var memoryPressureSource: DispatchSourceMemoryPressure?
 
     init(dataStore: WKWebsiteDataStore? = nil, database: AppDatabase? = nil) {
         self.dataStore = dataStore ?? WKWebsiteDataStore.default()
@@ -358,6 +400,12 @@ final class LeanStore: ObservableObject {
             ?? UserDefaults.standard.object(forKey: Self.adBlockingKey) as? Bool
             ?? true
         self.adBlockingEnabled = savedAdBlocking
+        self.adBlockingExcludedHosts = databaseValue(self.database, Set<String>.self, forKey: Self.adBlockingExcludedHostsKey) ?? []
+        self.passwordSavePromptsEnabled = databaseValue(self.database, Bool.self, forKey: Self.passwordSavePromptsKey) ?? true
+        self.passwordSuggestionsEnabled = databaseValue(self.database, Bool.self, forKey: Self.passwordSuggestionsKey) ?? true
+        self.autoSleepTabsEnabled = databaseValue(self.database, Bool.self, forKey: Self.autoSleepTabsEnabledKey) ?? false
+        let savedSleepMinutes = databaseValue(self.database, Int.self, forKey: Self.autoSleepAfterMinutesKey) ?? 30
+        self.autoSleepAfterMinutes = [5, 15, 30, 60].contains(savedSleepMinutes) ? savedSleepMinutes : 30
 
         if let savedHistory = databaseValue(self.database, [HistoryItem].self, forKey: Self.historyKey) {
             self.historyItems = savedHistory
@@ -509,6 +557,7 @@ final class LeanStore: ObservableObject {
             }
         }
         ContentBlocker.refreshIfNeeded()
+        configureMemoryPressureHandling()
         loadCustomShortcuts()
         downloadManager.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
@@ -672,8 +721,145 @@ final class LeanStore: ObservableObject {
 
     func updateAllTabsAdBlocking() {
         for tab in tabs {
-            tab.applyAdBlocking(adBlockingEnabled)
+            tab.applyAdBlocking(adBlockingEnabled, excluding: adBlockingExcludedHosts)
         }
+    }
+
+    func updateAllTabsPasswordPreferences() {
+        for tab in tabs {
+            tab.applyPasswordPreferences(
+                savePromptsEnabled: passwordSavePromptsEnabled,
+                suggestionsEnabled: passwordSuggestionsEnabled
+            )
+        }
+    }
+
+    private func handleTabSelectionChange(from previous: LeanTab.ID?, to current: LeanTab.ID?) {
+        guard previous != current else { return }
+        if let previous, tabs.contains(where: { $0.id == previous }) {
+            inactiveSince[previous] = Date()
+        }
+        if let current {
+            inactiveSince[current] = nil
+            sleepWorkItems[current]?.cancel()
+            sleepWorkItems[current] = nil
+        }
+        scheduleAutoSleep()
+    }
+
+    private func scheduleAutoSleep() {
+        sleepWorkItems.values.forEach { $0.cancel() }
+        sleepWorkItems.removeAll()
+        guard autoSleepTabsEnabled else { return }
+        let timeout = TimeInterval(autoSleepAfterMinutes * 60)
+        for tab in tabs where tab.id != selectedID {
+            let inactiveAt = inactiveSince[tab.id] ?? Date()
+            inactiveSince[tab.id] = inactiveAt
+            let delay = max(0, timeout - Date().timeIntervalSince(inactiveAt))
+            let work = DispatchWorkItem { [weak self, weak tab] in
+                guard let self, let tab else { return }
+                self.sleepWorkItems[tab.id] = nil
+                self.attemptAutoSleep(tab)
+            }
+            sleepWorkItems[tab.id] = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        }
+    }
+
+    private func attemptAutoSleep(_ tab: LeanTab) {
+        guard autoSleepTabsEnabled, selectedID != tab.id,
+              tabs.contains(where: { $0.id == tab.id }) else { return }
+        tab.requestSleep(while: { [weak self, weak tab] in
+            guard let self, let tab else { return false }
+            return self.autoSleepTabsEnabled && self.selectedID != tab.id
+                && self.tabs.contains(where: { $0.id == tab.id })
+        }) { [weak self, weak tab] slept in
+            guard let self, let tab, !slept else { return }
+            self.scheduleSleepRetry(for: tab)
+        }
+    }
+
+    private func scheduleSleepRetry(for tab: LeanTab) {
+        guard autoSleepTabsEnabled, selectedID != tab.id else { return }
+        let retry = DispatchWorkItem { [weak self, weak tab] in
+            guard let self, let tab else { return }
+            self.sleepWorkItems[tab.id] = nil
+            self.attemptAutoSleep(tab)
+        }
+        sleepWorkItems[tab.id]?.cancel()
+        sleepWorkItems[tab.id] = retry
+        DispatchQueue.main.asyncAfter(deadline: .now() + 300, execute: retry)
+    }
+
+    func sleepTab(_ tab: LeanTab, notifyOnFailure: Bool = false) {
+        guard selectedID != tab.id, tabs.contains(where: { $0.id == tab.id }) else { return }
+        sleepWorkItems[tab.id]?.cancel()
+        sleepWorkItems[tab.id] = nil
+        tab.requestSleep(while: { [weak self, weak tab] in
+            guard let self, let tab else { return false }
+            return self.selectedID != tab.id && self.tabs.contains(where: { $0.id == tab.id })
+        }) { [weak self, weak tab] slept in
+            guard !slept, let self, let tab else { return }
+            if notifyOnFailure { NSSound.beep() }
+            self.scheduleSleepRetry(for: tab)
+        }
+    }
+
+    private func configureMemoryPressureHandling() {
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+        source.setEventHandler { [weak self] in
+            Task { @MainActor in
+                guard let self, self.autoSleepTabsEnabled else { return }
+                for tab in self.tabs where tab.id != self.selectedID && tab.canSleep {
+                    self.attemptAutoSleep(tab)
+                }
+            }
+        }
+        source.resume()
+        memoryPressureSource = source
+    }
+
+    func isAdBlockingEnabled(for host: String?) -> Bool {
+        SiteBlockingPolicy.shouldBlock(globalEnabled: adBlockingEnabled, host: host, excludedHosts: adBlockingExcludedHosts)
+    }
+
+    func setAdBlocking(_ enabled: Bool, for host: String) {
+        let normalized = SiteBlockingPolicy.normalizedHost(host)
+        guard !normalized.isEmpty else { return }
+        if enabled {
+            adBlockingExcludedHosts.remove(normalized)
+        } else {
+            adBlockingExcludedHosts.insert(normalized)
+        }
+        persist(adBlockingExcludedHosts, forKey: Self.adBlockingExcludedHostsKey)
+        updateAllTabsAdBlocking()
+    }
+
+    func clearCookiesAndSiteData(completion: @escaping @Sendable () -> Void) {
+        let cacheTypes: Set<String> = [
+            WKWebsiteDataTypeDiskCache,
+            WKWebsiteDataTypeMemoryCache,
+            WKWebsiteDataTypeOfflineWebApplicationCache,
+            WKWebsiteDataTypeFetchCache,
+        ]
+        dataStore.removeData(
+            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes().subtracting(cacheTypes),
+            modifiedSince: .distantPast,
+            completionHandler: completion
+        )
+    }
+
+    func clearWebCache(completion: @escaping @Sendable () -> Void) {
+        dataStore.removeData(
+            ofTypes: [
+                WKWebsiteDataTypeDiskCache,
+                WKWebsiteDataTypeMemoryCache,
+                WKWebsiteDataTypeOfflineWebApplicationCache,
+                WKWebsiteDataTypeFetchCache,
+            ],
+            modifiedSince: .distantPast,
+            completionHandler: completion
+        )
     }
 
     var selectedTab: LeanTab? {
@@ -828,7 +1014,8 @@ final class LeanStore: ObservableObject {
         url: URL? = nil,
         select: Bool = true,
         configuration: WKWebViewConfiguration? = nil,
-        focusAddress: Bool = true
+        focusAddress: Bool = true,
+        popupOpenerID: LeanTab.ID? = nil
     ) -> LeanTab {
         let tab = LeanTab(
             dataStore: dataStore,
@@ -838,6 +1025,9 @@ final class LeanStore: ObservableObject {
             smoothScrolling: smoothScrollingEnabled,
             pageFont: webPageFont,
             adBlockingEnabled: adBlockingEnabled,
+            adBlockingExcludedHosts: adBlockingExcludedHosts,
+            passwordSavePromptsEnabled: passwordSavePromptsEnabled,
+            passwordSuggestionsEnabled: passwordSuggestionsEnabled,
             configuration: configuration
         )
         tab.onStateChange = { [weak self] in
@@ -850,11 +1040,11 @@ final class LeanStore: ObservableObject {
         }
         tab.downloadManager = downloadManager
         tab.mediaPermissionStore = mediaPermissionStore
-        tab.onOpenNewTab = { [weak self] _, configuration in
-            guard let self else { return nil }
+        tab.onOpenNewTab = { [weak self, weak tab] _, configuration in
+            guard let self, let tab else { return nil }
             // WebKit drives the popup load itself through the returned
             // web view — do not pre-load or the OAuth handshake double-loads.
-            let child = self.newTab(url: nil, configuration: configuration)
+            let child = self.newTab(url: nil, configuration: configuration, popupOpenerID: tab.id)
             child.onCloseTab = { [weak self, weak child] in
                 guard let self, let child else { return }
                 self.close(child)
@@ -867,7 +1057,12 @@ final class LeanStore: ObservableObject {
         tab.onOpenURLInNewTab = { [weak self] url in
             self?.newTab(url: url)
         }
+        tab.popupOpenerID = popupOpenerID
         tabs.append(tab)
+        if let popupOpenerID, let opener = tabs.first(where: { $0.id == popupOpenerID }) {
+            opener.hasActivePopup = true
+        }
+        if !select { inactiveSince[tab.id] = Date() }
         if select {
             selectedID = tab.id
             isNewTabOmnibarFloating = false
@@ -876,6 +1071,7 @@ final class LeanStore: ObservableObject {
             }
         }
         saveSession()
+        scheduleAutoSleep()
         return tab
     }
 
@@ -893,8 +1089,15 @@ final class LeanStore: ObservableObject {
             recentlyClosed = Array(recentlyClosed.suffix(10))
         }
 
+        sleepWorkItems[tab.id]?.cancel()
+        sleepWorkItems[tab.id] = nil
+        inactiveSince[tab.id] = nil
         let wasSelected = selectedID == tab.id
         let closedTab = tabs.remove(at: index)
+        if let openerID = closedTab.popupOpenerID,
+           let opener = tabs.first(where: { $0.id == openerID }) {
+            opener.hasActivePopup = tabs.contains { $0.popupOpenerID == openerID }
+        }
         closedTab.destroy()
 
         if tabs.isEmpty {
@@ -907,6 +1110,7 @@ final class LeanStore: ObservableObject {
             inlineSuggestionsFrame = .zero
         }
         saveSession()
+        scheduleAutoSleep()
     }
 
     func closeSelectedTab() {
@@ -1112,6 +1316,11 @@ final class LeanStore: ObservableObject {
     private static let importedBookmarksKey = "importedBookmarks_v1"
     private static let searchEngineKey = "searchEngine"
     private static let adBlockingKey = "adBlockingEnabled"
+    private static let passwordSavePromptsKey = "passwordSavePromptsEnabled"
+    private static let passwordSuggestionsKey = "passwordSuggestionsEnabled"
+    private static let autoSleepTabsEnabledKey = "autoSleepTabsEnabled"
+    private static let autoSleepAfterMinutesKey = "autoSleepAfterMinutes"
+    private static let adBlockingExcludedHostsKey = "adBlockingExcludedHosts_v1"
     private static let themeKey = "appTheme"
     private static let scrollbarKey = "scrollbarStyle"
     private static let tabDisplayModeKey = "tabDisplayMode"

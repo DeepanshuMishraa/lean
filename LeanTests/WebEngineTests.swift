@@ -20,6 +20,17 @@ struct ExternalLinkPolicyTests {
     }
 }
 
+struct SiteBlockingPolicyTests {
+    @Test("Site exceptions apply only to the exact host")
+    func exactHostExceptions() {
+        let exceptions: Set<String> = ["example.com"]
+        #expect(!SiteBlockingPolicy.shouldBlock(globalEnabled: true, host: "example.com", excludedHosts: exceptions))
+        #expect(SiteBlockingPolicy.shouldBlock(globalEnabled: true, host: "shop.example.com", excludedHosts: exceptions))
+        #expect(!SiteBlockingPolicy.shouldBlock(globalEnabled: true, host: "EXAMPLE.COM.", excludedHosts: exceptions))
+        #expect(!SiteBlockingPolicy.shouldBlock(globalEnabled: false, host: "other.example", excludedHosts: []))
+    }
+}
+
 struct DownloadPolicyTests {
     @Test("Attachment disposition becomes a download")
     func attachment() {
@@ -60,12 +71,16 @@ struct MediaPermissionStoreTests {
     @Test("Decisions round-trip in memory without a database")
     func inMemoryDecisions() {
         let store = MediaPermissionStore(database: nil)
-        #expect(store.decision(forOriginKey: "https://meet.google.com") == nil)
-        store.setDecision(true, forOriginKey: "https://meet.google.com")
-        #expect(store.decision(forOriginKey: "https://meet.google.com") == true)
-        store.setDecision(false, forOriginKey: "https://meet.google.com")
-        #expect(store.decision(forOriginKey: "https://meet.google.com") == false)
+        #expect(store.decision(forOriginKey: "https://meet.google.com|microphone") == nil)
+        store.setDecision(true, forOriginKey: "https://meet.google.com|microphone")
+        #expect(store.decision(forOriginKey: "https://meet.google.com|microphone") == true)
+        store.setDecision(false, forOriginKey: "https://meet.google.com|camera")
+        #expect(store.decision(forOriginKey: "https://meet.google.com|camera") == false)
+        store.setDecision(true, forOriginKey: "https://other.example|microphone")
+        #expect(store.savedDecisions.count == 3)
+        store.clear(origin: "https://meet.google.com")
+        #expect(store.savedDecisions.map(\.origin) == ["https://other.example"])
         store.clear()
-        #expect(store.decision(forOriginKey: "https://meet.google.com") == nil)
+        #expect(store.decision(forOriginKey: "https://meet.google.com|microphone") == nil)
     }
 }

@@ -59,6 +59,13 @@
 		FA99936939846790D9973977 /* AppDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EDDD317B7AF50A826865F77 /* AppDatabase.swift */; };
 		B01000000000000000000001 /* BrowserDataImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01000000000000000000002 /* BrowserDataImporter.swift */; };
 		B01000000000000000000003 /* BrowserDataImporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01000000000000000000004 /* BrowserDataImporterTests.swift */; };
+		B02000000000000000000001 /* PasswordVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02000000000000000000002 /* PasswordVault.swift */; };
+		B02000000000000000000003 /* PasswordVaultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02000000000000000000004 /* PasswordVaultTests.swift */; };
+		B03000000000000000000001 /* TabSleepPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B03000000000000000000002 /* TabSleepPolicy.swift */; };
+		B03000000000000000000003 /* TabSleepPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B03000000000000000000004 /* TabSleepPolicyTests.swift */; };
+		B04000000000000000000001 /* BrowserExtensionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04000000000000000000002 /* BrowserExtensionManager.swift */; };
+		C04000000000000000000001 /* ChromeWebStoreInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04000000000000000000002 /* ChromeWebStoreInstaller.swift */; };
+		C03000000000000000000003 /* WebExtensionPrototypeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03000000000000000000004 /* WebExtensionPrototypeTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -84,6 +91,13 @@
 		1EDDD317B7AF50A826865F77 /* AppDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabase.swift; sourceTree = "<group>"; };
 		B01000000000000000000002 /* BrowserDataImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserDataImporter.swift; sourceTree = "<group>"; };
 		B01000000000000000000004 /* BrowserDataImporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserDataImporterTests.swift; sourceTree = "<group>"; };
+		B02000000000000000000002 /* PasswordVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordVault.swift; sourceTree = "<group>"; };
+		B02000000000000000000004 /* PasswordVaultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordVaultTests.swift; sourceTree = "<group>"; };
+		B03000000000000000000002 /* TabSleepPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabSleepPolicy.swift; sourceTree = "<group>"; };
+		B03000000000000000000004 /* TabSleepPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabSleepPolicyTests.swift; sourceTree = "<group>"; };
+		B04000000000000000000002 /* BrowserExtensionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserExtensionManager.swift; sourceTree = "<group>"; };
+		C04000000000000000000002 /* ChromeWebStoreInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromeWebStoreInstaller.swift; sourceTree = "<group>"; };
+		C03000000000000000000004 /* WebExtensionPrototypeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebExtensionPrototypeTests.swift; sourceTree = "<group>"; };
 		28482E243F19BC7282F14B6F /* lean.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = lean.icon; sourceTree = "<group>"; };
 		329359943D08761604195E40 /* AddressResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressResolverTests.swift; sourceTree = "<group>"; };
 		3CABED7395D472182B5B8279 /* LeanStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanStore.swift; sourceTree = "<group>"; };
@@ -175,6 +189,10 @@
 				86BD95EC684E0650335C24A2 /* AddressResolver.swift */,
 				1EDDD317B7AF50A826865F77 /* AppDatabase.swift */,
 				B01000000000000000000002 /* BrowserDataImporter.swift */,
+				B02000000000000000000002 /* PasswordVault.swift */,
+				B03000000000000000000002 /* TabSleepPolicy.swift */,
+				B04000000000000000000002 /* BrowserExtensionManager.swift */,
+				C04000000000000000000002 /* ChromeWebStoreInstaller.swift */,
 				D5268449F35E5A41542EEF02 /* AppUpdater.swift */,
 				14191AAB2D796CC5DE1EA6CB /* ContentBlocker.swift */,
 				E566A9FFD9A3DA622E49EC68 /* CustomShortcuts.swift */,
@@ -225,6 +243,9 @@
 				5F223D3E0E5D21A9B6965446 /* PageLoadingTests.swift */,
 				B53E2D1FDEBA2B433144566B /* SettingsPopoverHistoryTests.swift */,
 				B01000000000000000000004 /* BrowserDataImporterTests.swift */,
+				B02000000000000000000004 /* PasswordVaultTests.swift */,
+				B03000000000000000000004 /* TabSleepPolicyTests.swift */,
+				C03000000000000000000004 /* WebExtensionPrototypeTests.swift */,
 				8236FF60B8280FBD4BFA5233 /* SmoothScrollingTests.swift */,
 				45114A1E37748C7110643D1C /* TabDisplayModeTests.swift */,
 				0A240F0FAABC15EC3C0D230E /* TestHelpers.swift */,
@@ -349,6 +370,9 @@
 				A120023EBA9CA774D77FEB55 /* WebEngineTests.swift in Sources */,
 				65AC2B49D4EB3CBEA3ECD0A1 /* YouTubeBlockingTests.swift in Sources */,
 				B01000000000000000000003 /* BrowserDataImporterTests.swift in Sources */,
+				B02000000000000000000003 /* PasswordVaultTests.swift in Sources */,
+				B03000000000000000000003 /* TabSleepPolicyTests.swift in Sources */,
+				C03000000000000000000003 /* WebExtensionPrototypeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -371,6 +395,10 @@
 				A5364002E14974BBC303C3E6 /* LeanIcons.swift in Sources */,
 				5A95D7EC207A24098228BBF3 /* LeanStore.swift in Sources */,
 				B01000000000000000000001 /* BrowserDataImporter.swift in Sources */,
+				B02000000000000000000001 /* PasswordVault.swift in Sources */,
+				B03000000000000000000001 /* TabSleepPolicy.swift in Sources */,
+				B04000000000000000000001 /* BrowserExtensionManager.swift in Sources */,
+				C04000000000000000000001 /* ChromeWebStoreInstaller.swift in Sources */,
 				BDA7E266340C8AF371134E07 /* LeanTab.swift in Sources */,
 				571263C8F841874C413F13EB /* LeanTheme.swift in Sources */,
 				EF81104AE976E2079F2656FE /* LeanView.swift in Sources */,

@@ -6,63 +6,55 @@ A phased plan for expanding Lean while keeping its native WebKit foundation and 
 
 Add an **Import Data** category in Settings.
 
-- Read bookmarks and history from a user-selected Chromium profile folder. Also accept a browser bookmark JSON file and a history CSV with `url`, `title`, and optional `timestamp` columns.
+- Offer Chromium browsers, including Helium, as source choices. On first import, request access to the selected browser's data folder, remember that access, and discover its profiles automatically. Also accept a browser bookmark JSON file and a history CSV with `url`, `title`, and optional `timestamp` columns.
 - Accept password CSV exports with URL, username, and password columns. Write passwords only to the macOS Keychain; show site/account names in the preview, never password values.
 - Preview counts before importing and let users choose bookmarks, history, or both. Password CSV imports have their own confirmation.
-- Keep imports local. Read only user-selected files or folders, never alter source data, and report invalid rows and Keychain write failures.
+- Keep imports local. Read only user-selected browser folders or files, never alter source data, snapshot Chromium history databases so browsers can remain open, and report invalid rows and Keychain write failures. Settings action buttons inherit Lean's configured UI font.
 - Show imported bookmarks in Settings with open and remove actions. Merge history into Lean's existing history store, which currently retains up to 200 entries.
 - Do not import cookies, open tabs, or encrypted browser password databases in this phase.
 
 ## Phase 2: privacy controls
 
-Lean already has global ad/tracker filtering, filter-list refresh, history clearing, and persisted camera/microphone decisions.
+Implemented in Settings:
 
-- Add a per-site blocking control, accessible from the active tab and Settings. Persist site exceptions and apply them before navigation as well as to already-open pages.
-- Add a permissions manager listing sites allowed or denied camera and microphone access, with a way to reset individual sites or all choices.
-- Expand data clearing so people can choose history, cookies/site data, and cache separately. Explain that clearing cookies signs them out of sites.
-- Keep the existing global blocker and filter update controls.
+- Pause blocking for the selected hostname, manage paused sites, and apply the choice before main-frame navigation and to existing tabs. Exceptions match the exact hostname.
+- Review saved camera/microphone decisions by site and forget one site's choices or all choices.
+- Clear Lean's recorded history, cookies and site storage, or WebKit caches separately. Cookie/site-data clearing signs the user out.
+- Keep the global blocker and filter-list refresh controls.
 
-**Done when:** site exceptions survive relaunch and take effect on the next request; permission choices can be inspected and reset; each data-clearing action affects only its selected data. Add tests for persistence and selection, and verify WebKit data removal on a test profile.
+**Verification:** policy and permission-store tests pass. Manually verify actual WebKit data removal and per-site blocking in the app before release.
 
 ## Phase 3: saved passwords
 
-Add browser-managed credentials stored in the macOS Keychain. Do not store password values in Lean's SQLite database or preferences.
+Implemented:
 
-- Offer to save or update a credential after a successful sign-in, with an explicit choice each time.
-- Offer matching accounts from the address field or sign-in form, but never fill without a user action.
-- Provide a password manager view to search by site, reveal only after macOS user authentication, copy, remove, and add credentials.
-- Support importing credentials from a user-selected CSV file. Validate rows and report skipped or invalid entries without exposing passwords in logs.
-- Include settings to turn save prompts and sign-in suggestions on or off.
+- Save/update prompts after a submitted HTTPS sign-in navigates successfully, with an explicit choice. Passwords stay in the macOS Keychain, never Lean's SQLite or preferences.
+- Offer matching accounts from the HTTPS page context menu. Filling requires macOS authentication and an explicit account selection; Lean fills fields only and never submits the form.
+- Add a Passwords Settings category to search, reveal after authentication, copy, remove, or add sign-ins. Save prompts and page-menu suggestions can be disabled separately.
+- Keep CSV import user-selected; preserve exact scheme/host/port matching and show site/account names, never password values.
 
-**Done when:** credentials remain in Keychain, site matching is origin-scoped, reveal requires authentication, and save/fill/import flows have tests that do not use real credentials.
+**Verification:** origin matching and CSV parsing have tests that use no real credentials. Manually verify Keychain authentication, save prompts, and filling on a test profile before release.
 
-**Boundary:** treat passkey creation and automatic system-password autofill as unsupported until verified against the macOS and WebKit APIs Lean can use. Do not imply that this phase adds either capability.
+**Boundary:** passkey creation and automatic system-password autofill remain unsupported; this phase does not claim either capability.
 
 ## Phase 4: sleeping tabs
 
-Release WebKit resources held by inactive tabs while preserving enough state to restore them.
+Implemented:
 
-- Add an opt-in idle timeout and a manual “Sleep tab” action.
-- Preserve the tab's URL, navigation history where available, scroll position, and a preview image; recreate its web view when selected.
-- Never sleep the active tab, a pinned tab, a loading page, a page playing audio, a page using camera or microphone, a tab with an active download, or a page with unsaved form input.
-- Re-check eligibility before releasing the web view because tab state can change while a snapshot is being captured.
-- On memory pressure, shorten the idle timeout or sleep eligible tabs sooner.
+- Add opt-in idle sleep (5, 15, 30, or 60 minutes), a manual action in inactive-tab menus, and eligible-tab sleep attempts during memory pressure.
+- Release inactive WebKit views while keeping the URL, preview image, and approximate scroll position. Selecting a sleeping tab recreates its view and reloads the URL.
+- Keep active/loading tabs, downloads, camera/microphone capture, playing media/Web Audio, unsaved form input, and pages with cross-origin or sandboxed iframes awake.
+- Re-check eligibility before and after the asynchronous snapshot so recent input or playback prevents release.
 
-**Done when:** a slept tab restores to the right page and approximate scroll position, protected tabs stay awake, and tests cover eligibility changes during sleep.
+**Limitations:** Sleeping tabs retain WebKit's opaque `interactionState` in memory and restore it into a recreated view; if WebKit provides no state, wake falls back to reloading the URL and restoring scroll. Cross-origin frames are conservatively kept awake. Lean has no pinned-tab feature.
 
-## Phase 5: extension support investigation and prototype
+**Verification:** policy tests cover protected activity and an eligibility change before release. Manually verify sleep/wake, scroll restoration, and memory pressure behavior before release.
 
-Explore native WebKit extension support behind an OS availability check before committing to full compatibility.
+## Phase 5: extension support
 
-- Prototype installing, enabling, disabling, reloading, and removing a local unpacked extension.
-- Show requested permissions before installation and provide a clear way to revoke them.
-- Add an extensions panel and toolbar action menu only after basic lifecycle and permission handling work.
-- Clearly report unsupported extension APIs instead of silently claiming compatibility.
-- Keep the existing blocker independent of extensions.
+**Implemented first slice:** WebKit extension support is gated to macOS 15.4+, preserving Lean's macOS 14 minimum. Settings can install verified Chrome Web Store extensions from a URL or ID and load unpacked local extensions, review and selectively grant required/optional permissions and site access, enable, reload, remove, and read initial diagnostics. Lean copies extensions into app-controlled storage, persists the installed list and grants, and attaches the shared WebKit extension controller to tab configurations. Store packages are signature-checked against their extension IDs before unpacking. A focused lifecycle test covers load, unload, reload, and permission revocation.
 
-**Gate:** confirm the minimum supported macOS version, sandbox behavior, extension lifecycle, and permission APIs with a small prototype. If the required APIs raise Lean's OS floor or cannot work within its sandbox, stop at the prototype and document the limitation.
-
-**Done when:** a minimal test extension loads on supported systems, its permissions can be reviewed and revoked, and unsupported APIs produce actionable errors.
+**Limitations:** extension toolbar popups and browser tab/window integrations are not wired up. Optional runtime permission requests are denied until granted in Settings. Diagnostics currently show parse/load errors, not a live error stream. Verify folder access and content injection manually under the sandbox before release; keep support availability-gated and do not raise Lean's overall OS floor.
 
 ## Suggested order
 
@@ -71,4 +63,4 @@ Explore native WebKit extension support behind an OS availability check before c
 3. Selective site-data clearing.
 4. Keychain-backed password save and fill.
 5. Sleeping tabs.
-6. Extension prototype, then a separate decision on broader support.
+6. WebKit-gated extension installation and permission controls, then toolbar and tab API integration.

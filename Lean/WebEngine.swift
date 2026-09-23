@@ -24,6 +24,18 @@ enum ExternalLinkPolicy {
     }
 }
 
+enum SiteBlockingPolicy {
+    static func normalizedHost(_ host: String) -> String {
+        host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+    }
+
+    static func shouldBlock(globalEnabled: Bool, host: String?, excludedHosts: Set<String>) -> Bool {
+        guard globalEnabled else { return false }
+        guard let host else { return true }
+        return !excludedHosts.contains(normalizedHost(host))
+    }
+}
+
 enum DownloadPolicy {
     /// True when a navigation response must become a `WKDownload` instead of
     /// rendering inline. Previously only `Content-Disposition: attachment`
@@ -52,7 +64,23 @@ enum DownloadPolicy {
 
 @MainActor
 final class MediaPermissionStore: ObservableObject {
-    private var decisions: [String: Bool] = [:]
+    struct Decision: Identifiable, Equatable {
+        let origin: String
+        let media: String
+        let allowed: Bool
+        var id: String { "\(origin)|\(media)" }
+
+        var label: String {
+            switch media {
+            case "camera": "Camera"
+            case "microphone": "Microphone"
+            case "cameraAndMicrophone": "Camera and microphone"
+            default: media
+            }
+        }
+    }
+
+    @Published private var decisions: [String: Bool] = [:]
     private let database: AppDatabase?
     private static let storageKey = "mediaCapturePermissions_v1"
 
@@ -87,6 +115,23 @@ final class MediaPermissionStore: ObservableObject {
 
     func setDecision(_ allowed: Bool, forOriginKey origin: String) {
         decisions[origin] = allowed
+        persist()
+    }
+
+    var savedDecisions: [Decision] {
+        decisions.compactMap { key, allowed in
+            guard let separator = key.lastIndex(of: "|") else { return nil }
+            return Decision(
+                origin: String(key[..<separator]),
+                media: String(key[key.index(after: separator)...]),
+                allowed: allowed
+            )
+        }
+        .sorted { ($0.origin, $0.media) < ($1.origin, $1.media) }
+    }
+
+    func clear(origin: String) {
+        decisions = decisions.filter { !$0.key.hasPrefix(origin + "|") }
         persist()
     }
 

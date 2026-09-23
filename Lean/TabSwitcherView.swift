@@ -53,7 +53,7 @@ struct TabSwitcherView: View {
                     tab: tab,
                     isSelected: index == store.switcherSelectedIndex,
                     isDark: store.isDarkMode,
-                    uiFont: store.leanUIFont,
+                    uiFont: store.tabTitleTypeface,
                     headingWeight: store.uiHeadingWeight
                 )
                 .onTapGesture {
@@ -74,7 +74,7 @@ struct TabSwitcherView: View {
                     tab: tab,
                     isSelected: index == store.switcherSelectedIndex,
                     isDark: store.isDarkMode,
-                    uiFont: store.leanUIFont,
+                    uiFont: store.tabTitleTypeface,
                     headingWeight: store.uiHeadingWeight
                 )
                 .onTapGesture {

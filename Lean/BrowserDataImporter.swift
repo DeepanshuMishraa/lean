@@ -1,6 +1,5 @@
 import Foundation
 import SQLite3
-import Security
 
 struct ImportedBookmark: Codable, Identifiable, Hashable {
     var id = UUID()
@@ -9,10 +8,15 @@ struct ImportedBookmark: Codable, Identifiable, Hashable {
 }
 
 struct ImportedCredential: Identifiable {
-    let host: String
+    let origin: URL
     let username: String
     let password: String
-    var id: String { "\(host)\u{1}\(username)" }
+    var host: String { origin.host?.lowercased() ?? origin.absoluteString }
+    var id: String {
+        let scheme = origin.scheme?.lowercased() ?? ""
+        let port = (scheme == "https" && origin.port == 443) || (scheme == "http" && origin.port == 80) ? nil : origin.port
+        return "\(scheme)://\(host)\(port.map { ":\($0)" } ?? "")\u{1}\(username)"
+    }
 }
 
 struct PasswordCSVPreview {
@@ -23,6 +27,43 @@ struct PasswordCSVPreview {
 struct BrowserImportPreview {
     let bookmarks: [ImportedBookmark]
     let history: [HistoryItem]
+}
+
+enum BrowserImportSource: String, CaseIterable, Identifiable {
+    case chrome, arc, brave, edge, vivaldi, chromium, dia, helium
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .chrome: "Chrome"
+        case .arc: "Arc"
+        case .brave: "Brave"
+        case .edge: "Edge"
+        case .vivaldi: "Vivaldi"
+        case .chromium: "Chromium"
+        case .dia: "Dia"
+        case .helium: "Helium"
+        }
+    }
+
+    var userDataDirectory: URL {
+        let relativePath = switch self {
+        case .chrome: "Google/Chrome"
+        case .arc: "Arc/User Data"
+        case .brave: "BraveSoftware/Brave-Browser"
+        case .edge: "Microsoft Edge"
+        case .vivaldi: "Vivaldi"
+        case .chromium: "Chromium"
+        case .dia: "Dia/User Data"
+        case .helium: "net.imput.helium"
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+            .appendingPathComponent(relativePath, isDirectory: true)
+    }
+
+    var bookmarkKey: String { "browserImport.profile.\(rawValue)" }
 }
 
 enum BrowserDataImporter {
@@ -37,7 +78,7 @@ enum BrowserDataImporter {
             switch self {
             case .invalidProfile: "Choose a browser profile folder containing a Bookmarks or History file."
             case .invalidBookmarks: "This JSON file does not contain a supported bookmarks export."
-            case .unreadableHistory: "The browser history database could not be read. Close the browser and try again."
+            case .unreadableHistory: "Lean couldn't read the browser History database. Check that you selected the browser data folder and try again."
             case .invalidPasswordCSV: "The password CSV needs URL, username, and password columns."
             case .invalidHistoryCSV: "The history CSV needs a URL column and can include title and timestamp columns."
             }
@@ -74,6 +115,47 @@ enum BrowserDataImporter {
             let date = dateIndex.flatMap { row.indices.contains($0) ? parseDate(row[$0]) : nil } ?? .distantPast
             return HistoryItem(url: url, title: title, timestamp: date)
         }
+    }
+
+    static func readProfiles(at userDataDirectory: URL) throws -> BrowserImportPreview {
+        var folders = Set<URL>()
+        folders.insert(userDataDirectory)
+        if let enumerator = FileManager.default.enumerator(
+            at: userDataDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) {
+            for case let file as URL in enumerator {
+                let depth = file.pathComponents.count - userDataDirectory.pathComponents.count
+                if depth > 3 {
+                    enumerator.skipDescendants()
+                    continue
+                }
+                if file.lastPathComponent == "Bookmarks" || file.lastPathComponent == "History" {
+                    folders.insert(file.deletingLastPathComponent())
+                }
+            }
+        }
+        let previews = try folders.sorted { $0.path < $1.path }.compactMap { folder -> BrowserImportPreview? in
+            guard FileManager.default.fileExists(atPath: folder.appendingPathComponent("Bookmarks").path)
+                    || FileManager.default.fileExists(atPath: folder.appendingPathComponent("History").path) else { return nil }
+            return try readProfile(at: folder)
+        }
+        guard !previews.isEmpty else { throw ImportError.invalidProfile }
+        var bookmarks: [ImportedBookmark] = []
+        var seenBookmarks = Set<String>()
+        var historyByURL: [String: HistoryItem] = [:]
+        for preview in previews {
+            for bookmark in preview.bookmarks where seenBookmarks.insert(bookmark.url.absoluteString).inserted {
+                bookmarks.append(bookmark)
+            }
+            for item in preview.history {
+                if historyByURL[item.url.absoluteString].map({ $0.timestamp >= item.timestamp }) != true {
+                    historyByURL[item.url.absoluteString] = item
+                }
+            }
+        }
+        return BrowserImportPreview(bookmarks: bookmarks, history: historyByURL.values.sorted { $0.timestamp > $1.timestamp })
     }
 
     static func readProfile(at directory: URL) throws -> BrowserImportPreview {
@@ -114,33 +196,25 @@ enum BrowserDataImporter {
                   ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
                   !row[passwordColumn].isEmpty else { continue }
             let username = row[userColumn]
-            guard seen.insert("\(host)\u{1}\(username)").inserted else { continue }
-            credentials.append(ImportedCredential(host: host, username: username, password: row[passwordColumn]))
+            let scheme = url.scheme?.lowercased() ?? "https"
+            let port = (scheme == "https" && url.port == 443) || (scheme == "http" && url.port == 80) ? nil : url.port
+            let originKey = "\(scheme)://\(host)\(port.map { ":\($0)" } ?? "")\u{1}\(username)"
+            guard seen.insert(originKey).inserted else { continue }
+            credentials.append(ImportedCredential(origin: url, username: username, password: row[passwordColumn]))
         }
         return PasswordCSVPreview(credentials: credentials, skippedRows: rows.count - credentials.count)
     }
 
     @discardableResult
     static func saveCredentials(_ credentials: [ImportedCredential]) -> (saved: Int, skipped: Int) {
-        var saved = 0
-        for credential in credentials {
-            guard let data = credential.password.data(using: .utf8) else { continue }
-            let identity: [String: Any] = [
-                kSecClass as String: kSecClassInternetPassword,
-                kSecAttrServer as String: credential.host,
-                kSecAttrAccount as String: credential.username,
-                kSecAttrLabel as String: "Lean",
-            ]
-            let fields: [String: Any] = [
-                kSecValueData as String: data,
-                kSecAttrLabel as String: "Lean",
-                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
-            ]
-            let status = SecItemUpdate(identity as CFDictionary, fields as CFDictionary)
-            let result = status == errSecItemNotFound
-                ? SecItemAdd(identity.merging(fields) { _, new in new } as CFDictionary, nil)
-                : status
-            if result == errSecSuccess { saved += 1 }
+        let saved = credentials.reduce(into: 0) { count, credential in
+            if case .success = PasswordVault.save(
+                origin: credential.origin,
+                username: credential.username,
+                password: credential.password
+            ) {
+                count += 1
+            }
         }
         return (saved, credentials.count - saved)
     }
@@ -170,8 +244,12 @@ enum BrowserDataImporter {
     }
 
     private static func readHistory(at url: URL) throws -> [HistoryItem] {
+        let snapshot = FileManager.default.temporaryDirectory.appendingPathComponent("Lean-history-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: snapshot) }
+        try snapshotDatabase(at: url, to: snapshot)
+
         var database: OpaquePointer?
-        let openResult = sqlite3_open_v2(url.path, &database, SQLITE_OPEN_READONLY, nil)
+        let openResult = sqlite3_open_v2(snapshot.path, &database, SQLITE_OPEN_READONLY, nil)
         guard openResult == SQLITE_OK, let database else {
             if let database { sqlite3_close(database) }
             throw ImportError.unreadableHistory
@@ -198,6 +276,37 @@ enum BrowserDataImporter {
             items.append(HistoryItem(url: url, title: title.isEmpty ? url.host ?? url.absoluteString : title, timestamp: date))
         }
         return items
+    }
+
+    private static func snapshotDatabase(at sourceURL: URL, to destinationURL: URL) throws {
+        var source: OpaquePointer?
+        var destination: OpaquePointer?
+        guard sqlite3_open_v2(sourceURL.path, &source, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
+              let source else {
+            if let source { sqlite3_close(source) }
+            throw ImportError.unreadableHistory
+        }
+        defer { sqlite3_close(source) }
+        guard sqlite3_open_v2(destinationURL.path, &destination, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
+              let destination else {
+            if let destination { sqlite3_close(destination) }
+            throw ImportError.unreadableHistory
+        }
+        defer { sqlite3_close(destination) }
+        sqlite3_busy_timeout(source, 5_000)
+        sqlite3_busy_timeout(destination, 5_000)
+        guard let backup = sqlite3_backup_init(destination, "main", source, "main") else {
+            throw ImportError.unreadableHistory
+        }
+        var result = sqlite3_backup_step(backup, -1)
+        var retries = 0
+        while (result == SQLITE_BUSY || result == SQLITE_LOCKED) && retries < 100 {
+            Thread.sleep(forTimeInterval: 0.05)
+            result = sqlite3_backup_step(backup, -1)
+            retries += 1
+        }
+        let finishResult = sqlite3_backup_finish(backup)
+        guard result == SQLITE_DONE, finishResult == SQLITE_OK else { throw ImportError.unreadableHistory }
     }
 
     private static func parseDate(_ text: String) -> Date? {

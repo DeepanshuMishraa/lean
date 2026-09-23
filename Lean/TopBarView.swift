@@ -355,6 +355,12 @@ private struct TopBarTabItem: View {
         .animation(.spring(response: 0.30, dampingFraction: 0.82), value: showURLBar)
         .zIndex(isHovered ? 15 : (isSelected ? 10 : 1))
         .contextMenu {
+            if tab.isSleeping {
+                Button("Wake Tab", action: onSelect)
+            } else {
+                Button("Sleep Tab") { store.sleepTab(tab, notifyOnFailure: true) }
+                    .disabled(isSelected || !tab.canSleep)
+            }
             Button("Close Tab", action: onClose)
             Button("Reload") { tab.reload() }
             if tab.canGoBack {
@@ -402,7 +408,7 @@ private struct TopBarTabItem: View {
             }
 
             Text(tab.displayTitle(isSelected: isSelected, showFullTitle: store.showFullTitleOnActiveTab))
-                .font(store.headingFont(size: 12.5))
+                .font(store.tabTitleFont(size: 12.5))
                 .foregroundColor(
                     isSelected
                         ? store.adaptiveTheme.activeTabText
@@ -457,7 +463,7 @@ private struct TopBarTabItem: View {
             .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
 
             Text(tab.displayTitle(isSelected: isSelected, showFullTitle: store.showFullTitleOnActiveTab))
-                .font(store.headingFont(size: 12.5))
+                .font(store.tabTitleFont(size: 12.5))
                 .foregroundColor(
                     isSelected
                         ? store.adaptiveTheme.activeTabText
@@ -1167,6 +1173,21 @@ struct QuickSettingsPopover: View {
                     accentColor: Color(red: 52/255, green: 199/255, blue: 89/255),
                     onHoverChanged: handleNonHistoryHovered
                 )
+
+                if let host = store.selectedTab?.url?.host {
+                    QuickToggleItem(
+                        icon: .shield,
+                        title: "Block on this site",
+                        isOn: Binding(
+                            get: { store.isAdBlockingEnabled(for: host) },
+                            set: { store.setAdBlocking($0, for: host) }
+                        ),
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont,
+                        onHoverChanged: handleNonHistoryHovered
+                    )
+                    .disabled(!store.adBlockingEnabled)
+                }
 
                 QuickToggleItem(
                     icon: .mouse,

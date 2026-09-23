@@ -13,6 +13,8 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case history = "History"
     case downloads = "Downloads"
     case importData = "Import Data"
+    case passwords = "Passwords"
+    case extensions = "Extensions"
 
     var id: String { rawValue }
 
@@ -28,6 +30,8 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .history: return .clock
         case .downloads: return .arrowCircleDown
         case .importData: return .arrowCircleDown
+        case .passwords: return .shield
+        case .extensions: return .package
         }
     }
 
@@ -43,6 +47,8 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .history: return "Recently visited pages"
         case .downloads: return "Download location and file history"
         case .importData: return "Bring bookmarks, history, and passwords into Lean"
+        case .passwords: return "Manage Keychain sign-ins and password prompts"
+        case .extensions: return "Install and manage local browser extensions"
         }
     }
 }
@@ -100,6 +106,7 @@ struct SettingsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environmentObject(dropdownState)
+        .environment(\.leanSettingsFont, store.leanUIFont)
         .preferredColorScheme(store.colorScheme)
         .onAppear {
             selectedCategory = store.selectedSettingsCategory
@@ -236,6 +243,16 @@ struct SettingsView: View {
             DownloadsSection(store: store)
         case .importData:
             ImportDataSection(store: store)
+        case .passwords:
+            PasswordManagerSection(store: store)
+        case .extensions:
+            if #available(macOS 15.4, *) {
+                ExtensionsSettingsSection(store: store)
+            } else {
+                Text("Extensions require macOS 15.4 or later.")
+                    .font(store.leanUIFont.font(size: 12))
+                    .foregroundColor(secondaryText)
+            }
         }
     }
 }
@@ -1083,7 +1100,7 @@ private struct AppearanceSection: View {
 
                     FontPickerRow(
                         title: "Web pages",
-                        subtitle: "Typeface override applied to readable webpage text",
+                        subtitle: "Typeface override for readable webpage text and browser tab titles",
                         selection: $store.webPageFont,
                         uiFont: store.leanUIFont,
                         isDark: store.isDarkMode,
@@ -1184,6 +1201,40 @@ private struct TabsSection: View {
                         uiFont: store.leanUIFont
                     )
                 }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Sleeping tabs", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                SettingsGroup(isDark: store.isDarkMode) {
+                    CustomToggleRow(
+                        title: "Automatically sleep inactive tabs",
+                        subtitle: "Release their WebKit views after they have been inactive.",
+                        isOn: $store.autoSleepTabsEnabled,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
+                    if store.autoSleepTabsEnabled {
+                        SettingsRowDivider(isDark: store.isDarkMode)
+                        HStack {
+                            Text("Sleep after")
+                                .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                            Spacer()
+                            Picker("Sleep after", selection: $store.autoSleepAfterMinutes) {
+                                Text("5 minutes").tag(5)
+                                Text("15 minutes").tag(15)
+                                Text("30 minutes").tag(30)
+                                Text("60 minutes").tag(60)
+                            }
+                            .labelsHidden()
+                            .frame(width: 140)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                    }
+                }
+                Text("Tabs with active playback, camera or microphone use, downloads, loading, unsaved form input, or cross-origin/sandboxed frames stay awake. Sleeping tabs restore the URL and scroll position.")
+                    .font(store.leanUIFont.font(size: 11.5))
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
             }
         }
     }
@@ -1416,7 +1467,6 @@ private struct BrowsingSection: View {
 private struct PrivacySection: View {
     @ObservedObject var store: LeanStore
     @EnvironmentObject private var dropdownState: DropdownMenuState
-    @State private var historyCleared = false
     @State private var isUpdatingFilters = false
     @State private var filterStatus: String? = nil
 
@@ -1442,6 +1492,21 @@ private struct PrivacySection: View {
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont
                     )
+
+                    if let host = store.selectedTab?.url?.host {
+                        SettingsRowDivider(isDark: store.isDarkMode)
+                        CustomToggleRow(
+                            title: "Block on this site",
+                            subtitle: "Only \(host)",
+                            isOn: Binding(
+                                get: { store.isAdBlockingEnabled(for: host) },
+                                set: { store.setAdBlocking($0, for: host) }
+                            ),
+                            isDark: store.isDarkMode,
+                            uiFont: store.leanUIFont
+                        )
+                        .disabled(!store.adBlockingEnabled)
+                    }
 
                     SettingsRowDivider(isDark: store.isDarkMode)
 
@@ -1489,66 +1554,60 @@ private struct PrivacySection: View {
             }
             .zIndex(dropdownState.activeId == "searchEnginePicker" ? 100 : 1)
 
-            // Data Management
-            VStack(alignment: .leading, spacing: 8) {
-                SettingsHeaderLabel("Data Management", uiFont: store.leanUIFont, isDark: store.isDarkMode)
-
-                SettingsGroup(isDark: store.isDarkMode) {
-                    HStack(alignment: .center, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 2.5) {
-                            Text("Browsing history & cache")
-                                .font(store.leanUIFont.font(size: 13, weight: .medium))
-                                .foregroundColor(primaryText)
-                            Text("Purge session history, recently closed tabs, and address match cache")
-                                .font(store.leanUIFont.font(size: 11.5))
-                                .foregroundColor(secondaryText)
-                        }
-
-                        Spacer(minLength: 16)
-
-                        if historyCleared {
-                            HStack(spacing: 4) {
-                                Ph.check.bold
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(width: 10, height: 10)
-                                Text("Cleared")
-                                    .font(store.leanUIFont.font(size: 11.5, weight: .medium))
-                            }
-                            .foregroundColor(Color(red: 48/255, green: 209/255, blue: 88/255))
-                            .padding(.horizontal, 12)
-                            .frame(height: 28)
-                            .transition(.opacity)
-                        } else {
-                            Button {
-                                store.clearHistory()
-                                withAnimation(.spring(response: 0.20, dampingFraction: 0.8)) {
-                                    historyCleared = true
-                                }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                    withAnimation(.easeOut(duration: 0.2)) {
-                                        historyCleared = false
-                                    }
-                                }
-                            } label: {
-                                Text("Clear Data")
-                                    .font(store.leanUIFont.font(size: 11.5, weight: .medium))
+            if !store.adBlockingExcludedHosts.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    SettingsHeaderLabel("Sites with blocking paused", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                    SettingsGroup(isDark: store.isDarkMode) {
+                        ForEach(store.adBlockingExcludedHosts.sorted(), id: \.self) { host in
+                            HStack {
+                                Text(host)
+                                    .font(store.leanUIFont.font(size: 12.5, weight: .medium))
                                     .foregroundColor(primaryText)
-                                    .padding(.horizontal, 12)
-                                    .frame(height: 28)
-                                    .background(
-                                        store.isDarkMode ? Color.white.opacity(0.10) : Color.black.opacity(0.06),
-                                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                            .stroke(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06), lineWidth: 0.5)
-                                    )
+                                Spacer()
+                                SettingsActionButton("Turn on", isDark: store.isDarkMode) {
+                                    store.setAdBlocking(true, for: host)
+                                }
                             }
-                            .buttonStyle(.plain)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Camera and microphone", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                MediaPermissionSection(permissions: store.mediaPermissionStore, store: store)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Data Management", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                SettingsGroup(isDark: store.isDarkMode) {
+                    DataClearRow(
+                        title: "History",
+                        subtitle: "Clear Lean's recorded browsing history.",
+                        confirmation: "Clear browsing history?",
+                        store: store
+                    ) { done in
+                        store.clearHistory()
+                        done()
+                    }
+                    SettingsRowDivider(isDark: store.isDarkMode)
+                    DataClearRow(
+                        title: "Cookies and site data",
+                        subtitle: "Signs you out and clears stored website data.",
+                        confirmation: "Clear cookies and all website storage?",
+                        store: store,
+                        clear: store.clearCookiesAndSiteData
+                    )
+                    SettingsRowDivider(isDark: store.isDarkMode)
+                    DataClearRow(
+                        title: "Cache",
+                        subtitle: "Clear cached files and images. This does not sign you out.",
+                        confirmation: "Clear WebKit cache?",
+                        store: store,
+                        clear: store.clearWebCache
+                    )
                 }
             }
         }
@@ -1590,6 +1649,101 @@ private struct PrivacySection: View {
 
     private var secondaryText: Color {
         store.isDarkMode ? Color(white: 0.50) : Color(white: 0.48)
+    }
+}
+
+private struct MediaPermissionSection: View {
+    @ObservedObject var permissions: MediaPermissionStore
+    @ObservedObject var store: LeanStore
+
+    private var grouped: [(origin: String, decisions: [MediaPermissionStore.Decision])] {
+        Dictionary(grouping: permissions.savedDecisions, by: \.origin)
+            .map { (origin: $0.key, decisions: $0.value) }
+            .sorted { $0.origin < $1.origin }
+    }
+
+    var body: some View {
+        SettingsGroup(isDark: store.isDarkMode) {
+            if grouped.isEmpty {
+                Text("No saved camera or microphone choices.")
+                    .font(store.leanUIFont.font(size: 11.5))
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+            } else {
+                ForEach(grouped, id: \.origin) { site in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(site.origin)
+                                .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                            Spacer()
+                            SettingsActionButton("Forget choices", isDark: store.isDarkMode, destructive: true) {
+                                permissions.clear(origin: site.origin)
+                            }
+                        }
+                        ForEach(site.decisions) { decision in
+                            Text("\(decision.label): \(decision.allowed ? "Allowed" : "Denied")")
+                                .font(store.leanUIFont.font(size: 11.5))
+                                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                        }
+                    }
+                    .padding(14)
+                    if site.origin != grouped.last?.origin { SettingsRowDivider(isDark: store.isDarkMode) }
+                }
+                SettingsRowDivider(isDark: store.isDarkMode)
+                HStack {
+                    Spacer()
+                    SettingsActionButton("Forget all choices", isDark: store.isDarkMode, destructive: true) {
+                        permissions.clear()
+                    }
+                }
+                .padding(10)
+            }
+        }
+    }
+}
+
+private struct DataClearRow: View {
+    let title: String
+    let subtitle: String
+    let confirmation: String
+    @ObservedObject var store: LeanStore
+    let clear: (@escaping @Sendable () -> Void) -> Void
+
+    @State private var isConfirming = false
+    @State private var cleared = false
+
+    var body: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 2.5) {
+                Text(title)
+                    .font(store.leanUIFont.font(size: 13, weight: .medium))
+                    .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                Text(isConfirming ? confirmation : subtitle)
+                    .font(store.leanUIFont.font(size: 11.5))
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+            }
+            Spacer(minLength: 12)
+            if isConfirming {
+                SettingsActionButton("Cancel", isDark: store.isDarkMode) { isConfirming = false }
+                SettingsActionButton("Confirm", isDark: store.isDarkMode, destructive: true) {
+                    isConfirming = false
+                    clear {
+                        DispatchQueue.main.async {
+                            cleared = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { cleared = false }
+                        }
+                    }
+                }
+            } else {
+                SettingsActionButton(cleared ? "Cleared" : "Clear", isDark: store.isDarkMode) {
+                    isConfirming = true
+                }
+                .disabled(cleared)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
 }
 
@@ -2476,8 +2630,501 @@ private struct CompactCategoryButton: View {
     }
 }
 
+private struct PasswordManagerSection: View {
+    @ObservedObject var store: LeanStore
+    @State private var logins: [SavedPassword] = []
+    @State private var searchText = ""
+    @State private var host = ""
+    @State private var username = ""
+    @State private var password = ""
+    @State private var revealed: [String: String] = [:]
+    @State private var pendingRemoval: SavedPassword?
+    @State private var errorMessage: String?
+
+    private var filteredLogins: [SavedPassword] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return logins }
+        return logins.filter { $0.host.localizedCaseInsensitiveContains(query) || $0.username.localizedCaseInsensitiveContains(query) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Password settings", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                SettingsGroup(isDark: store.isDarkMode) {
+                    CustomToggleRow(
+                        title: "Offer to save passwords after sign-in",
+                        isOn: $store.passwordSavePromptsEnabled,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
+                    SettingsRowDivider(isDark: store.isDarkMode)
+                    CustomToggleRow(
+                        title: "Offer matching sign-ins in page menus",
+                        isOn: $store.passwordSuggestionsEnabled,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
+                }
+                Text("Lean stores passwords in the macOS Keychain. Filling never submits a form.")
+                    .font(store.leanUIFont.font(size: 11.5))
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Saved sign-ins (\(logins.count))", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                SettingsGroup(isDark: store.isDarkMode) {
+                    TextField("Search by site or account", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+                        .padding(12)
+                    SettingsRowDivider(isDark: store.isDarkMode)
+                    if filteredLogins.isEmpty {
+                        Text(logins.isEmpty ? "No saved sign-ins yet." : "No sign-ins match this search.")
+                            .font(store.leanUIFont.font(size: 11.5))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    } else {
+                        ForEach(filteredLogins) { login in
+                            HStack(spacing: 10) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(login.origin).font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                                    Text(login.username.isEmpty ? "Unnamed account" : login.username)
+                                        .font(store.leanUIFont.font(size: 11.5))
+                                        .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                                    if let secret = revealed[login.id] {
+                                        Text(secret)
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .textSelection(.enabled)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                Spacer(minLength: 8)
+                                SettingsActionButton(revealed[login.id] == nil ? "Reveal" : "Hide", isDark: store.isDarkMode) {
+                                    if revealed[login.id] != nil {
+                                        revealed[login.id] = nil
+                                    } else {
+                                        read(login, reveal: true)
+                                    }
+                                }
+                                SettingsActionButton("Copy", isDark: store.isDarkMode) { read(login, reveal: false) }
+                                SettingsActionButton("Remove", isDark: store.isDarkMode, destructive: true) { pendingRemoval = login }
+                            }
+                            .padding(14)
+                            if login.id != filteredLogins.last?.id { SettingsRowDivider(isDark: store.isDarkMode) }
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Add a sign-in", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                SettingsGroup(isDark: store.isDarkMode) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("Website host (example.com)", text: $host)
+                            .textFieldStyle(.roundedBorder)
+                        TextField("Username", text: $username)
+                            .textFieldStyle(.roundedBorder)
+                        SecureField("Password", text: $password)
+                            .textFieldStyle(.roundedBorder)
+                        HStack {
+                            Spacer()
+                            SettingsActionButton("Save to Keychain", isDark: store.isDarkMode, prominent: true) { saveLogin() }
+                                .disabled(host.isEmpty || password.isEmpty)
+                        }
+                    }
+                    .padding(14)
+                }
+            }
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(store.leanUIFont.font(size: 11.5))
+                    .foregroundColor(.red)
+            }
+        }
+        .onAppear(perform: reload)
+        .onReceive(NotificationCenter.default.publisher(for: PasswordVault.didChange)) { _ in reload() }
+        .confirmationDialog("Remove this saved sign-in?", isPresented: Binding(
+            get: { pendingRemoval != nil },
+            set: { if !$0 { pendingRemoval = nil } }
+        )) {
+            Button("Remove", role: .destructive) {
+                if let pendingRemoval, case .failure(let error) = PasswordVault.remove(pendingRemoval) {
+                    errorMessage = error.localizedDescription
+                }
+                pendingRemoval = nil
+            }
+            Button("Cancel", role: .cancel) { pendingRemoval = nil }
+        }
+        .onDisappear { revealed.removeAll() }
+    }
+
+    private func reload() {
+        if case .success(let saved) = PasswordVault.all() {
+            logins = saved
+            errorMessage = nil
+        } else {
+            errorMessage = "Couldn't read saved sign-ins from the macOS Keychain."
+        }
+    }
+
+    private func saveLogin() {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let origin = components.url else {
+            errorMessage = PasswordVault.VaultError.invalidOrigin.localizedDescription
+            return
+        }
+        switch PasswordVault.save(origin: origin, username: username, password: password) {
+        case .success:
+            host = ""
+            username = ""
+            password = ""
+            errorMessage = nil
+        case .failure(let error): errorMessage = error.localizedDescription
+        }
+    }
+
+    private func read(_ login: SavedPassword, reveal: Bool) {
+        PasswordVault.authenticate(reason: "Access the saved sign-in for \(login.host)") { authenticated in
+            guard authenticated else { return }
+            switch PasswordVault.password(for: login) {
+            case .success(let secret):
+                if reveal {
+                    revealed[login.id] = secret
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
+                        if revealed[login.id] == secret { revealed[login.id] = nil }
+                    }
+                } else {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(secret, forType: .string)
+                }
+            case .failure(let error): errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
+@available(macOS 15.4, *)
+private struct ExtensionsSettingsSection: View {
+    @ObservedObject var store: LeanStore
+    @StateObject private var manager = BrowserExtensionManager.shared
+    @State private var pendingReview: BrowserExtensionManager.InstallationReview?
+    @State private var expandedExtensions = Set<String>()
+    @State private var isPreparing = false
+    @State private var storeLink = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            SettingsGroup(isDark: store.isDarkMode) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Add from the Chrome Web Store")
+                            .font(store.leanUIFont.font(size: 13, weight: .medium))
+                        Spacer(minLength: 8)
+                        SettingsActionButton("Open the Store", isDark: store.isDarkMode) {
+                            if let url = URL(string: "https://chromewebstore.google.com/") { store.openURL(url) }
+                        }
+                    }
+                    HStack(spacing: 8) {
+                        TextField("Paste an extension link or ID", text: $storeLink)
+                            .textFieldStyle(.plain)
+                            .font(store.leanUIFont.font(size: 12.5))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        SettingsActionButton(manager.isInstallingFromStore ? "Downloading…" : "Add", isDark: store.isDarkMode, prominent: true) {
+                            Task {
+                                if let review = await manager.prepareStoreInstallation(from: storeLink) {
+                                    pendingReview = review
+                                    storeLink = ""
+                                }
+                            }
+                        }
+                        .disabled(manager.isInstallingFromStore || ChromeWebStoreInstaller.extensionID(from: storeLink) == nil)
+                    }
+                    Text("Paste a Chrome Web Store URL or extension ID. Lean verifies the download before asking you to review its access.")
+                        .font(store.leanUIFont.font(size: 11.5))
+                        .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(14)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Installed extensions", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                SettingsGroup(isDark: store.isDarkMode) {
+                    if manager.installed.isEmpty {
+                        Text("No extensions installed. Add an unpacked extension folder that contains manifest.json.")
+                            .font(store.leanUIFont.font(size: 11.5))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    } else {
+                        ForEach(manager.installed) { item in
+                            VStack(alignment: .leading, spacing: 0) {
+                                HStack(spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(item.name)
+                                            .font(store.leanUIFont.font(size: 13, weight: .medium))
+                                        Text("Version \(item.version) · \(item.fromStore == true ? "Chrome Web Store" : "Unpacked extension")")
+                                            .font(store.leanUIFont.font(size: 11))
+                                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                                    }
+                                    Spacer(minLength: 8)
+                                    SettingsActionButton("Reload", isDark: store.isDarkMode) { manager.reload(item.id) }
+                                    SettingsActionButton("Remove", isDark: store.isDarkMode, destructive: true) { manager.remove(item.id) }
+                                }
+                                .padding(14)
+                                SettingsRowDivider(isDark: store.isDarkMode)
+                                CustomToggleRow(
+                                    title: "Enabled",
+                                    subtitle: manager.loadedIDs.contains(item.id) ? "Running in WebKit" : "Currently stopped",
+                                    isOn: Binding(
+                                        get: { item.enabled },
+                                        set: { manager.setEnabled(item.id, to: $0) }
+                                    ),
+                                    isDark: store.isDarkMode,
+                                    uiFont: store.leanUIFont
+                                )
+                                SettingsRowDivider(isDark: store.isDarkMode)
+                                HStack {
+                                    Text("Permissions and site access")
+                                        .font(store.leanUIFont.font(size: 12, weight: .medium))
+                                    Spacer()
+                                    SettingsActionButton(
+                                        expandedExtensions.contains(item.id) ? "Hide" : "Review",
+                                        isDark: store.isDarkMode
+                                    ) {
+                                        if expandedExtensions.contains(item.id) {
+                                            expandedExtensions.remove(item.id)
+                                        } else {
+                                            expandedExtensions.insert(item.id)
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 9)
+                                if expandedExtensions.contains(item.id) {
+                                    permissionControls(for: item)
+                                }
+                                if let diagnostics = manager.errors[item.id], !diagnostics.isEmpty {
+                                    SettingsRowDivider(isDark: store.isDarkMode)
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        Text("Diagnostics")
+                                            .font(store.leanUIFont.font(size: 11.5, weight: .medium))
+                                        ForEach(Array(diagnostics.enumerated()), id: \.offset) { _, diagnostic in
+                                            Text(diagnostic)
+                                                .font(store.leanUIFont.font(size: 11))
+                                                .foregroundColor(.red)
+                                                .textSelection(.enabled)
+                                        }
+                                    }
+                                    .padding(14)
+                                }
+                            }
+                            if item.id != manager.installed.last?.id { SettingsRowDivider(isDark: store.isDarkMode) }
+                        }
+                    }
+                }
+            }
+
+            SettingsGroup(isDark: store.isDarkMode) {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Load an unpacked extension")
+                            .font(store.leanUIFont.font(size: 13, weight: .medium))
+                        Text("Choose a folder containing manifest.json. Lean copies it into its extension folder.")
+                            .font(store.leanUIFont.font(size: 11.5))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    SettingsActionButton(isPreparing ? "Reading…" : "Choose…", isDark: store.isDarkMode) {
+                        chooseExtensionFolder()
+                    }
+                    .disabled(isPreparing)
+                }
+                .padding(14)
+            }
+
+            if let errorMessage = manager.errorMessage {
+                Text(errorMessage)
+                    .font(store.leanUIFont.font(size: 11.5))
+                    .foregroundColor(.red)
+                    .textSelection(.enabled)
+            }
+
+            Text("Extensions require macOS 15.4 or later. Content scripts and WebKit-managed extension features can run, but toolbar popups and some browser APIs are not connected yet. Optional runtime permission requests are denied until you grant access here.")
+                .font(store.leanUIFont.font(size: 11.5))
+                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .sheet(item: $pendingReview) { review in
+            ExtensionInstallReviewSheet(review: review, isDark: store.isDarkMode, uiFont: store.leanUIFont) {
+                manager.cancelInstallation(review)
+                pendingReview = nil
+            } install: { permissions, hosts in
+                pendingReview = nil
+                Task { await manager.install(review, permissions: permissions, hosts: hosts) }
+            }
+            .interactiveDismissDisabled()
+        }
+    }
+
+    @ViewBuilder
+    private func permissionControls(for item: BrowserExtensionManager.Installed) -> some View {
+        if !item.requiredPermissions.isEmpty {
+            permissionGroup("Requested permissions", values: item.requiredPermissions, granted: item.grantedPermissions) { value, enabled in
+                manager.setPermission(value, enabled: enabled, for: item.id)
+            }
+        }
+        if !item.optionalPermissions.isEmpty {
+            permissionGroup("Optional permissions", values: item.optionalPermissions, granted: item.grantedPermissions) { value, enabled in
+                manager.setPermission(value, enabled: enabled, for: item.id)
+            }
+        }
+        if !item.requiredHosts.isEmpty {
+            permissionGroup("Requested site access", values: item.requiredHosts, granted: item.grantedHosts) { value, enabled in
+                manager.setHost(value, enabled: enabled, for: item.id)
+            }
+        }
+        if !item.optionalHosts.isEmpty {
+            permissionGroup("Optional site access", values: item.optionalHosts, granted: item.grantedHosts) { value, enabled in
+                manager.setHost(value, enabled: enabled, for: item.id)
+            }
+        }
+    }
+
+    private func permissionGroup(
+        _ title: String,
+        values: [String],
+        granted: [String],
+        setPermission: @escaping (String, Bool) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(store.leanUIFont.font(size: 11, weight: .medium))
+                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                .padding(.horizontal, 14)
+                .padding(.top, 8)
+            ForEach(values, id: \.self) { value in
+                CustomToggleRow(
+                    title: value,
+                    isOn: Binding(
+                        get: { granted.contains(value) },
+                        set: { setPermission(value, $0) }
+                    ),
+                    isDark: store.isDarkMode,
+                    uiFont: store.leanUIFont
+                )
+            }
+        }
+    }
+
+    private func chooseExtensionFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose a local web extension"
+        panel.message = "Select an unpacked extension folder containing manifest.json. Lean copies it into its local extension store."
+        panel.prompt = "Review Extension"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        isPreparing = true
+        Task {
+            pendingReview = await manager.prepareInstallation(from: folder)
+            isPreparing = false
+        }
+    }
+}
+
+@available(macOS 15.4, *)
+private struct ExtensionInstallReviewSheet: View {
+    let review: BrowserExtensionManager.InstallationReview
+    let isDark: Bool
+    let uiFont: LeanFont
+    let cancel: () -> Void
+    let install: (Set<String>, Set<String>) -> Void
+
+    @State private var grantedPermissions = Set<String>()
+    @State private var grantedHosts = Set<String>()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Review extension")
+                    .font(uiFont.font(size: 17, weight: .semibold))
+                Text("\(review.name) · version \(review.version)")
+                    .font(uiFont.font(size: 12))
+                    .foregroundColor(isDark ? Color.white.opacity(0.52) : Color.black.opacity(0.50))
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    reviewChecklist("Requested permissions", values: review.requiredPermissions, selection: $grantedPermissions)
+                    reviewChecklist("Optional permissions", values: review.optionalPermissions, selection: $grantedPermissions)
+                    reviewChecklist("Requested site access", values: review.requiredHosts, selection: $grantedHosts)
+                    reviewChecklist("Optional site access", values: review.optionalHosts, selection: $grantedHosts)
+                    if !review.warnings.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("WebKit warnings")
+                                .font(uiFont.font(size: 11.5, weight: .medium))
+                            ForEach(Array(review.warnings.enumerated()), id: \.offset) { _, warning in
+                                Text(warning)
+                                    .font(uiFont.font(size: 11))
+                                    .foregroundColor(.orange)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 340)
+            HStack {
+                Spacer()
+                SettingsActionButton("Cancel", isDark: isDark, action: cancel)
+                SettingsActionButton("Install", isDark: isDark, prominent: true) {
+                    install(grantedPermissions, grantedHosts)
+                }
+            }
+        }
+        .padding(20)
+        .frame(width: 480, height: 520)
+        .background(isDark ? Color(white: 0.10) : Color(white: 0.98))
+    }
+
+    @ViewBuilder
+    private func reviewChecklist(_ title: String, values: [String], selection: Binding<Set<String>>) -> some View {
+        if !values.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title)
+                    .font(uiFont.font(size: 11.5, weight: .medium))
+                    .foregroundColor(isDark ? Color.white.opacity(0.52) : Color.black.opacity(0.50))
+                    .padding(.horizontal, 14)
+                    .padding(.top, 8)
+                ForEach(values, id: \.self) { value in
+                    CustomChecklistRow(
+                        title: value,
+                        isOn: Binding(
+                            get: { selection.wrappedValue.contains(value) },
+                            set: { isOn in
+                                if isOn { selection.wrappedValue.insert(value) }
+                                else { selection.wrappedValue.remove(value) }
+                            }
+                        ),
+                        isDark: isDark,
+                        uiFont: uiFont
+                    )
+                }
+            }
+            .background(isDark ? Color.white.opacity(0.035) : Color.black.opacity(0.025), in: RoundedRectangle(cornerRadius: 9))
+        }
+    }
+}
+
 private struct ImportDataSection: View {
     @ObservedObject var store: LeanStore
+    @State private var selectedBrowser = BrowserImportSource.chrome
     @State private var profilePreview: BrowserImportPreview?
     @State private var importBookmarks = true
     @State private var importHistory = true
@@ -2488,38 +3135,55 @@ private struct ImportDataSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 8) {
-                SettingsHeaderLabel("From a browser profile", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                SettingsHeaderLabel("Import from a browser", uiFont: store.leanUIFont, isDark: store.isDarkMode)
                 SettingsGroup(isDark: store.isDarkMode) {
                     VStack(alignment: .leading, spacing: 12) {
-                        HStack(alignment: .center) {
+                        CustomSegmentedPicker(
+                            options: BrowserImportSource.allCases.map { SegmentOption(id: $0.rawValue, label: $0.title) },
+                            selectedId: selectedBrowser.rawValue,
+                            isDark: store.isDarkMode,
+                            uiFont: store.leanUIFont
+                        ) { id in
+                            guard let source = BrowserImportSource(rawValue: id) else { return }
+                            selectedBrowser = source
+                            profilePreview = nil
+                            error = nil
+                        }
+                        HStack(alignment: .center, spacing: 12) {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Bookmarks and history")
                                     .font(store.leanUIFont.font(size: 13, weight: .medium))
-                                Text("Choose a Chromium profile folder containing Bookmarks and/or History. Use this when the browser is installed on this Mac.")
+                                Text("Choose a browser. On first import, allow Lean to access its data folder; profiles are found automatically and that access is remembered.")
                                     .font(store.leanUIFont.font(size: 11.5))
                                     .foregroundColor(secondaryText)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
-                            Spacer(minLength: 12)
-                            Button("Choose profile…", action: chooseProfile)
-                                .buttonStyle(.bordered)
+                            Spacer(minLength: 8)
+                            SettingsActionButton("Import from \(selectedBrowser.title)", isDark: store.isDarkMode, prominent: true) {
+                                importFromSelectedBrowser()
+                            }
                         }
                         if let profilePreview {
                             SettingsRowDivider(isDark: store.isDarkMode)
-                            Toggle("Bookmarks (\(profilePreview.bookmarks.count))", isOn: $importBookmarks)
-                                .toggleStyle(.checkbox)
-                                .disabled(profilePreview.bookmarks.isEmpty)
-                            Toggle(
-                                "History (\(profilePreview.history.count) found; up to \(max(0, 200 - store.historyItems.count)) can fit)",
-                                isOn: $importHistory
+                            CustomChecklistRow(
+                                title: "Bookmarks (\(profilePreview.bookmarks.count))",
+                                isOn: $importBookmarks,
+                                isDark: store.isDarkMode,
+                                uiFont: store.leanUIFont
                             )
-                                .toggleStyle(.checkbox)
-                                .disabled(profilePreview.history.isEmpty)
-                            HStack {
+                            .disabled(profilePreview.bookmarks.isEmpty)
+                            CustomChecklistRow(
+                                title: "History (\(profilePreview.history.count) found; up to \(max(0, 200 - store.historyItems.count)) can fit)",
+                                isOn: $importHistory,
+                                isDark: store.isDarkMode,
+                                uiFont: store.leanUIFont
+                            )
+                            .disabled(profilePreview.history.isEmpty)
+                            HStack(spacing: 8) {
                                 Spacer()
-                                Button("Cancel") { self.profilePreview = nil }
-                                    .buttonStyle(.plain)
-                                Button("Import") {
+                                SettingsActionButton("Choose another folder", isDark: store.isDarkMode) { chooseBrowserDataFolder() }
+                                SettingsActionButton("Cancel", isDark: store.isDarkMode) { self.profilePreview = nil }
+                                SettingsActionButton("Import", isDark: store.isDarkMode, prominent: true) {
                                     let selected = BrowserImportPreview(
                                         bookmarks: importBookmarks ? profilePreview.bookmarks : [],
                                         history: importHistory ? profilePreview.history : []
@@ -2528,7 +3192,6 @@ private struct ImportDataSection: View {
                                     message = "Imported \(imported.bookmarks) bookmarks and \(imported.history) history entries."
                                     self.profilePreview = nil
                                 }
-                                .buttonStyle(.borderedProminent)
                                 .disabled(!importBookmarks && !importHistory)
                             }
                         }
@@ -2550,8 +3213,7 @@ private struct ImportDataSection: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 12)
-                        Button("Choose file…", action: choosePasswordFile)
-                            .buttonStyle(.bordered)
+                        SettingsActionButton("Choose CSV…", isDark: store.isDarkMode) { choosePasswordFile() }
                     }
                     .padding(14)
                     SettingsRowDivider(isDark: store.isDarkMode)
@@ -2559,10 +3221,8 @@ private struct ImportDataSection: View {
                         Text("Bookmarks JSON or history CSV (url, title, timestamp)")
                             .font(store.leanUIFont.font(size: 12.5, weight: .medium))
                         Spacer()
-                        Button("Bookmarks…") { chooseBrowserExport(bookmarks: true) }
-                            .buttonStyle(.bordered)
-                        Button("History…") { chooseBrowserExport(bookmarks: false) }
-                            .buttonStyle(.bordered)
+                        SettingsActionButton("Bookmarks…", isDark: store.isDarkMode) { chooseBrowserExport(bookmarks: true) }
+                        SettingsActionButton("History…", isDark: store.isDarkMode) { chooseBrowserExport(bookmarks: false) }
                     }
                     .padding(14)
                     if let credentialPreview {
@@ -2578,15 +3238,13 @@ private struct ImportDataSection: View {
                                     .lineLimit(1)
                             }
                             Spacer()
-                            Button("Cancel") { self.credentialPreview = nil }
-                                .buttonStyle(.plain)
-                            Button("Import") {
+                            SettingsActionButton("Cancel", isDark: store.isDarkMode) { self.credentialPreview = nil }
+                            SettingsActionButton("Import", isDark: store.isDarkMode, prominent: true) {
                                 let result = BrowserDataImporter.saveCredentials(credentialPreview.credentials)
                                 let skipped = result.skipped + credentialPreview.skippedRows
                                 message = "Imported \(result.saved) credentials; \(skipped) skipped."
                                 self.credentialPreview = nil
                             }
-                            .buttonStyle(.borderedProminent)
                         }
                         .padding(14)
                     }
@@ -2609,8 +3267,7 @@ private struct ImportDataSection: View {
                                         .lineLimit(1)
                                 }
                                 Spacer()
-                                Button("Open") { store.openURL(bookmark.url) }
-                                    .buttonStyle(.bordered)
+                                SettingsActionButton("Open", isDark: store.isDarkMode) { store.openURL(bookmark.url) }
                                 Button {
                                     store.deleteImportedBookmark(id: bookmark.id)
                                 } label: {
@@ -2629,7 +3286,11 @@ private struct ImportDataSection: View {
             }
 
             if let error {
-                Text(error).font(store.leanUIFont.font(size: 11.5)).foregroundColor(.red)
+                HStack(spacing: 10) {
+                    Text(error).font(store.leanUIFont.font(size: 11.5)).foregroundColor(.red)
+                    Spacer(minLength: 8)
+                    SettingsActionButton("Choose again", isDark: store.isDarkMode) { chooseBrowserDataFolder() }
+                }
             } else if let message {
                 Text(message).font(store.leanUIFont.font(size: 11.5)).foregroundColor(secondaryText)
             }
@@ -2640,20 +3301,52 @@ private struct ImportDataSection: View {
         store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48)
     }
 
-    private func chooseProfile() {
+    private func importFromSelectedBrowser() {
+        guard let data = UserDefaults.standard.data(forKey: selectedBrowser.bookmarkKey) else {
+            chooseBrowserDataFolder()
+            return
+        }
+        var isStale = false
+        do {
+            let url = try URL(
+                resolvingBookmarkData: data,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+            profilePreview = try BrowserDataImporter.readProfiles(at: url)
+            if isStale {
+                let renewed = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+                UserDefaults.standard.set(renewed, forKey: selectedBrowser.bookmarkKey)
+            }
+            importBookmarks = true
+            importHistory = true
+            error = nil
+        } catch {
+            self.error = "Couldn't read the saved \(selectedBrowser.title) data folder. Choose it again to restore access."
+        }
+    }
+
+    private func chooseBrowserDataFolder() {
         let panel = NSOpenPanel()
-        panel.title = "Choose a browser profile folder"
-        panel.message = "Select a Chromium profile folder, such as Default. Lean reads bookmarks and history only."
-        panel.prompt = "Choose Profile"
+        panel.title = "Allow access to \(selectedBrowser.title) data"
+        panel.message = "Select the browser data folder to import bookmarks and history. Lean finds profiles automatically."
+        panel.prompt = "Allow Access"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
+        panel.directoryURL = selectedBrowser.userDataDirectory
         guard panel.runModal() == .OK, let url = panel.url else { return }
         error = nil
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
         do {
-            profilePreview = try BrowserDataImporter.readProfile(at: url)
+            let preview = try BrowserDataImporter.readProfiles(at: url)
+            let bookmark = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+            UserDefaults.standard.set(bookmark, forKey: selectedBrowser.bookmarkKey)
+            profilePreview = preview
             importBookmarks = true
             importHistory = true
         } catch {

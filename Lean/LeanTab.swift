@@ -9,8 +9,18 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private let initialConfiguration: WKWebViewConfiguration?
     private var isDark: Bool
     private var storedWebView: LeanWebView?
+    private var sleepingInteractionState: Any?
+    var popupOpenerID: LeanTab.ID?
+    var hasActivePopup = false
 
     var hasWebView: Bool { storedWebView != nil }
+
+    var canSleep: Bool {
+        guard let webView = storedWebView,
+              let scheme = url?.scheme?.lowercased(),
+              ["http", "https"].contains(scheme) else { return false }
+        return sleepConditions(in: webView, isSelected: false, isPlayingMedia: false, hasUnsavedFormInput: false).canSleep
+    }
 
     var webView: LeanWebView {
         if let storedWebView { return storedWebView }
@@ -25,6 +35,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     @Published private(set) var canGoForward = false
     @Published private(set) var pageZoom = 1.0
     @Published private(set) var isZoomIndicatorVisible = false
+    @Published private(set) var isSleeping = false
     @Published var snapshot: NSImage? = nil
     @Published var favicon: NSImage? = nil
     private(set) var scrollbarStyle: ScrollbarStyle
@@ -33,6 +44,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private(set) var pageHeadingWeight: Int
     private(set) var pageBodyWeight: Int
     private(set) var adBlockingEnabled: Bool
+    private(set) var adBlockingExcludedHosts: Set<String>
+    private(set) var passwordSavePromptsEnabled: Bool
+    private(set) var passwordSuggestionsEnabled: Bool
+    private var pendingLogin: (origin: URL, username: String, password: String, submittedAt: Date)?
+    private var restoreScrollPosition: CGPoint?
+    private var policyHost: String?
 
     var isSettingsPage: Bool {
         guard let url = url else { return false }
@@ -74,6 +91,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         pageHeadingWeight: Int = 0,
         pageBodyWeight: Int = 0,
         adBlockingEnabled: Bool = true,
+        adBlockingExcludedHosts: Set<String> = [],
+        passwordSavePromptsEnabled: Bool = true,
+        passwordSuggestionsEnabled: Bool = true,
         configuration: WKWebViewConfiguration? = nil
     ) {
         self.dataStore = dataStore
@@ -88,6 +108,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         self.pageHeadingWeight = pageHeadingWeight
         self.pageBodyWeight = pageBodyWeight
         self.adBlockingEnabled = adBlockingEnabled
+        self.adBlockingExcludedHosts = adBlockingExcludedHosts
+        self.passwordSavePromptsEnabled = passwordSavePromptsEnabled
+        self.passwordSuggestionsEnabled = passwordSuggestionsEnabled
+        self.policyHost = initialURL?.host?.lowercased()
         super.init()
         self.url = initialURL
         if initialURL?.scheme == "lean" && (initialURL?.host == "settings" || initialURL?.absoluteString == "lean://settings") {
@@ -108,6 +132,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         let effectiveConfiguration = initialConfiguration ?? WKWebViewConfiguration()
         let configuration = effectiveConfiguration
         configuration.websiteDataStore = dataStore
+        if #available(macOS 15.4, *) {
+            configuration.webExtensionController = BrowserExtensionManager.shared.controller
+        }
         configuration.preferences.isElementFullscreenEnabled = true
 
         // Register custom scrollbar script at document start so it styles before first paint!
@@ -133,7 +160,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         )
         configuration.userContentController.addUserScript(smoothScript)
         let youtubeAdsScript = WKUserScript(
-            source: PageScripts.youtubeAds(enabled: adBlockingEnabled),
+            source: PageScripts.youtubeAds(enabled: isBlockingEnabledForCurrentHost),
             injectionTime: .atDocumentStart,
             forMainFrameOnly: false
         )
@@ -152,11 +179,16 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
                 forMainFrameOnly: false
             )
         )
+        configuration.userContentController.addUserScript(
+            WKUserScript(source: PageScripts.audioActivity, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        )
+        addPasswordCaptureScript(to: configuration.userContentController)
 
         let webView = LeanWebView(frame: .zero, configuration: configuration)
         storedWebView = webView
         webView.configuration.userContentController.add(self, name: PageScripts.pageReadyMessageName)
         webView.configuration.userContentController.add(self, name: PageScripts.contextMenuMessageName)
+        webView.configuration.userContentController.add(self, name: PageScripts.passwordFormMessageName)
         webView.contextMenuHook = { [weak self] menu in
             self?.appendPageMenuItems(to: menu)
         }
@@ -211,32 +243,41 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         ]
 
         syncContentRuleLists()
+        if isSleeping, let restoreURL = url {
+            DispatchQueue.main.async { [weak self, weak webView] in
+                guard let self, let webView else { return }
+                self.restoreSleepingWebView(webView, url: restoreURL, attempt: 0)
+            }
+        }
         return webView
     }
 
-    func applyAdBlocking(_ enabled: Bool) {
+    func applyAdBlocking(_ enabled: Bool, excluding excludedHosts: Set<String>) {
         adBlockingEnabled = enabled
-        // Rebuild re-registers every script with the fresh flag (including
-        // the YouTube scriptlet, whose content is baked in at registration)
-        // and re-syncs the rule lists. Idempotent; safe to call on toggles.
-        // User scripts only affect future navigations, so also patch the
-        // live page: install/uninstall the YouTube hooks in place.
+        adBlockingExcludedHosts = excludedHosts
         guard let webView = storedWebView else { return }
-        rebuildUserScripts()
-        webView.evaluateJavaScript(PageScripts.youtubeAdsLive(enabled: enabled)) { _, _ in }
+        let shouldBlock = isBlockingEnabledForCurrentHost
+        rebuildUserScripts(syncRuleLists: false)
+        webView.evaluateJavaScript(PageScripts.youtubeAdsLive(enabled: shouldBlock)) { _, _ in }
+        syncContentRuleLists()
+    }
+
+    private var isBlockingEnabledForCurrentHost: Bool {
+        SiteBlockingPolicy.shouldBlock(
+            globalEnabled: adBlockingEnabled,
+            host: policyHost ?? storedWebView?.url?.host ?? url?.host,
+            excludedHosts: adBlockingExcludedHosts
+        )
     }
 
     /// Adds/removes the compiled content-rule lists without touching scripts.
-    private func syncContentRuleLists() {
-        let enabled = adBlockingEnabled
-        guard let webView = storedWebView else { return }
+    private func syncContentRuleLists(completion: (() -> Void)? = nil) {
+        guard let webView = storedWebView else { completion?(); return }
         Task { [weak self] in
             let ruleLists = await ContentBlocker.ruleLists()
-            guard let self, self.adBlockingEnabled == enabled else { return }
-            if enabled {
+            guard let self else { completion?(); return }
+            if self.isBlockingEnabledForCurrentHost {
                 for ruleList in ruleLists {
-                    // Remove-then-add keeps this idempotent: rebuildUserScripts()
-                    // preserves rule lists, so re-enabling must not stack duplicates.
                     webView.configuration.userContentController.remove(ruleList)
                     webView.configuration.userContentController.add(ruleList)
                 }
@@ -245,6 +286,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
                     webView.configuration.userContentController.remove(ruleList)
                 }
             }
+            completion?()
         }
     }
 
@@ -256,7 +298,28 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         }
     }
 
-    private func rebuildUserScripts() {
+    private func addPasswordCaptureScript(to controller: WKUserContentController) {
+        guard passwordSavePromptsEnabled else { return }
+        controller.addUserScript(
+            WKUserScript(
+                source: PageScripts.passwordFormSubmit,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+    }
+
+    func applyPasswordPreferences(savePromptsEnabled: Bool, suggestionsEnabled: Bool) {
+        let promptsChanged = passwordSavePromptsEnabled != savePromptsEnabled
+        passwordSavePromptsEnabled = savePromptsEnabled
+        passwordSuggestionsEnabled = suggestionsEnabled
+        if !savePromptsEnabled { pendingLogin = nil }
+        if promptsChanged, storedWebView != nil {
+            rebuildUserScripts()
+        }
+    }
+
+    private func rebuildUserScripts(syncRuleLists: Bool = true) {
         webView.configuration.userContentController.removeAllUserScripts()
         let scrollbarScript = WKUserScript(
             source: PageScripts.scrollbar(scrollbarStyle),
@@ -279,7 +342,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         )
         webView.configuration.userContentController.addUserScript(smoothScript)
         let youtubeAdsScript = WKUserScript(
-            source: PageScripts.youtubeAds(enabled: adBlockingEnabled),
+            source: PageScripts.youtubeAds(enabled: isBlockingEnabledForCurrentHost),
             injectionTime: .atDocumentStart,
             forMainFrameOnly: false
         )
@@ -298,8 +361,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
                 forMainFrameOnly: false
             )
         )
+        webView.configuration.userContentController.addUserScript(
+            WKUserScript(source: PageScripts.audioActivity, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        )
+        addPasswordCaptureScript(to: webView.configuration.userContentController)
 
-        syncContentRuleLists()
+        if syncRuleLists { syncContentRuleLists() }
     }
 
     func applyScrollbarStyle(_ style: ScrollbarStyle) {
@@ -357,6 +424,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     func load(_ url: URL) {
+        if isSleeping {
+            isSleeping = false
+            sleepingInteractionState = nil
+            restoreScrollPosition = nil
+        }
         isPageSource = false
         self.url = url
         if title == "New Tab" || title.isEmpty {
@@ -394,11 +466,13 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.goForward()
     }
     func reload() {
+        if isSleeping, let url { load(url); return }
         isLoading = true
         onStateChange?()
         webView.reload()
     }
     func reloadFromOrigin() {
+        if isSleeping, let url { load(url); return }
         isLoading = true
         onStateChange?()
         webView.reloadFromOrigin()
@@ -437,6 +511,17 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         if !menu.items.isEmpty {
             menu.addItem(.separator())
         }
+        if passwordSuggestionsEnabled,
+           let currentURL = url,
+           currentURL.scheme?.lowercased() == "https",
+           currentURL.host != nil,
+           case .success(let logins) = PasswordVault.forOrigin(currentURL),
+           !logins.isEmpty {
+            let fill = NSMenuItem(title: "Fill Saved Sign-In…", action: #selector(pageMenuFillSavedPassword), keyEquivalent: "")
+            fill.target = self
+            menu.addItem(fill)
+            menu.addItem(.separator())
+        }
         let printItem = NSMenuItem(title: "Print...", action: #selector(pageMenuPrint), keyEquivalent: "")
         printItem.target = self
         printItem.isEnabled = !isSettingsPage
@@ -457,6 +542,15 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
     @objc private func pageMenuShowSource() { showPageSource() }
     @objc private func pageMenuPrint() { printPage() }
+
+    @objc private func pageMenuFillSavedPassword() {
+        guard passwordSuggestionsEnabled,
+              let origin = url,
+              origin.scheme?.lowercased() == "https",
+              case .success(let logins) = PasswordVault.forOrigin(origin),
+              !logins.isEmpty else { return }
+        chooseLoginToFill(logins, origin: origin)
+    }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(pageMenuPrint) { return !isSettingsPage }
@@ -512,6 +606,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     func destroy() {
+        sleepingInteractionState = nil
+        restoreScrollPosition = nil
+        isSleeping = false
         progressObserver?.invalidate()
         progressObserver = nil
         navigationObservers.forEach { $0.invalidate() }
@@ -559,6 +656,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         // 6. Remove all user scripts and message handlers
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.pageReadyMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.contextMenuMessageName)
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.passwordFormMessageName)
         webView.configuration.userContentController.removeAllUserScripts()
         zoomIndicatorWorkItem?.cancel()
         webView.removeFromSuperview()
@@ -599,6 +697,183 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     func find(_ query: String) {
         guard !query.isEmpty else { return }
         webView.find(query, configuration: WKFindConfiguration()) { _ in }
+    }
+
+    func requestSleep(while shouldRemainInactive: @escaping () -> Bool, completion: @escaping (Bool) -> Void) {
+        guard let webView = storedWebView,
+              let scheme = webView.url?.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              TabSleepPolicy.canCommitSleep(
+                sleepConditions(in: webView, isSelected: false, isPlayingMedia: false, hasUnsavedFormInput: false),
+                isStillInactive: shouldRemainInactive()
+              ) else {
+            completion(false)
+            return
+        }
+        inspectPageForSleep(webView) { [weak self, weak webView] activity in
+            guard let self, let webView, let activity,
+                  TabSleepPolicy.canCommitSleep(
+                    self.sleepConditions(in: webView, isSelected: false, isPlayingMedia: activity.isPlayingMedia, hasUnsavedFormInput: activity.hasUnsavedFormInput),
+                    isStillInactive: shouldRemainInactive()
+                  ) else {
+                completion(false)
+                return
+            }
+            let configuration = WKSnapshotConfiguration()
+            configuration.snapshotWidth = 220
+            webView.takeSnapshot(with: configuration) { [weak self, weak webView] image, _ in
+                DispatchQueue.main.async {
+                    guard let self, let webView, let image, shouldRemainInactive() else {
+                        completion(false)
+                        return
+                    }
+                    self.inspectPageForSleep(webView) { latestActivity in
+                        guard let latestActivity,
+                              TabSleepPolicy.canCommitSleep(
+                                self.sleepConditions(in: webView, isSelected: false, isPlayingMedia: latestActivity.isPlayingMedia, hasUnsavedFormInput: latestActivity.hasUnsavedFormInput),
+                                isStillInactive: shouldRemainInactive()
+                              ) else {
+                            completion(false)
+                            return
+                        }
+                        self.snapshot = image
+                        self.restoreScrollPosition = latestActivity.scrollPosition
+                        self.sleepingInteractionState = webView.interactionState
+                        self.title = webView.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? self.title
+                        self.url = webView.url
+                        self.releaseWebViewForSleep(webView)
+                        self.isSleeping = true
+                        self.onStateChange?()
+                        completion(true)
+                    }
+                }
+            }
+        }
+    }
+
+    private struct PageSleepActivity {
+        let isPlayingMedia: Bool
+        let hasUnsavedFormInput: Bool
+        let scrollPosition: CGPoint
+    }
+
+    private func inspectPageForSleep(_ webView: WKWebView, completion: @escaping (PageSleepActivity?) -> Void) {
+        let script = """
+        (() => {
+          const seen = new Set();
+          const scan = doc => {
+            if (!doc || seen.has(doc)) return { media: false, dirty: false, blocked: false };
+            seen.add(doc);
+            const mediaElements = Array.from(doc.querySelectorAll('audio, video')).some(item => !item.paused && !item.ended);
+            const audioContexts = doc.defaultView && doc.defaultView.__leanAudioContexts || [];
+            const webAudio = audioContexts.some(ref => {
+              const context = ref.deref();
+              return context && context.state === 'running';
+            });
+            const media = mediaElements || webAudio;
+            const dirty = Array.from(doc.querySelectorAll('input, textarea, select')).some(field => {
+              if (field.disabled || field.type === 'hidden') return false;
+              if (field.type === 'checkbox' || field.type === 'radio') return field.checked !== field.defaultChecked;
+              return field.value !== field.defaultValue;
+            }) || Array.from(doc.querySelectorAll('[contenteditable=true]')).some(field => field.textContent.trim().length > 0);
+            let blocked = false;
+            for (const frame of doc.querySelectorAll('iframe')) {
+              try {
+                const rawURL = frame.getAttribute('src');
+                const inheritsOrigin = !rawURL || rawURL === 'about:blank' || frame.hasAttribute('srcdoc');
+                const frameURL = new URL(rawURL || 'about:blank', doc.location.href);
+                const opaqueSandbox = frame.hasAttribute('sandbox') && !frame.sandbox.contains('allow-same-origin');
+                if (opaqueSandbox || (!inheritsOrigin && frameURL.origin !== doc.location.origin)) {
+                  blocked = true;
+                  continue;
+                }
+                const childDocument = frame.contentDocument;
+                if (!childDocument) { blocked = true; continue; }
+                const nested = scan(childDocument);
+                if (nested.media || nested.dirty || nested.blocked) blocked = true;
+              } catch (_) { blocked = true; }
+            }
+            return { media, dirty, blocked };
+          };
+          const activity = scan(document);
+          return { media: activity.media || activity.blocked, dirty: activity.dirty, x: window.scrollX, y: window.scrollY };
+        })()
+        """
+        webView.evaluateJavaScript(script) { result, error in
+            DispatchQueue.main.async {
+                guard error == nil,
+                      let values = result as? [String: Any],
+                      let media = values["media"] as? Bool,
+                      let dirty = values["dirty"] as? Bool,
+                      let x = values["x"] as? NSNumber,
+                      let y = values["y"] as? NSNumber else {
+                    completion(nil)
+                    return
+                }
+                completion(PageSleepActivity(isPlayingMedia: media, hasUnsavedFormInput: dirty, scrollPosition: CGPoint(x: CGFloat(x.doubleValue), y: CGFloat(y.doubleValue))))
+            }
+        }
+    }
+
+    private func sleepConditions(in webView: WKWebView, isSelected: Bool, isPlayingMedia: Bool, hasUnsavedFormInput: Bool) -> TabSleepConditions {
+        TabSleepConditions(
+            isSelected: isSelected,
+            isLoading: isLoading || webView.isLoading,
+            hasActiveDownload: !activeDownloadObjects.isEmpty,
+            isPlayingMedia: isPlayingMedia,
+            isCapturingMedia: webView.cameraCaptureState != .none || webView.microphoneCaptureState != .none,
+            hasUnsavedFormInput: hasUnsavedFormInput,
+            hasActivePopup: hasActivePopup
+        )
+    }
+
+    private func restoreSleepingWebView(_ webView: LeanWebView, url: URL, attempt: Int) {
+        guard storedWebView === webView, isSleeping else { return }
+        if webView.window == nil, attempt < 50 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self, weak webView] in
+                guard let self, let webView else { return }
+                self.restoreSleepingWebView(webView, url: url, attempt: attempt + 1)
+            }
+            return
+        }
+        isLoading = true
+        loadingProgress = 0
+        if let state = sleepingInteractionState {
+            sleepingInteractionState = nil
+            restoreScrollPosition = nil
+            webView.interactionState = state
+        } else {
+            webView.load(URLRequest(url: url))
+        }
+        isSleeping = false
+        onStateChange?()
+    }
+
+    private func releaseWebViewForSleep(_ webView: LeanWebView) {
+        progressObserver?.invalidate()
+        progressObserver = nil
+        navigationObservers.forEach { $0.invalidate() }
+        navigationObservers.removeAll()
+        webView.stopLoading()
+        webView.pauseAllMediaPlayback()
+        webView.setAllMediaPlaybackSuspended(true)
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        webView.contextMenuHook = nil
+        let controller = webView.configuration.userContentController
+        controller.removeScriptMessageHandler(forName: PageScripts.pageReadyMessageName)
+        controller.removeScriptMessageHandler(forName: PageScripts.contextMenuMessageName)
+        controller.removeScriptMessageHandler(forName: PageScripts.passwordFormMessageName)
+        controller.removeAllUserScripts()
+        controller.removeAllContentRuleLists()
+        webView.removeFromSuperview()
+        storedWebView = nil
+        canGoBack = false
+        canGoForward = false
+        isLoading = false
+        loadingProgress = 0
+        zoomIndicatorWorkItem?.cancel()
+        isZoomIndicatorVisible = false
     }
 
     func captureSnapshot() {
@@ -647,6 +922,10 @@ extension LeanTab: WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
+        if message.name == PageScripts.passwordFormMessageName {
+            captureSubmittedLogin(message)
+            return
+        }
         if message.name == PageScripts.contextMenuMessageName {
             let raw = (message.body as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             if !raw.isEmpty, let url = URL(string: raw) {
@@ -663,6 +942,28 @@ extension LeanTab: WKScriptMessageHandler {
         }
         isLoading = false
         refreshState()
+    }
+
+    private func captureSubmittedLogin(_ message: WKScriptMessage) {
+        guard passwordSavePromptsEnabled,
+              message.frameInfo.isMainFrame,
+              message.webView === webView,
+              let pageURL = webView.url,
+              pageURL.scheme?.lowercased() == "https",
+              let origin = PasswordVault.originURL(for: pageURL),
+              let pageHost = origin.host.flatMap(PasswordVault.normalizedHost),
+              let fields = message.body as? [String: Any],
+              let submittedHost = (fields["host"] as? String).flatMap(PasswordVault.normalizedHost),
+              submittedHost == pageHost,
+              let password = fields["password"] as? String,
+              !password.isEmpty, password.count <= 4096,
+              let username = fields["username"] as? String,
+              username.count <= 2048 else { return }
+        let submittedAt = Date()
+        pendingLogin = (origin, username, password, submittedAt)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+            if self?.pendingLogin?.submittedAt == submittedAt { self?.pendingLogin = nil }
+        }
     }
 }
 
@@ -692,6 +993,11 @@ extension LeanTab: WKNavigationDelegate {
         refreshState()
         applyScrollbarStyle(scrollbarStyle)
 
+        if let position = restoreScrollPosition {
+            restoreScrollPosition = nil
+            webView.evaluateJavaScript("window.scrollTo(\(position.x), \(position.y))") { _, _ in }
+        }
+
         // Extract favicon link tag from DOM if available
         let js = "document.querySelector('link[rel*=\"icon\"]') ? document.querySelector('link[rel*=\"icon\"]').href : ''"
         webView.evaluateJavaScript(js) { [weak self] result, _ in
@@ -699,17 +1005,146 @@ extension LeanTab: WKNavigationDelegate {
             self?.updateFavicon(for: webView.url, explicitIconURL: explicitHref)
         }
 
+        offerToSavePendingPassword(after: webView)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             self?.captureSnapshot()
         }
     }
 
+    private func offerToSavePendingPassword(after webView: WKWebView) {
+        guard passwordSavePromptsEnabled,
+              let pending = pendingLogin,
+              Date().timeIntervalSince(pending.submittedAt) < 20,
+              let pageURL = webView.url,
+              pageURL.scheme?.lowercased() == "https",
+              PasswordVault.originString(for: pageURL) == PasswordVault.originString(for: pending.origin) else {
+            pendingLogin = nil
+            return
+        }
+        pendingLogin = nil
+        webView.evaluateJavaScript("Array.from(document.querySelectorAll('input[type=password]')).some(el => el.getClientRects().length > 0)") { [weak self, weak webView] result, error in
+            guard let self, error == nil, (result as? Bool) == false,
+                  let window = webView?.window else { return }
+            let existing = PasswordVault.forOrigin(pending.origin)
+            let isUpdate: Bool
+            if case .success(let logins) = existing {
+                isUpdate = logins.contains { $0.username == pending.username }
+            } else {
+                isUpdate = false
+            }
+            let alert = NSAlert()
+            alert.messageText = isUpdate ? "Update saved password?" : "Save this password?"
+            alert.informativeText = "Save the sign-in for \(pending.origin.host ?? pending.origin.absoluteString) in the macOS Keychain?"
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: isUpdate ? "Update Password" : "Save Password")
+            alert.addButton(withTitle: "Not Now")
+            alert.beginSheetModal(for: window) { response in
+                guard response == .alertFirstButtonReturn else { return }
+                if case .failure(let error) = PasswordVault.save(
+                    origin: pending.origin,
+                    username: pending.username,
+                    password: pending.password
+                ) {
+                    self.showPasswordVaultError(error)
+                }
+            }
+        }
+    }
+
+    private func showPasswordVaultError(_ error: PasswordVault.VaultError) {
+        let alert = NSAlert()
+        alert.messageText = "Password Manager"
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .warning
+        alert.runModal()
+    }
+
+    private func chooseLoginToFill(_ logins: [SavedPassword], origin: URL) {
+        guard let window = webView.window,
+              let originKey = PasswordVault.originString(for: origin),
+              let host = origin.host else { return }
+        let picker = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 26), pullsDown: false)
+        for login in logins {
+            picker.addItem(withTitle: login.username.isEmpty ? "Unnamed account" : login.username)
+        }
+        let stack = NSStackView(views: [picker])
+        stack.orientation = .vertical
+        let alert = NSAlert()
+        alert.messageText = "Fill saved sign-in"
+        alert.informativeText = "Choose an account for \(host). Lean will not submit the form."
+        alert.accessoryView = stack
+        alert.addButton(withTitle: "Continue")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn,
+                  let self,
+                  logins.indices.contains(picker.indexOfSelectedItem),
+                  self.url.flatMap(PasswordVault.originString(for:)) == originKey,
+                  self.url?.scheme?.lowercased() == "https" else { return }
+            let login = logins[picker.indexOfSelectedItem]
+            PasswordVault.authenticate(reason: "Fill the saved sign-in for \(host)") { [weak self] authenticated in
+                guard let self else { return }
+                guard authenticated else {
+                    self.showPasswordMessage("Lean could not authenticate you. No password was filled.")
+                    return
+                }
+                switch PasswordVault.password(for: login) {
+                case .success(let password): self.fill(login: login, password: password)
+                case .failure(let error): self.showPasswordVaultError(error)
+                }
+            }
+        }
+    }
+
+    private func showPasswordMessage(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Password Manager"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.runModal()
+    }
+
+    private func fill(login: SavedPassword, password: String) {
+        guard url.flatMap(PasswordVault.originString(for:)) == login.origin,
+              url?.scheme?.lowercased() == "https",
+              let data = try? JSONSerialization.data(withJSONObject: ["username": login.username, "password": password]) else { return }
+        let encodedValues = data.base64EncodedString()
+        let script = """
+        (() => {
+          const values = JSON.parse(atob('\(encodedValues)'));
+          const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+          const fields = Array.from(document.querySelectorAll('input[type=password]')).filter(visible);
+          if (fields.length !== 1) return false;
+          const password = fields[0];
+          const form = password.form || document;
+          const username = form.querySelector('input[autocomplete=username], input[type=email], input[name*=user i], input[name*=email i], input[name*=login i]');
+          const setValue = (field, value) => {
+            const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value')?.set;
+            if (setter) setter.call(field, value); else field.value = value;
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+          };
+          if (username && values.username) setValue(username, values.username);
+          setValue(password, values.password);
+          return true;
+        })()
+        """
+        webView.evaluateJavaScript(script) { [weak self] result, error in
+            guard error == nil, (result as? Bool) == true else {
+                self?.showPasswordMessage("Lean couldn't find one unambiguous password field. The form was left untouched.")
+                return
+            }
+        }
+    }
+
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation?, withError error: Error) {
+        pendingLogin = nil
         isLoading = false
         refreshState()
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation?, withError error: Error) {
+        pendingLogin = nil
         isLoading = false
         refreshState()
     }
@@ -719,10 +1154,26 @@ extension LeanTab: WKNavigationDelegate {
         decidePolicyFor navigationAction: WKNavigationAction,
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
+        if navigationAction.targetFrame?.isMainFrame == true,
+           let pendingLogin,
+           let destination = navigationAction.request.url,
+           PasswordVault.originString(for: destination) != PasswordVault.originString(for: pendingLogin.origin) {
+            self.pendingLogin = nil
+        }
         if let url = navigationAction.request.url,
            ExternalLinkPolicy.shouldOpenExternally(url) {
             NSWorkspace.shared.open(url)
             decisionHandler(.cancel)
+            return
+        }
+        if navigationAction.targetFrame?.isMainFrame == true,
+           let host = navigationAction.request.url?.host?.lowercased() {
+            let wasBlocking = isBlockingEnabledForCurrentHost
+            policyHost = host
+            if wasBlocking != isBlockingEnabledForCurrentHost {
+                rebuildUserScripts(syncRuleLists: false)
+            }
+            syncContentRuleLists { decisionHandler(.allow) }
             return
         }
         decisionHandler(.allow)

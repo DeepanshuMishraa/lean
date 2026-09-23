@@ -522,7 +522,7 @@ struct SidebarTabItem: View {
                 .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
 
                 Text(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
-                    .font(store.headingFont(size: 13))
+                    .font(store.tabTitleFont(size: 13))
                     .foregroundColor(tabItemForeground)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -573,6 +573,12 @@ struct SidebarTabItem: View {
             }
         }
         .contextMenu {
+            if tab.isSleeping {
+                Button("Wake Tab", action: onSelect)
+            } else {
+                Button("Sleep Tab") { store.sleepTab(tab, notifyOnFailure: true) }
+                    .disabled(isSelected || !tab.canSleep)
+            }
             Button("Close Tab", action: onClose)
             Button("Close Other Tabs") {
                 for otherTab in store.tabs where otherTab.id != tab.id {

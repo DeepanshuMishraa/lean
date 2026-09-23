@@ -3,6 +3,7 @@ import Foundation
 enum PageScripts {
     static let pageReadyMessageName = "pageReady"
     static let contextMenuMessageName = "leanContextMenu"
+    static let passwordFormMessageName = "leanPasswordFormSubmit"
 
     /// Reports the anchor under every right-click (empty string for
     /// non-links) so the native menu can offer "Open Link in New Tab".
@@ -22,6 +23,51 @@ enum PageScripts {
                 } catch (err) {}
             }, true);
         } catch (e) {}
+    })();
+    """
+
+    static let audioActivity = """
+    (function() {
+        try {
+            var contexts = [];
+            var wrappers = new Map();
+            ['AudioContext', 'webkitAudioContext'].forEach(function(name) {
+                var Original = window[name];
+                if (!Original) return;
+                var Wrapped = wrappers.get(Original);
+                if (!Wrapped) {
+                    Wrapped = new Proxy(Original, {
+                        construct: function(target, args, newTarget) {
+                            var context = Reflect.construct(target, args, newTarget);
+                            contexts.push(new WeakRef(context));
+                            return context;
+                        }
+                    });
+                    wrappers.set(Original, Wrapped);
+                }
+                window[name] = Wrapped;
+            });
+            Object.defineProperty(window, '__leanAudioContexts', { value: contexts, configurable: true });
+        } catch (error) {}
+    })();
+    """
+
+    static let passwordFormSubmit = """
+    (function() {
+        document.addEventListener('submit', function(event) {
+            try {
+                var form = event.target;
+                if (!form || !form.querySelector) return;
+                var password = form.querySelector('input[type="password"]');
+                if (!password || !password.value) return;
+                var username = form.querySelector('input[autocomplete="username"], input[type="email"], input[name*="user" i], input[name*="email" i], input[name*="login" i]');
+                window.webkit.messageHandlers.\(passwordFormMessageName).postMessage({
+                    host: location.hostname,
+                    username: username ? username.value : '',
+                    password: password.value
+                });
+            } catch (error) {}
+        }, true);
     })();
     """
 

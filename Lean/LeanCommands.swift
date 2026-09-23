@@ -87,11 +87,11 @@ struct LeanCommands: Commands {
             }
 
             Divider()
-            Button("Zoom In") { store.selectedTab?.zoomIn() }
+            Button("Zoom In") { store.zoomIn() }
                 .keyboardShortcut("+", modifiers: .command)
-            Button("Zoom Out") { store.selectedTab?.zoomOut() }
+            Button("Zoom Out") { store.zoomOut() }
                 .keyboardShortcut("-", modifiers: .command)
-            Button("Actual Size") { store.selectedTab?.resetZoom() }
+            Button("Actual Size") { store.resetZoom() }
                 .keyboardShortcut("0", modifiers: .command)
         }
 

@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import WebKit
 
 @MainActor
@@ -21,6 +22,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     @Published private(set) var isLoading = false
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
+    @Published private(set) var pageZoom = 1.0
+    @Published private(set) var isZoomIndicatorVisible = false
     @Published var snapshot: NSImage? = nil
     @Published var favicon: NSImage? = nil
     private(set) var scrollbarStyle: ScrollbarStyle
@@ -53,6 +56,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private var downloadProgressObservers: [ObjectIdentifier: NSKeyValueObservation] = [:]
     private var downloadLastSample: [UUID: (bytes: Int64, date: Date, speed: Double)] = [:]
     private var activeDownloadObjects: [UUID: WKDownload] = [:]
+    private var zoomIndicatorWorkItem: DispatchWorkItem?
 
     func cancelActiveDownload(id: UUID) {
         activeDownloadObjects[id]?.cancel()
@@ -552,12 +556,32 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.pageReadyMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.contextMenuMessageName)
         webView.configuration.userContentController.removeAllUserScripts()
+        zoomIndicatorWorkItem?.cancel()
         webView.removeFromSuperview()
     }
 
-    func zoomIn() { webView.pageZoom = min(webView.pageZoom + 0.1, 3) }
-    func zoomOut() { webView.pageZoom = max(webView.pageZoom - 0.1, 0.5) }
-    func resetZoom() { webView.pageZoom = 1 }
+    func zoomIn() { setPageZoom(pageZoom + 0.1) }
+    func zoomOut() { setPageZoom(pageZoom - 0.1) }
+    func resetZoom() { setPageZoom(1.0) }
+
+    private func setPageZoom(_ zoom: Double) {
+        guard !isSettingsPage, url != nil else { return }
+        let clamped = min(max((zoom * 10).rounded() / 10, 0.5), 3.0)
+        pageZoom = clamped
+        webView.pageZoom = clamped
+        withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+            isZoomIndicatorVisible = true
+        }
+        zoomIndicatorWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            withAnimation(.easeInOut(duration: 0.28)) {
+                self?.isZoomIndicatorVisible = false
+            }
+        }
+        zoomIndicatorWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: workItem)
+        onStateChange?()
+    }
 
     func printPage() {
         guard !isSettingsPage, let window = webView.window else { return }

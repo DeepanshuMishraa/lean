@@ -202,11 +202,11 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
                 store.toggleSidebar()
             }
         case .zoomIn:
-            store.selectedTab?.zoomIn()
+            store.zoomIn()
         case .zoomOut:
-            store.selectedTab?.zoomOut()
+            store.zoomOut()
         case .actualSize:
-            store.selectedTab?.resetZoom()
+            store.resetZoom()
         case .openSettings:
             store.openSettings()
         }

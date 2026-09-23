@@ -229,6 +229,27 @@ struct LeanView: View {
                     .zIndex(100)
             }
 
+            if let tab = store.selectedTab, tab.isZoomIndicatorVisible {
+                ZoomIndicatorView(store: store, zoom: tab.pageZoom)
+                    .padding(.top, zoomIndicatorTopPadding)
+                    .padding(.trailing, zoomIndicatorTrailingPadding)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity
+                                .combined(with: .scale(scale: 0.94))
+                                .combined(with: .offset(y: -4)),
+                            removal: .opacity
+                                .combined(with: .scale(scale: 0.96))
+                                .combined(with: .offset(y: -2))
+                        )
+                    )
+                    .animation(.spring(response: 0.22, dampingFraction: 0.82), value: tab.isZoomIndicatorVisible)
+                    .animation(.spring(response: 0.20, dampingFraction: 0.8), value: tab.pageZoom)
+                    .zIndex(120)
+                    .allowsHitTesting(false)
+            }
+
             // Inline URL editing dismiss is owned by the NSEvent mouse monitor
             // below (pass-through, no click swallowing), so no overlay here.
         }
@@ -365,6 +386,22 @@ struct LeanView: View {
 
     private var cardTrailingPadding: CGFloat {
         store.enableWindowBorder ? store.windowBorderWidth : 0
+    }
+
+    private var zoomIndicatorTopPadding: CGFloat {
+        if store.tabLayout == .top && isTopBarVisible {
+            let topBarHeight = store.scaled(store.enableWindowBorder ? 34 : 36)
+            let borderPadding = store.enableWindowBorder ? store.windowBorderWidth : 0
+            return topBarHeight + borderPadding + store.scaled(10)
+        } else {
+            let borderPadding = store.enableWindowBorder ? store.windowBorderWidth : 0
+            return borderPadding + store.scaled(12)
+        }
+    }
+
+    private var zoomIndicatorTrailingPadding: CGFloat {
+        let borderPadding = store.enableWindowBorder ? store.windowBorderWidth : 0
+        return borderPadding + store.scaled(14)
     }
 
     private var mainContentCard: some View {
@@ -580,6 +617,22 @@ struct LeanView: View {
                 }
             }
 
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if modifiers.contains(.control), !modifiers.contains(.command), !modifiers.contains(.option) {
+                if event.keyCode == 24 || event.keyCode == 69 {
+                    store.zoomIn()
+                    return nil
+                }
+                if event.keyCode == 27 || event.keyCode == 78 {
+                    store.zoomOut()
+                    return nil
+                }
+                if event.keyCode == 29 || event.keyCode == 82 {
+                    store.resetZoom()
+                    return nil
+                }
+            }
+
             // Check custom shortcuts
             for action in ShortcutAction.allCases {
                 if action == .dismiss || action == .stopLoading {
@@ -738,4 +791,59 @@ extension Notification.Name {
     static let showFind = Notification.Name("Lean.showFind")
     static let showSettings = Notification.Name("Lean.showSettings")
     static let toggleSidebar = Notification.Name("Lean.toggleSidebar")
+}
+
+// MARK: - Zoom Indicator HUD
+private struct ZoomIndicatorView: View {
+    @ObservedObject var store: LeanStore
+    let zoom: Double
+
+    private var percentageString: String {
+        "\(Int((zoom * 100).rounded()))%"
+    }
+
+    private var primaryColor: Color {
+        store.isDarkMode ? Color.white.opacity(0.96) : Color(white: 0.12)
+    }
+
+    private var secondaryColor: Color {
+        store.isDarkMode ? Color.white.opacity(0.60) : Color(white: 0.12).opacity(0.62)
+    }
+
+    var body: some View {
+        HStack(spacing: store.scaled(5)) {
+            Text("Zoom")
+                .font(store.bodyFont(size: 11))
+                .foregroundColor(secondaryColor)
+
+            Text(percentageString)
+                .font(store.headingFont(size: 11.5))
+                .foregroundColor(primaryColor)
+                .monospacedDigit()
+                .contentTransition(.numericText())
+        }
+        .padding(.horizontal, store.scaled(11))
+        .padding(.vertical, store.scaled(6))
+        .background(
+            VisualEffectBlur(material: .hudWindow, blendingMode: .withinWindow)
+                .clipShape(Capsule())
+        )
+        .background(
+            (store.isDarkMode ? Color.black.opacity(0.65) : Color.white.opacity(0.80))
+                .clipShape(Capsule())
+        )
+        .overlay(
+            Capsule()
+                .strokeBorder(
+                    store.isDarkMode ? Color.white.opacity(0.12) : Color.black.opacity(0.08),
+                    lineWidth: 0.75
+                )
+        )
+        .shadow(
+            color: Color.black.opacity(store.isDarkMode ? 0.28 : 0.08),
+            radius: 8,
+            x: 0,
+            y: 3
+        )
+    }
 }

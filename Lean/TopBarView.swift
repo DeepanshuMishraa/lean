@@ -257,20 +257,71 @@ private struct TopBarTabItem: View {
     let onClose: () -> Void
 
     @State private var isHovered = false
+    @State private var isCloseHovered = false
+    @State private var isHoverRevealed = false
     @State private var isFieldFocused = false
+    @State private var hoverWorkItem: DispatchWorkItem?
+    @State private var exitWorkItem: DispatchWorkItem?
 
     private var showURLBar: Bool {
-        isSelected && (isHovered || store.isInlineURLEditing || isFieldFocused)
+        isSelected && (isHoverRevealed || store.isInlineURLEditing || isFieldFocused)
     }
 
-    private var showCloseOnHover: Bool {
+    private var shouldShowClose: Bool {
         isHovered && !showURLBar
+    }
+
+    private func handleHoverChange(_ hovering: Bool) {
+        isHovered = hovering
+        hoverWorkItem?.cancel()
+        hoverWorkItem = nil
+        exitWorkItem?.cancel()
+        exitWorkItem = nil
+
+        guard isSelected else {
+            isHoverRevealed = false
+            return
+        }
+
+        if hovering {
+            if store.isInlineURLEditing || isFieldFocused {
+                isHoverRevealed = true
+                return
+            }
+            // In iconOnly mode, require an intentional dwell so accidental mouse sweeps don't trigger layout shifts
+            let dwellDelay: Double = store.tabDisplayMode == .iconOnly ? 0.22 : 0.16
+            let workItem = DispatchWorkItem {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                    isHoverRevealed = true
+                }
+            }
+            hoverWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + dwellDelay, execute: workItem)
+        } else {
+            if store.isInlineURLEditing || isFieldFocused {
+                // Keep open while user is editing or field is focused
+                return
+            }
+            let exitDelay: Double = store.tabDisplayMode == .iconOnly ? 0.14 : 0.08
+            let workItem = DispatchWorkItem {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                    isHoverRevealed = false
+                }
+            }
+            exitWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + exitDelay, execute: workItem)
+        }
     }
 
     var body: some View {
         Button(action: handleTap) {
             Group {
-                if showURLBar { Color.clear } else { tabContent }
+                if showURLBar {
+                    Color.clear
+                } else {
+                    tabContent
+                        .transition(.opacity)
+                }
             }
             .frame(
                 minWidth: showURLBar ? store.scaled(260) : nil,
@@ -309,11 +360,43 @@ private struct TopBarTabItem: View {
                     isFocusedBinding: $isFieldFocused,
                     onClose: onClose
                 )
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .leading)),
+                        removal: .opacity.combined(with: .scale(scale: 0.98, anchor: .leading))
+                    )
+                )
+            }
+        }
+        .overlay(alignment: .trailing) {
+            // Sibling overlay for textOnly and hybrid modes
+            if shouldShowClose && store.tabDisplayMode != .iconOnly {
+                closeButton
+                    .padding(.trailing, 6)
+                    .transition(.opacity)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            // Sleek floating micro badge for iconOnly mode — never blocks tab selection
+            if shouldShowClose && store.tabDisplayMode == .iconOnly {
+                iconOnlyCloseBadge
+                    .offset(x: store.scaled(3), y: -store.scaled(3))
             }
         }
         .contentShape(Rectangle())
         .help(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
-        .onHover { isHovered = $0 }
+        .onHover { handleHoverChange($0) }
+        .onChange(of: isSelected) { _, selected in
+            if !selected {
+                hoverWorkItem?.cancel()
+                hoverWorkItem = nil
+                exitWorkItem?.cancel()
+                exitWorkItem = nil
+                isHoverRevealed = false
+            }
+        }
+        .animation(.spring(response: 0.30, dampingFraction: 0.82), value: showURLBar)
+        .zIndex(isHovered ? 15 : (isSelected ? 10 : 1))
         .contextMenu {
             Button("Close Tab", action: onClose)
             Button("Reload") { tab.reload() }
@@ -324,60 +407,29 @@ private struct TopBarTabItem: View {
                 Button("Forward") { tab.goForward() }
             }
         }
-        .overlay(alignment: .trailing) {
-            // Sibling overlay, NOT nested inside the select Button label,
-            // so both Buttons hit-test independently with stable frames.
-            if shouldShowClose && store.tabDisplayMode != .iconOnly {
-                closeButton
-                    .padding(.trailing, 6)
-            }
-        }
-        .overlay(alignment: .center) {
-            // Icon-only close replaces the favicon in place. Centered sibling overlay for the same nested-Button reason: a close
-            // Button inside iconOnlyContent (the select Button's label)
-            // would never fire — the outer Button consumes the click.
-            if shouldShowClose && store.tabDisplayMode == .iconOnly {
-                closeButton
-            }
-        }
-    }
-
-    private var shouldShowClose: Bool {
-        switch store.tabDisplayMode {
-        case .textOnly, .hybrid:
-            return isHovered && !showURLBar
-        case .iconOnly:
-            return showCloseOnHover
-        }
     }
 
     private func handleTap() {
         if !isSelected {
             onSelect()
         } else if !store.isInlineURLEditing {
-            store.isInlineURLEditing = true
+            hoverWorkItem?.cancel()
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                isHoverRevealed = true
+                store.isInlineURLEditing = true
+            }
         }
     }
 
     @ViewBuilder
     private var tabContent: some View {
-        if showURLBar {
-            InlineURLBar(
-                tab: tab,
-                store: store,
-                autoFocus: store.isInlineURLEditing,
-                isFocusedBinding: $isFieldFocused,
-                onClose: onClose
-            )
-        } else {
-            switch store.tabDisplayMode {
-            case .textOnly:
-                textOnlyContent
-            case .iconOnly:
-                iconOnlyContent
-            case .hybrid:
-                hybridContent
-            }
+        switch store.tabDisplayMode {
+        case .textOnly:
+            textOnlyContent
+        case .iconOnly:
+            iconOnlyContent
+        case .hybrid:
+            hybridContent
         }
     }
 
@@ -404,12 +456,10 @@ private struct TopBarTabItem: View {
 
     @ViewBuilder
     private var iconOnlyContent: some View {
-        // Fixed centered box: no HStack spacing artifact, no reserved
-        // gap, no width shift on hover. The favicon hides when the
-        // centered sibling overlay shows the close button in its place.
+        // Fixed centered box: favicon remains 100% visible on hover so the tab's
+        // identity is never lost, and the tab body remains clickable for selection.
         TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
-            .opacity(shouldShowClose ? 0 : 1)
-            .frame(width: store.scaled(28), height: store.scaled(26))
+            .frame(width: store.scaled(28), height: store.scaled(store.enableWindowBorder ? 27 : 26))
     }
 
     @ViewBuilder
@@ -450,6 +500,47 @@ private struct TopBarTabItem: View {
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
+    }
+
+    private var iconOnlyCloseBadge: some View {
+        Button(action: onClose) {
+            Ph.x.bold
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: store.scaled(6), height: store.scaled(6))
+                .foregroundColor(
+                    isCloseHovered
+                        ? (store.adaptiveTheme.effectiveIsDark ? Color.white : Color.black)
+                        : (store.adaptiveTheme.effectiveIsDark ? Color.white.opacity(0.70) : Color.black.opacity(0.60))
+                )
+                .frame(width: store.scaled(13), height: store.scaled(13))
+                .background(
+                    isCloseHovered
+                        ? (store.adaptiveTheme.effectiveIsDark ? Color(white: 0.28) : Color(white: 0.88))
+                        : (store.adaptiveTheme.effectiveIsDark ? Color(white: 0.16) : Color.white),
+                    in: Circle()
+                )
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            store.adaptiveTheme.effectiveIsDark ? Color.white.opacity(0.20) : Color.black.opacity(0.12),
+                            lineWidth: 0.75
+                        )
+                )
+                .shadow(
+                    color: Color.black.opacity(store.adaptiveTheme.effectiveIsDark ? 0.35 : 0.12),
+                    radius: 2,
+                    x: 0,
+                    y: 1
+                )
+                .scaleEffect(isCloseHovered ? 1.08 : 1.0)
+                .animation(.easeOut(duration: 0.10), value: isCloseHovered)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isCloseHovered = $0 }
+        .help("Close Tab (⌘W)")
+        .transition(.scale(scale: 0.5).combined(with: .opacity))
     }
 }
 

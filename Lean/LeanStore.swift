@@ -677,6 +677,18 @@ final class LeanStore: ObservableObject {
         tabs.first { $0.id == selectedID }
     }
 
+    func zoomIn() {
+        selectedTab?.zoomIn()
+    }
+
+    func zoomOut() {
+        selectedTab?.zoomOut()
+    }
+
+    func resetZoom() {
+        selectedTab?.resetZoom()
+    }
+
     func openURL(_ url: URL) {
         if let tab = selectedTab, tab.url == nil {
             tab.load(url)

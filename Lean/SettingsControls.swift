@@ -937,9 +937,10 @@ struct SettingsValueSlider: View {
             .accessibilityLabel(label)
             .accessibilityValue("\(value)\(valueSuffix)")
             .accessibilityAdjustableAction { direction in
+                let snappedValue = Int((Double(value) / Double(step)).rounded()) * step
                 switch direction {
-                case .increment: value = min(range.upperBound, value + step)
-                case .decrement: value = max(range.lowerBound, value - step)
+                case .increment: value = min(range.upperBound, snappedValue + step)
+                case .decrement: value = max(range.lowerBound, snappedValue - step)
                 @unknown default: break
                 }
             }

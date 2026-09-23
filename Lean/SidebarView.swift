@@ -714,13 +714,47 @@ private struct TrafficLightButton: View {
 // fall through to this view so the window stays draggable without the
 // window-wide isMovableByWindowBackground behavior that steals button clicks)
 struct WindowDragView: NSViewRepresentable {
+    var onHover: ((Bool) -> Void)? = nil
+
     func makeNSView(context: Context) -> DragNSView {
-        DragNSView()
+        DragNSView(onHover: onHover)
     }
 
-    func updateNSView(_ nsView: DragNSView, context: Context) {}
+    func updateNSView(_ nsView: DragNSView, context: Context) {
+        nsView.onHover = onHover
+    }
 
     class DragNSView: NSView {
+        var onHover: ((Bool) -> Void)?
+
+        init(onHover: ((Bool) -> Void)?) {
+            self.onHover = onHover
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) {
+            super.init(coder: coder)
+        }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(
+                rect: .zero,
+                options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                owner: self,
+                userInfo: nil
+            ))
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            onHover?(true)
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            onHover?(false)
+        }
+
         override func mouseDown(with event: NSEvent) {
             if event.clickCount == 2 {
                 window?.zoom(nil)

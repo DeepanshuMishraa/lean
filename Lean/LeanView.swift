@@ -142,30 +142,26 @@ struct LeanView: View {
 
             // Left Sidebar Hover Detection Zone (invisible trigger active at left edge when sidebar is hidden)
             if store.tabLayout == .sidebar && !isSidebarEffectivelyVisible {
-                Color.clear
-                    .frame(width: 18)
-                    .contentShape(Rectangle())
-                    .background(WindowDragView())
-                    .onHover { hovering in
-                        if hovering {
-                            setSidebarHoverState(isHovering: true)
-                        }
+                WindowDragView { hovering in
+                    if hovering {
+                        setSidebarHoverState(isHovering: true)
                     }
-                    .zIndex(50)
+                }
+                .frame(width: 18)
+                .frame(maxHeight: .infinity)
+                .zIndex(50)
             }
 
             // Top Hover Detection Zone (invisible trigger active at top edge in Zen mode when top bar is hidden)
             if store.enableZenMode && store.tabLayout == .top && !isTopBarVisible {
-                Color.clear
-                    .frame(height: 28)
-                    .contentShape(Rectangle())
-                    .background(WindowDragView())
-                    .onHover { hovering in
-                        if hovering {
-                            setZenHoverState(isHoveringTop: true)
-                        }
+                WindowDragView { hovering in
+                    if hovering {
+                        setZenHoverState(isHoveringTop: true)
                     }
-                    .zIndex(50)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 28)
+                .zIndex(50)
             }
             // Floating Omnibar Overlay (Cmd+T / Cmd+L / Active Tab Pill Click)
             // NOTE: no full-screen tap catcher here on purpose. Outside-click

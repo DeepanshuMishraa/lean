@@ -207,10 +207,10 @@ function Home() {
             A quiet browser for your Mac.
           </h1>
           <p className="mt-4 text-xs sm:text-sm text-[#555555] leading-relaxed">
-            Lean is a personal experiment, not a daily driver: the WebKit
-            already on your Mac, wrapped in just enough native UI to browse. No
-            bundled engine, no daemons, no accounts — a clean, minimal window
-            onto the web.
+            Lean is a quiet, native browser for your Mac: the WebKit already on
+            your machine, wrapped in just enough UI to browse. No bundled
+            engine, no daemons, no accounts — set it as your default, bring your
+            data over in one click, and stay out of the way.
           </p>
 
           {/* Download Action Button */}
@@ -318,6 +318,23 @@ function Home() {
               <span>·</span>
               <span>Zero telemetry</span>
             </div>
+          </div>
+        </div>
+
+        {/* New in 0.1.2 */}
+        <div className="mt-4 p-5 rounded-2xl bg-[#fafafa] border border-[#eeeeee]">
+          <div className="text-[11px] text-[#888888] uppercase tracking-wider">
+            New in 0.1.2
+          </div>
+          <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 text-xs text-[#333333]">
+            <span>Set Lean as your default browser</span>
+            <span className="hidden sm:inline text-[#cccccc]">·</span>
+            <span>
+              Bring bookmarks, history, passwords, and extensions over in one
+              click
+            </span>
+            <span className="hidden sm:inline text-[#cccccc]">·</span>
+            <span>Extensions with per-install reviews</span>
           </div>
         </div>
 

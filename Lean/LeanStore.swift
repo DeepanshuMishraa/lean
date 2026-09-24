@@ -642,9 +642,14 @@ final class LeanStore: ObservableObject {
             self.hiddenToolbarItems = []
         }
 
-        // FOR NOW: Always show onboarding on launch until requested to revert
-        self.hasCompletedOnboarding = false
-        self.isOnboardingPresented = true
+        // Onboarding shows exactly once: only when it was never completed.
+        // (During testing this was forced on every launch; that override
+        // is gone — a completed onboarding stays completed.)
+        let completedOnboarding = databaseValue(self.database, Bool.self, forKey: Self.hasCompletedOnboardingKey)
+            ?? UserDefaults.standard.object(forKey: Self.hasCompletedOnboardingKey) as? Bool
+            ?? false
+        self.hasCompletedOnboarding = completedOnboarding
+        self.isOnboardingPresented = !completedOnboarding
 
         deduplicateHistory()
         saveHistory()

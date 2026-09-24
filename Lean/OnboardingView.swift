@@ -33,6 +33,18 @@ enum OnboardingStep: Int, CaseIterable {
     }
 }
 
+// MARK: - Onboarding Import Phase
+/// Where the importing step stands. `.working` is the progress view;
+/// everything else replaces it with the honest state: what is needed, what
+/// failed, or what actually landed.
+enum OnboardingImportPhase: Equatable {
+    case working
+    case needsFolder
+    case safariNotice
+    case failed(String)
+    case finished(summary: String)
+}
+
 // MARK: - Supported Browser Option
 struct OnboardingBrowser: Identifiable, Equatable {
     let id: String
@@ -99,7 +111,11 @@ struct OnboardingView: View {
     @State private var importBookmarks = true
     @State private var importHistory = true
     @State private var importPasswords = true
-    @State private var importTabs = false
+
+    // Import run state — everything here is real: no sample counts, no
+    // simulated progress. Either the data lands in Lean or the step says why.
+    @State private var importPhase: OnboardingImportPhase = .working
+    @State private var importStartedToken = UUID()
 
     // Progress State
     @State private var importProgress: Double = 0.0
@@ -482,7 +498,7 @@ struct OnboardingView: View {
                     .font(store.headingFont(size: 24))
                     .foregroundColor(primaryText)
 
-                Text("Select your previous browser to transfer bookmarks and history.")
+                Text("Select your previous browser to transfer bookmarks, history, and passwords.")
                     .font(store.bodyFont(size: 13))
                     .foregroundColor(secondaryText)
             }
@@ -616,17 +632,8 @@ struct OnboardingView: View {
                 checklistRow(
                     icon: LeanIcon.shieldCheck,
                     title: "Saved Passwords",
-                    subtitle: "Migrated into your private macOS keychain",
+                    subtitle: "Decrypted from the browser and migrated into your private macOS keychain",
                     isOn: $importPasswords
-                )
-
-                Rectangle().fill(cardBorder).frame(height: 1).padding(.leading, 48)
-
-                checklistRow(
-                    icon: LeanIcon.tabs,
-                    title: "Open Tabs",
-                    subtitle: "Restore current windows into Lean tabs",
-                    isOn: $importTabs
                 )
             }
             .background(
@@ -644,7 +651,6 @@ struct OnboardingView: View {
                     importBookmarks = true
                     importHistory = true
                     importPasswords = true
-                    importTabs = true
                 }
                 .font(store.bodyFont(size: 11))
                 .foregroundColor(primaryText)
@@ -656,7 +662,6 @@ struct OnboardingView: View {
                     importBookmarks = true
                     importHistory = true
                     importPasswords = false
-                    importTabs = false
                 }
                 .font(store.bodyFont(size: 11))
                 .foregroundColor(secondaryText)
@@ -714,8 +719,103 @@ struct OnboardingView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Step 5: Interactive Progress
+    // MARK: - Step 5: Importing (real data, real counts)
     private var importingStepView: some View {
+        Group {
+            switch importPhase {
+            case .working:
+                importingProgressView
+            case .needsFolder:
+                importAccessView(
+                    title: "One permission needed.",
+                    detail: "Lean is sandboxed, so it can't open \(selectedBrowser.name)'s data on its own. Point it at the \(selectedBrowser.name) data folder and it finds every profile inside.\n\nIt's usually at \(selectedBrowser.source?.grantDirectory.path ?? "your browser's data folder") — in the panel, press ⌘⇧G and paste that in, since Library stays hidden.",
+                    primaryTitle: "Grant Access…",
+                    primary: { grantBrowserFolder() },
+                    secondaryTitle: "Skip Import",
+                    secondary: { advanceToWelcome() }
+                )
+            case .safariNotice:
+                importAccessView(
+                    title: "Safari can't share automatically.",
+                    detail: "Apple keeps Safari's data to itself. Export it first (Safari > File > Export > Bookmarks…), then bring the file in through Settings > Import Data.",
+                    primaryTitle: "Continue",
+                    primary: { advanceToWelcome() },
+                    secondaryTitle: nil,
+                    secondary: nil
+                )
+            case .failed(let reason):
+                importAccessView(
+                    title: "That didn't work.",
+                    detail: reason,
+                    primaryTitle: "Try Again",
+                    primary: { restartImport() },
+                    secondaryTitle: "Skip Import",
+                    secondary: { advanceToWelcome() }
+                )
+            case .finished(let summary):
+                importAccessView(
+                    title: "Everything's in.",
+                    detail: summary,
+                    primaryTitle: "Continue",
+                    primary: { advanceToWelcome() },
+                    secondaryTitle: nil,
+                    secondary: nil
+                )
+            }
+        }
+        .padding(.horizontal, 32)
+        .onAppear {
+            runImportProcess()
+        }
+    }
+
+    /// The access/notice/failure/finished card: same canvas as the progress
+    /// view so the step never jumps around.
+    private func importAccessView(
+        title: String,
+        detail: String,
+        primaryTitle: String,
+        primary: @escaping () -> Void,
+        secondaryTitle: String?,
+        secondary: (() -> Void)?
+    ) -> some View {
+        VStack(spacing: 26) {
+            Spacer()
+
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(store.headingFont(size: 20))
+                    .foregroundColor(primaryText)
+
+                Text(detail)
+                    .font(store.bodyFont(size: 12.5))
+                    .foregroundColor(secondaryText)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+                    .frame(maxWidth: 420)
+            }
+
+            HStack(spacing: 10) {
+                if let secondaryTitle, let secondary {
+                    Button(secondaryTitle, action: secondary)
+                        .font(store.bodyFont(size: 12))
+                        .foregroundColor(secondaryText)
+                        .buttonStyle(.plain)
+                }
+                Button(primaryTitle, action: primary)
+                    .font(store.headingFont(size: 12.5))
+                    .foregroundColor(isDark ? .black : .white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(primaryText))
+                    .buttonStyle(.plain)
+            }
+
+            Spacer()
+        }
+    }
+
+    private var importingProgressView: some View {
         VStack(spacing: 26) {
             Spacer()
 
@@ -768,60 +868,219 @@ struct OnboardingView: View {
 
             Spacer()
         }
-        .padding(.horizontal, 32)
-        .onAppear {
-            runImportProcess()
+    }
+
+    /// The needsFolder card's action: open the panel now rather than
+    /// waiting. A grant restarts the run (the remembered bookmark feeds
+    /// it); a dismissal leaves the card where it is.
+    private func grantBrowserFolder() {
+        guard let source = selectedBrowser.source else { return }
+        Task { @MainActor in
+            guard await requestImportFolder(for: source) != nil else { return }
+            restartImport()
+        }
+    }
+
+    private func restartImport() {
+        importProgress = 0.05
+        importStatus = "Connecting to profile..."
+        importedBookmarksCount = 0
+        importedHistoryCount = 0
+        importPhase = .working
+        importStartedToken = UUID()
+        runImportProcess()
+    }
+
+    private func advanceToWelcome() {
+        navigationDirection = 1
+        withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+            currentStep = .welcome
         }
     }
 
     private func runImportProcess() {
+        let token = importStartedToken
+        guard importPhase == .working else { return }
+
+        // Nothing to read: a clean slate, or a browser that shares nothing.
+        if selectedBrowser.isFreshStart {
+            importStatus = "Starting fresh."
+            importProgress = 1.0
+            Task {
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                guard token == importStartedToken else { return }
+                advanceToWelcome()
+            }
+            return
+        }
+        guard selectedBrowser.source != nil else {
+            importPhase = .safariNotice
+            return
+        }
+
         importProgress = 0.05
         importStatus = "Connecting to profile..."
 
         Task {
-            // Step 1: Scan
-            try? await Task.sleep(nanoseconds: 350_000_000)
+            // 1. Locate the data and scan it: the browser's own folder when
+            // it opens directly, otherwise a remembered or freshly granted
+            // folder. One scan — its preview feeds the import below.
+            importStatus = "Reading bookmarks & history..."
             importProgress = 0.30
-            importStatus = "Reading bookmarks & favorites..."
-
-            if let source = selectedBrowser.source {
-                let defaultUrl = source.userDataDirectory
-                if FileManager.default.fileExists(atPath: defaultUrl.path) {
-                    if let preview = try? BrowserDataImporter.readProfiles(at: defaultUrl) {
-                        if importBookmarks && !preview.bookmarks.isEmpty {
-                            let res = store.importBrowserData(BrowserImportPreview(bookmarks: preview.bookmarks, history: []))
-                            importedBookmarksCount = res.bookmarks
-                        }
-                        if importHistory && !preview.history.isEmpty {
-                            let res = store.importBrowserData(BrowserImportPreview(bookmarks: [], history: preview.history))
-                            importedHistoryCount = res.history
-                        }
+            let scan = await resolveImportScan()
+            guard token == importStartedToken else { return }
+            switch scan {
+            case .cancelled:
+                // The user dismissed the panel; the step explains and waits.
+                importPhase = .needsFolder
+                return
+            case .failed(let reason):
+                importPhase = .failed(reason)
+                return
+            case .ready(let folder, let preview):
+                // 2. Import what the checklist asked for — real counts only.
+                importStatus = "Moving it into Lean..."
+                importProgress = 0.65
+                var landed: [String] = []
+                if importBookmarks, !preview.bookmarks.isEmpty {
+                    let res = store.importBrowserData(BrowserImportPreview(bookmarks: preview.bookmarks, history: []))
+                    importedBookmarksCount = res.bookmarks
+                    if res.bookmarks > 0 { landed.append("\(res.bookmarks) bookmarks") }
+                }
+                if importHistory, !preview.history.isEmpty {
+                    let res = store.importBrowserData(BrowserImportPreview(bookmarks: [], history: preview.history))
+                    importedHistoryCount = res.history
+                    if res.history > 0 { landed.append("\(res.history) history entries") }
+                }
+                if importPasswords, let source = selectedBrowser.source, source.hasLoginData {
+                    importStatus = "Unlocking saved passwords..."
+                    if let passwordLine = await importOnboardingPasswords(at: folder, source: source) {
+                        landed.append(passwordLine)
+                    } else {
+                        landed.append("passwords skipped (quit \(selectedBrowser.name) and allow the keychain prompt, then retry from Settings > Import Data)")
                     }
                 }
-            }
+                guard token == importStartedToken else { return }
 
-            if importedBookmarksCount == 0 && importBookmarks {
-                importedBookmarksCount = 142
+                importProgress = 1.0
+                if landed.isEmpty {
+                    importPhase = .failed("Nothing to bring over — no bookmarks, history, or passwords were found in \(selectedBrowser.name)'s profiles. You can import an export file later in Settings > Import Data.")
+                } else {
+                    importStatus = "Complete."
+                    var summary = "From \(selectedBrowser.name): \(landed.joined(separator: ", "))."
+                    if preview.historyIncomplete, importHistory {
+                        summary += " History may have gaps — quit \(selectedBrowser.name) and re-import from Settings to fill them."
+                    }
+                    try? await Task.sleep(nanoseconds: 450_000_000)
+                    guard token == importStartedToken else { return }
+                    importPhase = .finished(summary: summary)
+                    try? await Task.sleep(nanoseconds: 350_000_000)
+                    guard token == importStartedToken else { return }
+                    advanceToWelcome()
+                }
             }
+        }
+    }
 
-            // Step 2: History
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            importProgress = 0.65
-            importStatus = "Indexing history for search..."
-            if importedHistoryCount == 0 && importHistory {
-                importedHistoryCount = 850
+    private enum ImportScan {
+        case ready(folder: URL, preview: BrowserImportPreview)
+        case cancelled
+        case failed(String)
+    }
+
+    /// The folder to read plus its scan: the browser's own data folder when
+    /// it opens directly, otherwise a remembered grant, otherwise whatever
+    /// the user picks in the panel (remembered for next time — the same
+    /// bookmark Settings uses, so granting once covers both).
+    ///
+    /// A remembered or granted folder that scans empty is forgotten on the
+    /// spot: keeping it would trap Try Again in a loop on the same wrong
+    /// folder with no way to pick another.
+    private func resolveImportScan() async -> ImportScan {
+        guard let source = selectedBrowser.source else { return .cancelled }
+        let direct = source.userDataDirectory
+        if FileManager.default.fileExists(atPath: direct.path),
+           let preview = await scanProfiles(at: direct),
+           !preview.bookmarks.isEmpty || !preview.history.isEmpty {
+            return .ready(folder: direct, preview: preview)
+        }
+        if let remembered = rememberedImportFolder(for: source) {
+            if let preview = await scanProfiles(at: remembered),
+               !preview.bookmarks.isEmpty || !preview.history.isEmpty {
+                return .ready(folder: remembered, preview: preview)
             }
+            forgetImportFolder(for: source)
+        }
+        guard let granted = await requestImportFolder(for: source) else { return .cancelled }
+        guard let preview = await scanProfiles(at: granted) else {
+            forgetImportFolder(for: source)
+            return .failed("Lean couldn't read anything in \(granted.path). Pick the \(source.title) data folder — usually \(source.grantDirectory.path) — and try again.")
+        }
+        guard !preview.bookmarks.isEmpty || !preview.history.isEmpty else {
+            forgetImportFolder(for: source)
+            return .failed("\(granted.path) has no \(source.title) profiles in it — no bookmarks or history to bring over.")
+        }
+        return .ready(folder: granted, preview: preview)
+    }
 
-            // Step 3: Finalizing
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            importProgress = 1.0
-            importStatus = "Complete."
+    private func scanProfiles(at folder: URL) async -> BrowserImportPreview? {
+        let source = selectedBrowser.source
+        return await Task.detached(priority: .userInitiated) {
+            let didAccess = folder.startAccessingSecurityScopedResource()
+            defer { if didAccess { folder.stopAccessingSecurityScopedResource() } }
+            return try? BrowserDataImporter.readProfiles(at: folder, source: source)
+        }.value
+    }
 
-            try? await Task.sleep(nanoseconds: 450_000_000)
-            navigationDirection = 1
-            withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
-                currentStep = .welcome
-            }
+    private func rememberedImportFolder(for source: BrowserImportSource) -> URL? {
+        guard let data = UserDefaults.standard.data(forKey: source.bookmarkKey) else { return nil }
+        var isStale = false
+        guard let url = try? URL(resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale),
+              FileManager.default.fileExists(atPath: url.path) else {
+            UserDefaults.standard.removeObject(forKey: source.bookmarkKey)
+            return nil
+        }
+        return url
+    }
+
+    private func forgetImportFolder(for source: BrowserImportSource) {
+        UserDefaults.standard.removeObject(forKey: source.bookmarkKey)
+    }
+
+    @MainActor
+    private func requestImportFolder(for source: BrowserImportSource) async -> URL? {
+        let panel = NSOpenPanel()
+        panel.title = "Allow access to \(source.title) data"
+        panel.message = "Select the \(source.title) data folder so Lean can import your bookmarks, history, and passwords. Profiles are found automatically. Usually \(source.grantDirectory.path) — press ⌘⇧G and paste that in, since Library stays hidden."
+        panel.prompt = "Allow Access"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = source.grantDirectory
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        if let bookmark = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
+            UserDefaults.standard.set(bookmark, forKey: source.bookmarkKey)
+        }
+        return url
+    }
+
+    /// Passwords during onboarding. Returns a summary line for the finished
+    /// card, or nil when there was nothing (or consent) to report — the
+    /// failure already names the next step, so a denial stays quiet here and
+    /// the CSV route in Settings remains.
+    private func importOnboardingPasswords(at folder: URL, source: BrowserImportSource) async -> String? {
+        do {
+            let credentials = try await Task.detached(priority: .userInitiated) {
+                let didAccess = folder.startAccessingSecurityScopedResource()
+                defer { if didAccess { folder.stopAccessingSecurityScopedResource() } }
+                return try BrowserDataImporter.readPasswords(at: folder, source: source)
+            }.value
+            guard !credentials.isEmpty else { return nil }
+            let saved = BrowserDataImporter.saveCredentials(credentials)
+            guard saved.saved > 0 else { return nil }
+            return "\(saved.saved) passwords"
+        } catch {
+            return nil
         }
     }
 
@@ -959,6 +1218,16 @@ struct OnboardingView: View {
         navigationDirection = 1
         withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
             if let next = OnboardingStep(rawValue: currentStep.rawValue + 1) {
+                // Entering the importing step starts a fresh run; re-entering
+                // it (Back, then Continue) must not resume a stale one.
+                if next == .importing {
+                    importPhase = .working
+                    importProgress = 0.05
+                    importStatus = "Connecting to profile..."
+                    importedBookmarksCount = 0
+                    importedHistoryCount = 0
+                    importStartedToken = UUID()
+                }
                 currentStep = next
             } else {
                 store.completeOnboarding()

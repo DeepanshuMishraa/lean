@@ -3583,7 +3583,7 @@ private struct ExtensionsSettingsSection: View {
 }
 
 @available(macOS 15.4, *)
-private struct ExtensionInstallReviewSheet: View {
+struct ExtensionInstallReviewSheet: View {
     let review: BrowserExtensionManager.InstallationReview
     let isDark: Bool
     let uiFont: LeanFont
@@ -3862,6 +3862,12 @@ private struct ImportDataSection: View {
     @State private var browserImportPreview: BrowserImportPreview?
     @State private var importBookmarks = true
     @State private var importHistory = true
+    @State private var importPasswords = true
+    @State private var importExtensions = true
+    @State private var foundExtensions: [FoundExtension] = []
+    @State private var extensionImportRequest: [FoundExtension]?
+    @State private var extensionImportResult: String?
+    @State private var grantedFolderURL: URL?
     @State private var browserImportStage: BrowserImportStage = .access
     @State private var showsBrowserImportDialog = false
     @State private var isReadingBrowserData = false
@@ -3891,6 +3897,10 @@ private struct ImportDataSection: View {
                                             profilePreview = nil
                                             browserImportPreview = nil
                                             browserImportError = nil
+                                            grantedFolderURL = nil
+                                            foundExtensions = []
+                                            extensionImportRequest = nil
+                                            extensionImportResult = nil
                                             error = nil
                                         }
                                     }
@@ -4048,6 +4058,21 @@ private struct ImportDataSection: View {
             } else if let message {
                 Text(message).font(store.leanUIFont.font(size: 11.5)).foregroundColor(secondaryText)
             }
+            if let extensionImportResult {
+                HStack(spacing: 10) {
+                    Text(extensionImportResult).font(store.leanUIFont.font(size: 11.5)).foregroundColor(secondaryText)
+                    Spacer(minLength: 8)
+                    SettingsActionButton("Dismiss", isDark: store.isDarkMode) { self.extensionImportResult = nil }
+                }
+            }
+            if #available(macOS 15.4, *) {
+                ExtensionImportReviewHost(
+                    request: $extensionImportRequest,
+                    result: $extensionImportResult,
+                    isDark: store.isDarkMode,
+                    uiFont: store.leanUIFont
+                )
+            }
         }
         .sheet(isPresented: $showsBrowserImportDialog) {
             BrowserImportProgressDialog(
@@ -4059,9 +4084,17 @@ private struct ImportDataSection: View {
                 preview: $browserImportPreview,
                 includeBookmarks: $importBookmarks,
                 includeHistory: $importHistory,
+                includePasswords: $importPasswords,
+                includeExtensions: $importExtensions,
                 errorMessage: $browserImportError,
                 resultMessage: $browserImportResult,
                 availableHistorySlots: max(0, 200 - store.historyItems.count),
+                sourceHasLoginData: selectedBrowser.source?.hasLoginData == true,
+                extensionCount: foundExtensions.count,
+                supportsExtensionImport: {
+                    if #available(macOS 15.4, *) { return true }
+                    return false
+                }(),
                 chooseFolder: {
                     if let source = selectedBrowser.source {
                         chooseBrowserDataFolder(source: source)
@@ -4080,6 +4113,8 @@ private struct ImportDataSection: View {
     private func descriptionText(for browser: InstalledImportBrowser) -> String {
         if browser.id == "safari" {
             return "Transfer bookmarks from Safari. Export your bookmarks via Safari > File > Export > Bookmarks, then select the file to transfer."
+        } else if browser.id == "arc" {
+            return "Automatic migration. Lean reads your Arc sidebar tabs, history, and passwords with one click — grant the Arc folder itself, not User Data."
         } else {
             return "Automatic migration. Lean discovers your \(browser.name) profile to transfer bookmarks, folders, and history with one click."
         }
@@ -4151,16 +4186,23 @@ private struct ImportDataSection: View {
     private func startBrowserScan(at url: URL) {
         browserImportStage = .scanning
         isReadingBrowserData = true
+        grantedFolderURL = url
+        foundExtensions = []
+        let source = selectedBrowser.source
         Task {
             do {
-                let preview = try await Task.detached(priority: .userInitiated) {
+                let (preview, extensions) = try await Task.detached(priority: .userInitiated) {
                     let didAccess = url.startAccessingSecurityScopedResource()
                     defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-                    return try BrowserDataImporter.readProfiles(at: url)
+                    let preview = try BrowserDataImporter.readProfiles(at: url, source: source)
+                    return (preview, ChromiumExtensions.scan(in: url))
                 }.value
                 browserImportPreview = preview
+                foundExtensions = extensions
                 importBookmarks = !preview.bookmarks.isEmpty
                 importHistory = !preview.history.isEmpty
+                importPasswords = selectedBrowser.source?.hasLoginData == true
+                importExtensions = !extensions.isEmpty
                 browserImportStage = .selection
             } catch {
                 browserImportError = error.localizedDescription
@@ -4173,30 +4215,78 @@ private struct ImportDataSection: View {
     private func importSelectedBrowserData() {
         guard let preview = browserImportPreview else { return }
         browserImportStage = .importing
+        let includeBookmarks = importBookmarks
+        let includeHistory = importHistory
+        let includePasswords = importPasswords
+        let includeExtensions = importExtensions
+        let extensionsToReview = foundExtensions
+        let folder = grantedFolderURL
+        let source = selectedBrowser.source
         Task {
             await Task.yield()
             let selected = BrowserImportPreview(
-                bookmarks: importBookmarks ? preview.bookmarks : [],
-                history: importHistory ? preview.history : []
+                bookmarks: includeBookmarks ? preview.bookmarks : [],
+                history: includeHistory ? preview.history : []
             )
             let imported = store.importBrowserData(selected)
-            let result = "Imported \(imported.bookmarks) bookmarks and \(imported.history) history entries."
+            var parts: [String] = []
+            if includeBookmarks { parts.append("\(imported.bookmarks) bookmarks") }
+            if includeHistory { parts.append("\(imported.history) history entries") }
+            if includePasswords, let folder, let source, source.hasLoginData {
+                parts.append(importPasswordsFromBrowser(at: folder, source: source))
+            }
+            let gapsSuffix = (preview.historyIncomplete && includeHistory ? " History may have gaps — quit \(source?.title ?? "the browser") and re-import to fill them." : "")
+            let reviewingExtensions = includeExtensions && !extensionsToReview.isEmpty
+            let result: String
+            if parts.isEmpty {
+                result = reviewingExtensions
+                    ? "Now reviewing extensions — bookmarks, history and passwords had nothing selected."
+                    : "Nothing was selected to import."
+            } else {
+                result = "Imported \(parts.joined(separator: ", "))." + gapsSuffix
+            }
             browserImportResult = result
             message = result
             error = nil
             browserImportStage = .complete
+            // Extensions can't be granted silently: the dialog closes and
+            // each one gets its own permission review.
+            if includeExtensions, !extensionsToReview.isEmpty {
+                showsBrowserImportDialog = false
+                extensionImportResult = nil
+                extensionImportRequest = extensionsToReview
+            }
+        }
+    }
+
+    /// Passwords straight from the browser's Login Data — no CSV detour.
+    /// Returns a one-line summary for the result message; every failure mode
+    /// says what happened and what to do next.
+    private func importPasswordsFromBrowser(at folder: URL, source: BrowserImportSource) -> String {
+        let didAccess = folder.startAccessingSecurityScopedResource()
+        defer { if didAccess { folder.stopAccessingSecurityScopedResource() } }
+        do {
+            let credentials = try BrowserDataImporter.readPasswords(at: folder, source: source)
+            if credentials.isEmpty { return "no saved passwords found" }
+            let saved = BrowserDataImporter.saveCredentials(credentials)
+            if saved.saved == 0 { return "0 passwords (they were already in your keychain)" }
+            return "\(saved.saved) passwords"
+        } catch let passwordError as ChromiumPasswords.PasswordError {
+            return "no passwords (\(passwordError.localizedDescription))"
+        } catch {
+            return "no passwords (\(error.localizedDescription))"
         }
     }
 
     private func chooseBrowserDataFolder(source: BrowserImportSource) {
         let panel = NSOpenPanel()
         panel.title = "Allow access to \(source.title) data"
-        panel.message = "Select the browser data folder to import bookmarks and history. Lean finds profiles automatically."
+        panel.message = "Select the browser data folder to import bookmarks and history. Lean finds profiles automatically. Usually \(source.grantDirectory.path) — press ⌘⇧G and paste that in, since Library stays hidden."
         panel.prompt = "Allow Access"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.directoryURL = source.userDataDirectory
+        panel.directoryURL = source.grantDirectory
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let didAccess = url.startAccessingSecurityScopedResource()

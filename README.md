@@ -13,35 +13,34 @@ engine, no daemons, no accounts — a clean, minimal window onto the web.
 
 ## Known limitations
 
-> Status: Lean is a personal experiment, not a daily driver. It is
-> built to explore how quiet a browser can feel, and the gaps below
-> are the price of that scope. Most of them are fixable over time;
-> they are listed here so the current boundary is explicit.
+> Status: Lean is usable every day now — default-browser support, full
+> browser-data import (bookmarks, history, passwords), Keychain-backed
+> passwords, and extension support have all landed. What remains is
+> mostly WebKit hard boundaries and small rough edges.
 
-Lean is a thin wrapper around `WKWebView`, so anything WebKit or the
-missing browser chrome does not provide will not work. Verified by testing:
+What's left, verified by testing:
 
-- **"Continue with Google" on some sites still fails.** Popup-based
-  flows open as a tab and close themselves, so the handshake completes
-  where Google allows it. Google may still refuse non-Safari browsers
-  outright, and button flows depending on FedCM or third-party cookies
-  have no WebKit API to grant. Workaround: use the site's direct
-  email/password login, or finish that login in Safari.
-- **Some downloads never start.** Files served inline without
-  `Content-Disposition: attachment` or an `application/octet-stream`
-  type still render instead of downloading.
+- **Extensions mostly work, some might not.** Install from the Chrome
+  Web Store or unpacked, with permission grants. Extension toolbar
+  popups and tab/window APIs are not wired up, so anything depending
+  on those stays inert.
+- **DRM: FairPlay plays, Widevine doesn't.** FairPlay-protected video
+  works out of the box through WebKit. Widevine/PlayReady need a CDM
+  that only ships with Chromium, so Widevine-only players
+  (Netflix/Prime/Spotify web) stay dark — no app code can fix that
+  inside `WKWebView`.
+- **No passkeys, iCloud autofill, or Apple Pay.** Safari-only
+  integrations (Touch ID passkeys, iCloud Passwords autofill,
+  `ApplePaySession`) are unavailable in a third-party `WKWebView`.
+  Lean's own Keychain password fill (page menu, Touch ID) works fine.
+- **No web push notifications.**
 - **Client-certificate pages fail.** There is no certificate picker.
-- **No passkeys, autofill, or Apple Pay.** Safari-only integrations
-  (iCloud Passwords autofill, Touch ID passkeys, `ApplePaySession`) are
-  unavailable in a third-party `WKWebView`.
-- **No web push notifications.** WebKit extension support is available on
-  macOS 15.4 and later for installation, content scripts, and permissions.
-  Extension toolbar popups and tab/window APIs are not wired up.
-- **DRM video is limited.** Widevine does not exist on WebKit, and
-  high-resolution Netflix/Prime/Spotify playback is Safari-only.
+- **No private windows or profiles.**
 - **If a bank or SSO page breaks, try disabling ad blocking** in
   Settings before assuming anything else.
-- **No private windows or profiles.**
+
+Anything else you hit is likely a bug, not a boundary — file it with
+the version number (Settings → General) and steps to reproduce.
 
 ## Install a release
 
@@ -74,6 +73,15 @@ Only a paid Developer ID certificate plus notarization removes step 3.
 
 ## Features
 
+- Set Lean as the default browser (Settings → General); links from
+  other apps open in the current or a new tab
+- Import from Chrome, Arc, Dia, Helium, or Safari: bookmarks, history,
+  saved passwords, and extensions (decrypted locally from the browser,
+  never uploaded; Arc tabs come from its sidebar store, each extension
+  gets its own permission review before it runs)
+- Keychain-backed passwords with Touch ID fill and save prompts
+- Extension support on macOS 15.4+: Chrome Web Store and unpacked
+  installs, permission grants, content scripts
 - Horizontal tabs with keyboard switching and previews
 - Omnibar search, URL entry, history, and open-tab matching
 - Light, dark, and system themes

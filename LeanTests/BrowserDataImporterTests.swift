@@ -49,10 +49,111 @@ struct BrowserDataImporterTests {
         #expect(preview.history.first?.timestamp == Date(timeIntervalSince1970: 1_755_526_400))
     }
 
-    @Test("Helium import uses its macOS Chromium data directory")
-    func heliumDataDirectory() {
-        #expect(BrowserImportSource.helium.title == "Helium")
-        #expect(BrowserImportSource.helium.userDataDirectory.lastPathComponent == "net.imput.helium")
+    @Test("A locked History costs the history, not the bookmarks next to it")
+    func toleratesUnreadableHistory() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let bookmarks = #"{"roots":{"bookmark_bar":{"children":[{"type":"url","name":"Docs","url":"https://docs.example/"}]}}}"#
+        try Data(bookmarks.utf8).write(to: directory.appendingPathComponent("Bookmarks"))
+        try Data("not a database".utf8).write(to: directory.appendingPathComponent("History"))
+
+        let preview = try BrowserDataImporter.readProfile(at: directory)
+        #expect(preview.bookmarks.count == 1)
+        #expect(preview.history.isEmpty)
+        #expect(preview.historyIncomplete)
+    }
+
+    @Test("Corrupt History alone reports unreadable, not an empty profile")
+    func corruptHistoryOnly() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Data("not a database".utf8).write(to: directory.appendingPathComponent("History"))
+
+        #expect(throws: BrowserDataImporter.ImportError.unreadableHistory) {
+            try BrowserDataImporter.readProfile(at: directory)
+        }
+    }
+
+    @Test("One bad profile does not sink the profiles that read fine")
+    func isolatesFailingProfiles() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let good = root.appendingPathComponent("Default")
+        try FileManager.default.createDirectory(at: good, withIntermediateDirectories: true)
+        let bookmarks = #"{"roots":{"bookmark_bar":{"children":[{"type":"url","name":"Docs","url":"https://docs.example/"}]}}}"#
+        try Data(bookmarks.utf8).write(to: good.appendingPathComponent("Bookmarks"))
+        let bad = root.appendingPathComponent("Profile 1")
+        try FileManager.default.createDirectory(at: bad, withIntermediateDirectories: true)
+        try Data("not a database".utf8).write(to: bad.appendingPathComponent("History"))
+
+        let preview = try BrowserDataImporter.readProfiles(at: root)
+        #expect(preview.bookmarks.count == 1)
+        #expect(preview.historyIncomplete)
+    }
+
+    @Test("Display paths point at the real home, not the sandbox container")
+    func displayPaths() {
+        let path = BrowserImportSource.helium.displayDataDirectory.path
+        #expect(!path.contains("Containers"))
+        #expect(path.hasSuffix("Library/Application Support/net.imput.helium"))
+    }
+
+    @Test("Arc grant covers the parent holding the sidebar")
+    func arcGrantDirectory() {
+        #expect(BrowserImportSource.arc.grantDirectory.lastPathComponent == "Arc")
+        #expect(BrowserImportSource.chrome.grantDirectory.lastPathComponent == "Chrome")
+        #expect(BrowserImportSource.helium.grantDirectory.lastPathComponent == "net.imput.helium")
+    }
+
+    @Test("Arc sidebar tabs decode from the alternating items list")
+    func decodesArcSidebar() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let sidebar = """
+        {"sidebar": {"containers": [{"items": [
+            "id-1",
+            {"title": null, "childrenIds": [], "data": {"tab": {"savedURL": "https://example.com/pinned", "savedTitle": "Pinned Tab"}}},
+            "id-2",
+            {"title": "Named", "childrenIds": [], "data": {"tab": {"savedURL": "https://example.org/", "savedTitle": "Ignored"}}},
+            "id-3",
+            {"title": null, "childrenIds": [], "data": {"itemContainer": {"containerType": {}}}},
+            "id-4",
+            {"title": null, "childrenIds": [], "data": {"tab": {"savedURL": "ftp://files.example/x", "savedTitle": "Nope"}}}
+        ]}]}}
+        """
+        try Data(sidebar.utf8).write(to: directory.appendingPathComponent("StorableSidebar.json"))
+
+        let bookmarks = BrowserDataImporter.arcSidebarBookmarks(in: directory)
+        #expect(bookmarks.count == 2)
+        #expect(bookmarks[0].url.absoluteString == "https://example.com/pinned")
+        #expect(bookmarks[0].title == "Pinned Tab")
+        #expect(bookmarks[1].title == "Named")
+    }
+
+    @Test("Arc sidebar merges into profile scans without doubling")
+    func mergesArcSidebar() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let userData = root.appendingPathComponent("User Data/Default")
+        try FileManager.default.createDirectory(at: userData, withIntermediateDirectories: true)
+        let bookmarks = #"{"roots":{"bookmark_bar":{"children":[{"type":"url","name":"Docs","url":"https://docs.example/"}]}}}"#
+        try Data(bookmarks.utf8).write(to: userData.appendingPathComponent("Bookmarks"))
+        let sidebar = """
+        {"sidebar": {"containers": [{"items": [
+            "id-1",
+            {"title": null, "childrenIds": [], "data": {"tab": {"savedURL": "https://docs.example/", "savedTitle": "Same"}}},
+            "id-2",
+            {"title": null, "childrenIds": [], "data": {"tab": {"savedURL": "https://sidebar.example/", "savedTitle": "Sidebar Tab"}}}
+        ]}]}}
+        """
+        try Data(sidebar.utf8).write(to: root.appendingPathComponent("StorableSidebar.json"))
+
+        let preview = try BrowserDataImporter.readProfiles(at: root, source: .arc)
+        #expect(preview.bookmarks.count == 2)
+        #expect(preview.bookmarks.map(\.url.absoluteString).sorted() == ["https://docs.example/", "https://sidebar.example/"])
     }
 
     @Test("Browser data import discovers bookmarks across profiles")

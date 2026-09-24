@@ -27,6 +27,16 @@ struct PasswordCSVPreview {
 struct BrowserImportPreview: Sendable {
     let bookmarks: [ImportedBookmark]
     let history: [HistoryItem]
+    /// A History file existed but couldn't be read — usually the browser
+    /// still running and holding a lock. What did read is real; the history
+    /// may just have gaps. Surfaced, never silent.
+    let historyIncomplete: Bool
+
+    init(bookmarks: [ImportedBookmark], history: [HistoryItem], historyIncomplete: Bool = false) {
+        self.bookmarks = bookmarks
+        self.history = history
+        self.historyIncomplete = historyIncomplete
+    }
 }
 
 enum BrowserImportSource: String, CaseIterable, Identifiable {
@@ -48,7 +58,35 @@ enum BrowserImportSource: String, CaseIterable, Identifiable {
     }
 
     var userDataDirectory: URL {
-        let relativePath = switch self {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+            .appendingPathComponent(relativeDataPath, isDirectory: true)
+    }
+
+    /// The browser's data folder under the real home directory, for display
+    /// and as the file panel's starting point. `userDataDirectory` is built
+    /// from `homeDirectoryForCurrentUser`, which inside the sandbox resolves
+    /// to the app's container — useless for pointing a human (or a panel)
+    /// at the browser's actual data.
+    var displayDataDirectory: URL {
+        URL(fileURLWithPath: "/Users/\(NSUserName())", isDirectory: true)
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+            .appendingPathComponent(relativeDataPath, isDirectory: true)
+    }
+
+    /// The folder the user must grant for a complete import. Usually the
+    /// data folder itself — except Arc, whose bookmarks live in
+    /// `StorableSidebar.json` one level above `User Data`, so the grant
+    /// has to cover the parent to see both.
+    var grantDirectory: URL {
+        switch self {
+        case .arc: displayDataDirectory.deletingLastPathComponent()
+        default: displayDataDirectory
+        }
+    }
+
+    private var relativeDataPath: String {
+        switch self {
         case .chrome: "Google/Chrome"
         case .arc: "Arc/User Data"
         case .brave: "BraveSoftware/Brave-Browser"
@@ -58,12 +96,44 @@ enum BrowserImportSource: String, CaseIterable, Identifiable {
         case .dia: "Dia/User Data"
         case .helium: "net.imput.helium"
         }
-        return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support", isDirectory: true)
-            .appendingPathComponent(relativePath, isDirectory: true)
     }
 
     var bookmarkKey: String { "browserImport.profile.\(rawValue)" }
+
+    /// The macOS keychain entry holding the browser's password-encryption
+    /// key ("<Name> Safe Storage" / account). Helium's names come from
+    /// imputnet/helium-macos (change-keychain-name.patch) via
+    /// driceroland/Search#178. Safari keeps no Chromium "Login Data", so it
+    /// has none — its passwords only travel by CSV export.
+    var keychainService: String? {
+        switch self {
+        case .chrome: "Chrome Safe Storage"
+        case .arc: "Arc Safe Storage"
+        case .brave: "Brave Safe Storage"
+        case .edge: "Microsoft Edge Safe Storage"
+        case .vivaldi: "Vivaldi Safe Storage"
+        case .chromium: "Chromium Safe Storage"
+        case .dia: "Dia Safe Storage"
+        case .helium: "Helium Storage Key"
+        }
+    }
+
+    var keychainAccount: String? {
+        switch self {
+        case .chrome: "Chrome"
+        case .arc: "Arc"
+        case .brave: "Brave"
+        case .edge: "Microsoft Edge"
+        case .vivaldi: "Vivaldi"
+        case .chromium: "Chromium"
+        case .dia: "Dia"
+        case .helium: "Helium"
+        }
+    }
+
+    /// Whether the browser keeps a Chromium "Login Data" file Lean can
+    /// decrypt. Every source here except Safari does.
+    var hasLoginData: Bool { keychainService != nil }
 }
 
 enum BrowserDataImporter {
@@ -78,7 +148,7 @@ enum BrowserDataImporter {
             switch self {
             case .invalidProfile: "Choose a browser profile folder containing a Bookmarks or History file."
             case .invalidBookmarks: "This JSON file does not contain a supported bookmarks export."
-            case .unreadableHistory: "Lean couldn't read the browser History database. Check that you selected the browser data folder and try again."
+            case .unreadableHistory: "Lean couldn't read the browser History database. If that browser is open, quit it and try again — a running browser can lock its History file."
             case .invalidPasswordCSV: "The password CSV needs URL, username, and password columns."
             case .invalidHistoryCSV: "The history CSV needs a URL column and can include title and timestamp columns."
             }
@@ -121,7 +191,7 @@ enum BrowserDataImporter {
         }
     }
 
-    static func readProfiles(at userDataDirectory: URL) throws -> BrowserImportPreview {
+    static func readProfiles(at userDataDirectory: URL, source: BrowserImportSource? = nil) throws -> BrowserImportPreview {
         var folders = Set<URL>()
         folders.insert(userDataDirectory)
         if let enumerator = FileManager.default.enumerator(
@@ -140,17 +210,27 @@ enum BrowserDataImporter {
                 }
             }
         }
+        var historyFailures = 0
         let previews = try folders.sorted { $0.path < $1.path }.compactMap { folder -> BrowserImportPreview? in
             guard FileManager.default.fileExists(atPath: folder.appendingPathComponent("Bookmarks").path)
                     || FileManager.default.fileExists(atPath: folder.appendingPathComponent("History").path) else { return nil }
+            // One unreadable profile (a locked live History is the classic
+            // one — the browser is usually still running) must not sink the
+            // profiles that did read.
             do { return try readProfile(at: folder) }
             catch ImportError.invalidProfile { return nil }
+            catch { historyFailures += 1; return nil }
         }
-        guard !previews.isEmpty else { throw ImportError.invalidProfile }
+        guard !previews.isEmpty else {
+            if historyFailures > 0 { throw ImportError.unreadableHistory }
+            throw ImportError.invalidProfile
+        }
         var bookmarks: [ImportedBookmark] = []
         var seenBookmarks = Set<String>()
         var historyByURL: [String: HistoryItem] = [:]
+        var historyIncomplete = historyFailures > 0
         for preview in previews {
+            historyIncomplete = historyIncomplete || preview.historyIncomplete
             for bookmark in preview.bookmarks where seenBookmarks.insert(bookmark.url.absoluteString).inserted {
                 bookmarks.append(bookmark)
             }
@@ -160,7 +240,76 @@ enum BrowserDataImporter {
                 }
             }
         }
-        return BrowserImportPreview(bookmarks: bookmarks, history: historyByURL.values.sorted { $0.timestamp > $1.timestamp })
+        return mergeArcSidebar(
+            BrowserImportPreview(bookmarks: bookmarks, history: historyByURL.values.sorted { $0.timestamp > $1.timestamp }, historyIncomplete: historyIncomplete),
+            from: userDataDirectory,
+            source: source,
+            seenBookmarks: &seenBookmarks
+        )
+    }
+
+    /// Arc keeps its tabs in `StorableSidebar.json`, not in a Chromium
+    /// `Bookmarks` file: `sidebar.containers[].items` is a flat alternating
+    /// list of id strings and entry dicts, and every entry with
+    /// `data.tab.savedURL` is a pinned or open tab worth keeping.
+    static func arcSidebarBookmarks(in directory: URL) -> [ImportedBookmark] {
+        let url = directory.appendingPathComponent("StorableSidebar.json")
+        guard let data = try? Data(contentsOf: url),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sidebar = root["sidebar"] as? [String: Any],
+              let containers = sidebar["containers"] as? [[String: Any]] else { return [] }
+        var out: [ImportedBookmark] = []
+        var seen = Set<String>()
+        for container in containers {
+            guard let items = container["items"] as? [Any] else { continue }
+            var index = items.startIndex
+            while index < items.endIndex {
+                defer { index = items.index(after: index) }
+                guard let entry = items[index] as? [String: Any],
+                      let tab = (entry["data"] as? [String: Any])?["tab"] as? [String: Any],
+                      let rawURL = tab["savedURL"] as? String,
+                      let url = URL(string: rawURL),
+                      ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+                      seen.insert(url.absoluteString).inserted
+                else { continue }
+                let title = (entry["title"] as? String)
+                    ?? (tab["savedTitle"] as? String)
+                    ?? url.host ?? rawURL
+                out.append(ImportedBookmark(title: title, url: url))
+            }
+        }
+        return out
+    }
+
+    /// Merges Arc's sidebar tabs into a scanned preview, sharing the same
+    /// URL dedup set so a tab already imported as a bookmark isn't doubled.
+    /// No-op for every other source.
+    private static func mergeArcSidebar(
+        _ preview: BrowserImportPreview,
+        from directory: URL,
+        source: BrowserImportSource?,
+        seenBookmarks: inout Set<String>
+    ) -> BrowserImportPreview {
+        guard source == .arc else { return preview }
+        // The grant usually covers Arc/ itself, but a direct (unsandboxed)
+        // read may start at Arc/User Data — the sidebar sits one level up.
+        var candidates = [directory]
+        if directory.lastPathComponent == "User Data" {
+            candidates.append(directory.deletingLastPathComponent())
+        }
+        var merged: [ImportedBookmark] = []
+        for candidate in candidates {
+            for bookmark in arcSidebarBookmarks(in: candidate)
+            where seenBookmarks.insert(bookmark.url.absoluteString).inserted {
+                merged.append(bookmark)
+            }
+        }
+        guard !merged.isEmpty else { return preview }
+        return BrowserImportPreview(
+            bookmarks: preview.bookmarks + merged,
+            history: preview.history,
+            historyIncomplete: preview.historyIncomplete
+        )
     }
 
     static func readProfile(at directory: URL) throws -> BrowserImportPreview {
@@ -168,13 +317,24 @@ enum BrowserDataImporter {
         let historyURL = directory.appendingPathComponent("History")
         let bookmarks = (try? Data(contentsOf: bookmarksURL)).map(decodeBookmarks) ?? []
         let history: [HistoryItem]
+        let historyFailed: Bool
         if FileManager.default.fileExists(atPath: historyURL.path) {
-            history = try readHistory(at: historyURL)
+            do {
+                history = try readHistory(at: historyURL)
+                historyFailed = false
+            } catch {
+                history = []
+                historyFailed = true
+            }
         } else {
             history = []
+            historyFailed = false
         }
-        guard !bookmarks.isEmpty || !history.isEmpty else { throw ImportError.invalidProfile }
-        return BrowserImportPreview(bookmarks: bookmarks, history: history)
+        if !bookmarks.isEmpty || !history.isEmpty {
+            return BrowserImportPreview(bookmarks: bookmarks, history: history, historyIncomplete: historyFailed)
+        }
+        if historyFailed { throw ImportError.unreadableHistory }
+        throw ImportError.invalidProfile
     }
 
     static func readPasswordCSV(_ data: Data) throws -> PasswordCSVPreview {
@@ -210,15 +370,48 @@ enum BrowserDataImporter {
         return PasswordCSVPreview(credentials: credentials, skippedRows: rows.count - credentials.count)
     }
 
+    /// Passwords straight from the browser's "Login Data" file — no CSV
+    /// detour. Throws `ChromiumPasswords.PasswordError.noPassphrase` when
+    /// macOS won't hand over the browser's Safe Storage key, and
+    /// `.unreadable` when there is no Login Data to read.
+    static func readPasswords(at directory: URL, source: BrowserImportSource) throws -> [ImportedCredential] {
+        let logins = try ChromiumPasswords.read(in: directory, source: source)
+        var credentials: [ImportedCredential] = []
+        var seen = Set<String>()
+        for login in logins {
+            guard let url = URL(string: login.origin),
+                  let host = url.host?.lowercased(),
+                  ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+                  !host.isEmpty else { continue }
+            let credential = ImportedCredential(origin: url, username: login.user, password: login.password)
+            guard seen.insert(credential.id).inserted else { continue }
+            credentials.append(credential)
+        }
+        return credentials
+    }
+
+    /// Writes credentials to the vault, but never overwrites: anything
+    /// already kept for the same origin + username stays exactly as it is,
+    /// so re-importing (or importing a second browser with overlapping
+    /// logins) can only add, never clobber. Returns what landed.
     @discardableResult
-    static func saveCredentials(_ credentials: [ImportedCredential]) -> (saved: Int, skipped: Int) {
-        let saved = credentials.reduce(into: 0) { count, credential in
+    static func saveCredentials(
+        _ credentials: [ImportedCredential],
+        alreadySaved: (ImportedCredential) -> Bool = { credential in
+            if case .success(let existing) = PasswordVault.forOrigin(credential.origin) {
+                return existing.contains(where: { $0.username == credential.username })
+            }
+            return false
+        }
+    ) -> (saved: Int, skipped: Int) {
+        var saved = 0
+        for credential in credentials where !alreadySaved(credential) {
             if case .success = PasswordVault.save(
                 origin: credential.origin,
                 username: credential.username,
                 password: credential.password
             ) {
-                count += 1
+                saved += 1
             }
         }
         return (saved, credentials.count - saved)

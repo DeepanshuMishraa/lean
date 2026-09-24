@@ -27,9 +27,17 @@ struct BrowserImportProgressDialog: View {
     @Binding var preview: BrowserImportPreview?
     @Binding var includeBookmarks: Bool
     @Binding var includeHistory: Bool
+    @Binding var includePasswords: Bool
+    @Binding var includeExtensions: Bool
     @Binding var errorMessage: String?
     @Binding var resultMessage: String?
     let availableHistorySlots: Int
+    /// False for Safari (no Chromium Login Data to decrypt).
+    let sourceHasLoginData: Bool
+    /// Extension count from the scan; the row hides when zero or when the
+    /// OS can't run WebKit extensions (below macOS 15.4).
+    let extensionCount: Int
+    let supportsExtensionImport: Bool
     let chooseFolder: () -> Void
     let importSelected: () -> Void
     let cancel: () -> Void
@@ -133,9 +141,31 @@ struct BrowserImportProgressDialog: View {
                         uiFont: uiFont
                     )
                     .disabled(preview.history.isEmpty)
-                    Text("Passwords can be imported separately from a CSV export.")
+                    if sourceHasLoginData {
+                        CustomChecklistRow(
+                            title: "Saved passwords",
+                            isOn: $includePasswords,
+                            isDark: isDark,
+                            uiFont: uiFont
+                        )
+                    }
+                    if supportsExtensionImport, extensionCount > 0 {
+                        CustomChecklistRow(
+                            title: "Extensions (\(extensionCount) found)",
+                            isOn: $includeExtensions,
+                            isDark: isDark,
+                            uiFont: uiFont
+                        )
+                    }
+                    Text(sourceHasLoginData
+                         ? "Passwords come straight from the browser — macOS asks once for its key."
+                         : "Passwords can be imported separately from a CSV export.")
                         .font(uiFont.font(size: 11)).foregroundColor(muted)
                         .padding(.top, 4)
+                    if supportsExtensionImport, extensionCount > 0 {
+                        Text("Each extension is reviewed before it runs — nothing is enabled silently.")
+                            .font(uiFont.font(size: 11)).foregroundColor(muted)
+                    }
                 }
             } else {
                 Text("No browser data is ready to import.").font(uiFont.font(size: 12)).foregroundColor(muted)
@@ -174,7 +204,7 @@ struct BrowserImportProgressDialog: View {
                 Spacer()
                 SettingsActionButton("Cancel", isDark: isDark, action: cancel)
                 SettingsActionButton("Import selected", isDark: isDark, prominent: true, action: importSelected)
-                    .disabled(!includeBookmarks && !includeHistory)
+                    .disabled(!includeBookmarks && !includeHistory && !includePasswords && !includeExtensions)
             case .complete:
                 Spacer()
                 SettingsActionButton("Done", isDark: isDark, prominent: true, action: cancel)

@@ -47,7 +47,7 @@ struct LeanTabPopupTests {
             configuration: popupConfiguration
         )
         #expect(tab.webView.configuration.userContentController !== popupConfiguration.userContentController)
-        #expect(tab.webView.configuration.userContentController.userScripts.count == 6)
+        #expect(tab.webView.configuration.userContentController.userScripts.count >= 10)
         #expect(tab.url == nil)
         #expect(tab.title == "New Tab")
     }

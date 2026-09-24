@@ -31,7 +31,6 @@ struct LeanCommands: Commands {
             Button("Print...") {
                 store.selectedTab?.printPage()
             }
-            .keyboardShortcut("p", modifiers: .command)
             .disabled(store.selectedTab.map { $0.isSettingsPage || ($0.url == nil && !$0.isPageSource) || $0.webView.window == nil } ?? true)
         }
 
@@ -96,8 +95,32 @@ struct LeanCommands: Commands {
         }
 
         CommandMenu("Tabs") {
+            Button(store.selectedTab?.isPinned == true ? "Unpin Tab" : "Pin Tab") {
+                if let tab = store.selectedTab, tab.url != nil {
+                    store.togglePin(tab: tab)
+                }
+            }
+            .keyboardShortcut("p", modifiers: .command)
+            .disabled(store.selectedTab?.url == nil)
+
             Button("Close Tab") { store.closeSelectedTab() }
                 .keyboardShortcut("w", modifiers: .command)
+
+            if let selectedTab = store.selectedTab, selectedTab.isSplit {
+                Button("Separate Split Tabs") {
+                    store.separateSplitTabs(selectedTab)
+                }
+                .keyboardShortcut("s", modifiers: [.command, .option, .shift])
+            } else {
+                Button("Open as Split") {
+                    if let selected = store.selectedTab {
+                        store.openTabAsSplit(selected)
+                    }
+                }
+                .keyboardShortcut("s", modifiers: [.command, .option])
+                .disabled(store.selectedTab == nil)
+            }
+
             Button("Next Tab") { store.selectNextTab() }
                 .keyboardShortcut(.tab, modifiers: .control)
             Button("Previous Tab") { store.selectNextTab(reverse: true) }

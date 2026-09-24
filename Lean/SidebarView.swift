@@ -121,10 +121,27 @@ struct SidebarView: View {
             SidebarAddressBar(store: store)
                 .padding(.horizontal, 10)
                 .padding(.top, 6)
-                .padding(.bottom, 12)
+                .padding(.bottom, store.pinnedTabs.isEmpty ? 10 : 8)
                 .zIndex(10)
 
-            // 3. Section Title Row with + New Tab Icon
+            // 3. Pinned Tabs Grid (Positioned above TABS + row)
+            if !store.pinnedTabs.isEmpty {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                    ForEach(store.pinnedTabs) { tab in
+                        SidebarPinnedTabItem(
+                            tab: tab,
+                            isSelected: tab.id == store.selectedID,
+                            store: store,
+                            onSelect: { handleTabSelection(tab) },
+                            onClose: { store.close(tab) }
+                        )
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 8)
+            }
+
+            // 4. Section Title Row with + New Tab Icon
             HStack(spacing: 6) {
                 Text("Tabs")
                     .font(store.headingFont(size: 11.5))
@@ -151,10 +168,10 @@ struct SidebarView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 6)
 
-            // 5. Vertical Tab Strip
+            // 5. Vertical Tab Strip (Unpinned tabs)
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 4) {
-                    ForEach(store.tabs) { tab in
+                    ForEach(store.unpinnedTabs) { tab in
                         SidebarTabItem(
                             tab: tab,
                             isSelected: tab.id == store.selectedID,
@@ -172,6 +189,17 @@ struct SidebarView: View {
 
             // 6. Bottom Footer Row: Downloads, Theme toggle, Settings, New Tab
             HStack(spacing: 6) {
+                ExtensionToolbarButton(store: store)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .preference(key: ExtensionsButtonFrameKey.self, value: proxy.frame(in: .global))
+                        }
+                    )
+                    .onPreferenceChange(ExtensionsButtonFrameKey.self) { frame in
+                        store.extensionsButtonFrame = frame
+                    }
+
                 DownloadToolbarButton(store: store)
                     .background(
                         GeometryReader { proxy in
@@ -507,38 +535,18 @@ struct SidebarTabItem: View {
 
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: 8) {
-                ZStack {
-                    if tab.isLoading {
-                        DotMatrixLoader(
-                            color: tabItemForeground,
-                            size: store.scaled(16)
-                        )
-                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
-                    } else {
-                        TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
-                            .transition(.opacity.combined(with: .scale(scale: 0.85)))
-                    }
+            Group {
+                if tab.isSplit {
+                    splitSidebarContent
+                } else {
+                    defaultSidebarContent
                 }
-                .frame(width: store.scaled(16), height: store.scaled(16))
-                .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
-
-                Text(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
-                    .font(store.tabTitleFont(size: 13))
-                    .foregroundColor(tabItemForeground)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-
-                Spacer(minLength: 4)
-                // Always reserve close-button width so hover doesn't push text.
-                Color.clear.frame(width: 18, height: 18)
             }
             .padding(.horizontal, store.scaled(10))
             .frame(height: store.scaled(36))
         }
         .buttonStyle(.plain)
         .overlay { TabMiddleClick { onClose() } }
-        .overlay(WindowDragVeto())
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(
@@ -594,6 +602,51 @@ struct SidebarTabItem: View {
             }
         }
         .contextMenu {
+            if tab.isPlayingMedia {
+                Button {
+                    tab.toggleMute()
+                } label: {
+                    Label(tab.isMuted ? "Unmute Tab" : "Mute Tab", systemImage: tab.isMuted ? "speaker.wave.2" : "speaker.slash")
+                }
+                Divider()
+            }
+            if tab.isSplit {
+                Button {
+                    store.separateSplitTabs(tab)
+                } label: {
+                    Label("Separate Tabs", systemImage: "rectangle.split.2x1.slash")
+                }
+                Button {
+                    store.close(tab)
+                } label: {
+                    Label("Close Split", systemImage: "xmark")
+                }
+                Divider()
+            } else {
+                if let active = store.selectedTab, active.isSplit, active.splitTabs.count < 4, tab.id != active.id {
+                    Button {
+                        store.addTabToActiveSplit(tab)
+                    } label: {
+                        Label("Add to Split", systemImage: "square.split.2x1")
+                    }
+                    Divider()
+                } else if tab.url != nil {
+                    Button {
+                        store.openTabAsSplit(tab)
+                    } label: {
+                        Label("Open as Split", systemImage: "square.split.2x1")
+                    }
+                    Divider()
+                }
+            }
+            if tab.url != nil && !tab.isSplit {
+                Button {
+                    store.togglePin(tab: tab)
+                } label: {
+                    Label(tab.isPinned ? "Unpin" : "Pin", systemImage: tab.isPinned ? "pin.slash" : "pin")
+                }
+                Divider()
+            }
             if tab.isSleeping {
                 Button("Wake Tab", action: onSelect)
             } else {
@@ -624,8 +677,276 @@ struct SidebarTabItem: View {
             }
         }
     }
+
+    @ViewBuilder
+    private var defaultSidebarContent: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                if tab.isLoading {
+                    DotMatrixLoader(
+                        color: tabItemForeground,
+                        size: store.scaled(16)
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                } else {
+                    TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                }
+            }
+            .frame(width: store.scaled(16), height: store.scaled(16))
+            .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
+
+            Text(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
+                .font(store.tabTitleFont(size: 13))
+                .foregroundColor(tabItemForeground)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: 4)
+
+            if tab.isPlayingMedia {
+                TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: false)
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            }
+
+            // Always reserve close-button width so hover doesn't push text.
+            Color.clear.frame(width: 18, height: 18)
+        }
+    }
+
+    @ViewBuilder
+    private var splitSidebarContent: some View {
+        switch store.tabDisplayMode {
+        case .hybrid:
+            HStack(spacing: 0) {
+                ForEach(Array(tab.splitTabs.enumerated()), id: \.element.id) { index, subTab in
+                    let isSubActive = (index == tab.activeSplitIndex)
+                    Button {
+                        tab.activeSplitIndex = index
+                        onSelect()
+                    } label: {
+                        HStack(spacing: 5) {
+                            TabFaviconView(tab: subTab, isDark: store.adaptiveTheme.effectiveIsDark, size: 13)
+                            Text(subTab.displayTitle(isSelected: isSelected && isSubActive, showFullTitle: false))
+                                .font(store.tabTitleFont(size: 12))
+                                .foregroundColor(
+                                    isSubActive && isSelected
+                                        ? store.adaptiveTheme.activeTabText
+                                        : store.adaptiveTheme.inactiveTabText
+                                )
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 3)
+                        .background(
+                            isSubActive && isSelected
+                                ? store.adaptiveTheme.activeTabStroke.opacity(0.14)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    if index < tab.splitTabs.count - 1 {
+                        Rectangle()
+                            .fill(store.adaptiveTheme.activeTabStroke.opacity(0.25))
+                            .frame(width: 1, height: 12)
+                            .padding(.horizontal, 2)
+                    }
+                }
+
+                Spacer(minLength: 4)
+
+                if tab.isPlayingMedia {
+                    TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: false)
+                }
+
+                Color.clear.frame(width: 18, height: 18)
+            }
+
+        case .iconOnly:
+            HStack(spacing: 4) {
+                ForEach(Array(tab.splitTabs.enumerated()), id: \.element.id) { index, subTab in
+                    let isSubActive = (index == tab.activeSplitIndex)
+                    Button {
+                        tab.activeSplitIndex = index
+                        onSelect()
+                    } label: {
+                        TabFaviconView(tab: subTab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
+                            .padding(2)
+                            .background(
+                                isSubActive && isSelected
+                                    ? store.adaptiveTheme.activeTabStroke.opacity(0.18)
+                                    : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer(minLength: 4)
+                Color.clear.frame(width: 18, height: 18)
+            }
+
+        case .textOnly:
+            HStack(spacing: 4) {
+                ForEach(Array(tab.splitTabs.enumerated()), id: \.element.id) { index, subTab in
+                    let isSubActive = (index == tab.activeSplitIndex)
+                    Button {
+                        tab.activeSplitIndex = index
+                        onSelect()
+                    } label: {
+                        Text(subTab.displayTitle(isSelected: isSelected && isSubActive, showFullTitle: false))
+                            .font(store.tabTitleFont(size: 12))
+                            .foregroundColor(
+                                isSubActive && isSelected
+                                    ? store.adaptiveTheme.activeTabText
+                                    : store.adaptiveTheme.inactiveTabText
+                            )
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    .buttonStyle(.plain)
+
+                    if index < tab.splitTabs.count - 1 {
+                        Text("|")
+                            .font(.system(size: 10, weight: .light))
+                            .foregroundColor(store.adaptiveTheme.inactiveTabText.opacity(0.4))
+                    }
+                }
+
+                Spacer(minLength: 4)
+                Color.clear.frame(width: 18, height: 18)
+            }
+        }
+    }
 }
 
+// MARK: - Sidebar Pinned Tab Item (Grid tile with centered favicon)
+private struct SidebarPinnedTabItem: View {
+    @ObservedObject var tab: LeanTab
+    let isSelected: Bool
+    @ObservedObject var store: LeanStore
+    let onSelect: () -> Void
+    let onClose: () -> Void
+
+    @State private var isHovered = false
+    @State private var isDropTarget = false
+
+    private var tabBackground: Color {
+        if isSelected {
+            return store.adaptiveTheme.activeTabBackground
+        }
+        if isHovered {
+            return store.isDarkMode ? Color.white.opacity(0.14) : Color.black.opacity(0.09)
+        }
+        return store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05)
+    }
+
+    private var tabBorder: Color {
+        if isSelected {
+            return store.adaptiveTheme.activeTabStroke
+        }
+        if isHovered {
+            return store.adaptiveTheme.activeTabStroke.opacity(0.35)
+        }
+        return store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04)
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            ZStack {
+                if tab.isLoading {
+                    DotMatrixLoader(
+                        color: isSelected ? store.adaptiveTheme.activeTabText : store.adaptiveTheme.primaryText,
+                        size: store.scaled(14)
+                    )
+                } else {
+                    TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: store.scaled(38))
+            .background(tabBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(tabBorder, lineWidth: 0.75)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .bottomTrailing) {
+            if tab.isPlayingMedia {
+                TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: true)
+                    .background(
+                        RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                            .fill(isSelected ? store.adaptiveTheme.activeTabBackground : (store.isDarkMode ? Color(white: 0.16) : Color(white: 0.94)))
+                            .shadow(color: Color.black.opacity(0.22), radius: 1, x: 0, y: 0.5)
+                    )
+                    .padding(3)
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .help(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
+        .onHover { isHovered = $0 }
+        .onDrag {
+            store.draggingTabID = tab.id
+            return NSItemProvider(object: tab.id.uuidString as NSString)
+        }
+        .onDrop(
+            of: [UTType.plainText],
+            delegate: TabReorderDropDelegate(targetID: tab.id, store: store) { isDropTarget = $0 }
+        )
+        .overlay(alignment: .leading) {
+            if isDropTarget {
+                Capsule()
+                    .fill(store.adaptiveTheme.primaryText)
+                    .frame(width: 2)
+                    .padding(.vertical, 6)
+            }
+        }
+        .contextMenu {
+            if tab.isPlayingMedia {
+                Button {
+                    tab.toggleMute()
+                } label: {
+                    Label(tab.isMuted ? "Unmute Tab" : "Mute Tab", systemImage: tab.isMuted ? "speaker.wave.2" : "speaker.slash")
+                }
+                Divider()
+            }
+            Button {
+                store.togglePin(tab: tab)
+            } label: {
+                Label("Unpin", systemImage: "pin.slash")
+            }
+            Divider()
+            if tab.isSleeping {
+                Button("Wake Tab", action: onSelect)
+            } else {
+                Button("Sleep Tab") { store.sleepTab(tab, notifyOnFailure: true) }
+                    .disabled(isSelected)
+            }
+            Button("Close Tab", action: onClose)
+            Divider()
+            Button("Reload") { tab.reload() }
+            if tab.canGoBack {
+                Button("Back") { tab.goBack() }
+            }
+            if tab.canGoForward {
+                Button("Forward") { tab.goForward() }
+            }
+            Divider()
+            Button("Duplicate Tab") {
+                if let url = tab.url {
+                    _ = store.newTab(url: url)
+                } else {
+                    _ = store.newTab()
+                }
+            }
+        }
+    }
+}
 
 // MARK: - Sidebar Traffic Lights
 private struct SidebarTrafficLights: View {

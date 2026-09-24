@@ -190,3 +190,98 @@ struct SiteFaviconView: View {
     }
 }
 
+// MARK: - Tab Media Indicator & Mute Toggle
+
+struct TabMediaIndicatorView: View {
+    @ObservedObject var tab: LeanTab
+    let theme: AdaptiveFrameTheme
+    var compact: Bool = false
+
+    @State private var isHovered = false
+
+    private var iconSize: CGFloat {
+        compact ? 8 : 10
+    }
+
+    private var containerSize: CGFloat {
+        compact ? 14 : 18
+    }
+
+    var body: some View {
+        Button {
+            tab.toggleMute()
+        } label: {
+            ZStack {
+                if isHovered {
+                    // Hover state: show the action that clicking will perform
+                    (tab.isMuted ? Ph.speaker : Ph.speakerMute).fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: iconSize, height: iconSize)
+                        .foregroundColor(theme.primaryText)
+                } else if tab.isMuted {
+                    // Muted state: speaker slash icon
+                    Ph.speakerMute.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: iconSize, height: iconSize)
+                        .foregroundColor(theme.secondaryText)
+                } else {
+                    // Active playing state: dynamic 3-bar equalizer
+                    EqualizerWaveformView(
+                        color: theme.primaryText.opacity(0.88),
+                        compact: compact
+                    )
+                }
+            }
+            .frame(width: containerSize, height: containerSize)
+            .background(
+                isHovered
+                    ? theme.iconHoverBackground
+                    : Color.clear,
+                in: RoundedRectangle(cornerRadius: compact ? 3.5 : 4, style: .continuous)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help(tab.isMuted ? "Unmute Tab" : "Mute Tab")
+        .scaleEffect(isHovered ? 1.05 : 1.0)
+        .animation(.easeOut(duration: 0.10), value: isHovered)
+        .animation(.easeOut(duration: 0.12), value: tab.isMuted)
+    }
+}
+
+/// A lightweight, hardware-accelerated 3-bar equalizer waveform.
+private struct EqualizerWaveformView: View {
+    let color: Color
+    var compact: Bool = false
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let barW: CGFloat = compact ? 1.2 : 1.5
+            let spacing: CGFloat = compact ? 1.0 : 1.3
+            let minH: CGFloat = compact ? 2.5 : 3.0
+            let maxH: CGFloat = compact ? 7.5 : 10.0
+            let span = maxH - minH
+
+            let h1 = minH + span * (0.5 + 0.5 * sin(t * 7.0))
+            let h2 = minH + span * (0.5 + 0.5 * sin(t * 9.5 + 1.2))
+            let h3 = minH + span * (0.5 + 0.5 * sin(t * 6.0 + 2.3))
+
+            HStack(alignment: .bottom, spacing: spacing) {
+                Capsule()
+                    .fill(color)
+                    .frame(width: barW, height: h1)
+                Capsule()
+                    .fill(color)
+                    .frame(width: barW, height: h2)
+                Capsule()
+                    .fill(color)
+                    .frame(width: barW, height: h3)
+            }
+            .frame(height: maxH, alignment: .bottom)
+        }
+    }
+}
+
+

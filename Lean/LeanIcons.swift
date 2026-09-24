@@ -36,10 +36,13 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
     case clockCounterClockwise
     case cloud
     case code
+    case columns
     case command
     case compass
     case copy
     case cpu
+    case dotsThree
+    case `extension` = "extension"
     case eyeSlash
     case file
     case fileArchive
@@ -66,6 +69,8 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
     case mouse
     case package
     case palette
+    case pin
+    case pinSlash
     case play
     case plus
     case plusCircle
@@ -77,6 +82,8 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
     case sliders
     case slidersHorizontal
     case sparkle
+    case speakerHigh
+    case speakerSlash
     case squaresFour
     case sun
     case tabs
@@ -87,6 +94,13 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
     case x
     case xCircle
     case youtubeLogo
+
+    public static let puzzlePiece: LeanIcon = .extension
+    public static let extensionIcon: LeanIcon = .extension
+    public static let speaker: LeanIcon = .speakerHigh
+    public static let speakerMute: LeanIcon = .speakerSlash
+    public static let mute: LeanIcon = .speakerSlash
+    public static let split: LeanIcon = .columns
 
     public var id: String { rawValue }
 
@@ -190,6 +204,8 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z\"/>\n</svg>"
         case .code:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M8.7 5.3a1 1 0 0 0-1.4 0l-5 5a1 1 0 0 0 0 1.4l5 5a1 1 0 0 0 1.4-1.4L4.4 11l4.3-4.3a1 1 0 0 0 0-1.4zm6.6 0a1 1 0 0 1 1.4 0l5 5a1 1 0 0 1 0 1.4l-5 5a1 1 0 0 1-1.4-1.4l4.3-4.3-4.3-4.3a1 1 0 0 1 0-1.4zM13.8 3.2a1 1 0 0 1 .8 1.2l-3.5 16a1 1 0 0 1-2-.4l3.5-16a1 1 0 0 1 1.2-.8z\"/>\n</svg>"
+        case .columns:
+            return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5v-13zM6.5 4.5a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1H11V4.5H6.5zm6 15h4.5a1 1 0 0 0 1-1v-13a1 1 0 0 0-1-1H12.5v15z\"/>\n</svg>"
         case .command:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M6 3.5A3.5 3.5 0 0 0 2.5 7 3.5 3.5 0 0 0 6 10.5h1.5v3H6A3.5 3.5 0 0 0 2.5 17 3.5 3.5 0 0 0 6 20.5 3.5 3.5 0 0 0 9.5 17v-1.5h5V17a3.5 3.5 0 0 0 3.5 3.5 3.5 3.5 0 0 0 3.5-3.5 3.5 3.5 0 0 0-3.5-3.5H16.5v-3H18A3.5 3.5 0 0 0 21.5 7 3.5 3.5 0 0 0 18 3.5 3.5 3.5 0 0 0 14.5 7v1.5h-5V7A3.5 3.5 0 0 0 6 3.5zm3.5 6H6A1.5 1.5 0 0 1 4.5 8 1.5 1.5 0 0 1 6 6.5 1.5 1.5 0 0 1 7.5 8v1.5h2zm5 0h-5v5h5v-5zm2-1.5V8A1.5 1.5 0 0 1 18 6.5 1.5 1.5 0 0 1 19.5 8 1.5 1.5 0 0 1 18 9.5h-1.5zM6 15.5h1.5V17A1.5 1.5 0 0 1 6 18.5 1.5 1.5 0 0 1 4.5 17 1.5 1.5 0 0 1 6 15.5zm10.5 1.5v-1.5H18A1.5 1.5 0 0 1 19.5 17 1.5 1.5 0 0 1 18 18.5a1.5 1.5 0 0 1-1.5-1.5z\"/>\n</svg>"
         case .compass:
@@ -198,6 +214,10 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M7.5 3A2.5 2.5 0 0 0 5 5.5v9A2.5 2.5 0 0 0 7.5 17H8v-7.5A3.5 3.5 0 0 1 11.5 6H16v-.5A2.5 2.5 0 0 0 13.5 3h-6z\"/>\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M11.5 8A2.5 2.5 0 0 0 9 10.5v8A2.5 2.5 0 0 0 11.5 21h7a2.5 2.5 0 0 0 2.5-2.5v-8A2.5 2.5 0 0 0 18.5 8h-7z\"/>\n</svg>"
         case .cpu:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M9 2a1 1 0 0 1 1 1v2h4V3a1 1 0 1 1 2 0v2h1.5A2.5 2.5 0 0 1 20 7.5V9h2a1 1 0 1 1 0 2h-2v2h2a1 1 0 1 1 0 2h-2v1.5a2.5 2.5 0 0 1-2.5 2.5H16v2a1 1 0 1 1-2 0v-2h-4v2a1 1 0 1 1-2 0v-2H6.5A2.5 2.5 0 0 1 4 16.5V15H2a1 1 0 1 1 0-2h2v-2H2a1 1 0 1 1 0-2h2V7.5A2.5 2.5 0 0 1 6.5 5H8V3a1 1 0 0 1 1-1zM7 7.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5v-9zm2 2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 .5.5v5a.5.5 0 0 1-.5.5h-5a.5.5 0 0 1-.5-.5v-5z\"/>\n</svg>"
+        case .dotsThree:
+            return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <circle cx=\"5\" cy=\"12\" r=\"2\"/>\n  <circle cx=\"12\" cy=\"12\" r=\"2\"/>\n  <circle cx=\"19\" cy=\"12\" r=\"2\"/>\n</svg>"
+        case .extension:
+            return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5s-1.12-2.5-2.5-2.5z\"/>\n</svg>"
         case .eyeSlash:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M3.7 2.3a1 1 0 0 0-1.4 1.4l18 18a1 1 0 0 0 1.4-1.4L18.4 17A11.75 11.75 0 0 0 22 12c-1.8-4.2-6.1-7-10-7-2 0-3.9.7-5.5 1.8L3.7 2.3zM12 7c2.9 0 6.2 2 7.7 5a8.7 8.7 0 0 1-3.1 3.5l-2.4-2.4A3.5 3.5 0 0 0 10.9 9.8L8.6 7.5C9.7 7.2 10.8 7 12 7zm-5.4 3.2 2.1 2.1a3.5 3.5 0 0 0 4.6 4.6l1.7 1.7C13.8 19 12.9 19 12 19c-3.9 0-8.2-2.8-10-7a11.9 11.9 0 0 1 4.6-5.8z\"/>\n</svg>"
         case .file:
@@ -250,6 +270,10 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M11.5 2.2a1 1 0 0 1 1 0l8.5 4.9a1 1 0 0 1 .5.87v9.8a1 1 0 0 1-.5.87l-8.5 4.9a1 1 0 0 1-1 0l-8.5-4.9a1 1 0 0 1-.5-.87v-9.8a1 1 0 0 1 .5-.87l8.5-4.9zM12 4.47 5.03 8.5 12 12.53l6.97-4.03L12 4.47zM4 10.24v6.02l7 4.04v-6.02l-7-4.04zm9 10.06 7-4.04v-6.02l-7 4.04v6.02z\"/>\n</svg>"
         case .palette:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M12 2C6.48 2 2 6.48 2 12c0 4.14 2.54 7.69 6.17 9.17a2.5 2.5 0 0 0 3.33-2.38v-.79c0-.69.56-1.25 1.25-1.25h1.75a6.5 6.5 0 0 0 6.5-6.5C21 6.36 16.97 2 12 2zm-5.5 8a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zm4-4a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zm5 2a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zm2 5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0z\"/>\n</svg>"
+        case .pin:
+            return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M16 12V4h1a1 1 0 0 0 0-2H7a1 1 0 0 0 0 2h1v8l-2 3v2h5v6a1 1 0 0 0 2 0v-6h5v-2l-2-3z\"/>\n</svg>"
+        case .pinSlash:
+            return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M2.71 2.29a1 1 0 0 0-1.42 1.42l4.8 4.8V12l-2 3v2h5v6a1 1 0 0 0 2 0v-6h1.09l4.6 4.6a1 1 0 0 0 1.42-1.42L2.71 2.29zM16 12V4h1a1 1 0 0 0 0-2H7a1 1 0 0 0-.82.43l9.82 9.82V12z\"/>\n</svg>"
         case .play:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M6.5 4.8a1.5 1.5 0 0 1 2.27-1.29l11.5 7.2a1.5 1.5 0 0 1 0 2.58l-11.5 7.2A1.5 1.5 0 0 1 6.5 19.2V4.8z\"/>\n</svg>"
         case .plus:
@@ -272,6 +296,10 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M3 6.5a1 1 0 0 1 1-1h4.1a3 3 0 0 1 5.8 0H20a1 1 0 1 1 0 2h-6.1a3 3 0 0 1-5.8 0H4a1 1 0 0 1-1-1zm8 1.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM3 16.5a1 1 0 0 1 1-1h10.1a3 3 0 0 1 5.8 0H20a1 1 0 1 1 0 2h-.1a3 3 0 0 1-5.8 0H4a1 1 0 0 1-1-1zm14 1.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z\"/>\n</svg>"
         case .sparkle:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M12 2c.4 5.3 4.7 9.6 10 10-5.3.4-9.6 4.7-10 10-.4-5.3-4.7-9.6-10-10 5.3-.4 9.6-4.7 10-10z\"/>\n</svg>"
+        case .speakerHigh:
+            return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M14 3.23a1 1 0 0 0-1.09.21L7.62 8H4a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h3.62l5.29 4.56A1 1 0 0 0 14 20.77V3.23zM18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM16 4.13v2.06a6.01 6.01 0 0 1 0 11.62v2.06c4.01-.91 7-4.49 7-8.87s-2.99-7.96-7-8.87z\"/>\n</svg>"
+        case .speakerSlash:
+            return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M3.28 2.22a.75.75 0 0 0-1.06 1.06l3.15 3.15L5.09 6.64A1 1 0 0 0 4 7.4v9.2a1 1 0 0 0 1.62.78l4.47-3.57 9.63 9.63a.75.75 0 0 0 1.06-1.06L3.28 2.22zM8.9 12.35 5.5 15.07V8.93l2.84 2.84.56.58zM14 3.23a1 1 0 0 0-1.09.21L8.85 7.02l1.09 1.09 3.06-2.63v8.66l2 2V3.23zM18.5 12c0-1.77-1.02-3.29-2.5-4.03v2.45l2.45 2.45c.03-.29.05-.58.05-.87z\"/>\n</svg>"
         case .squaresFour:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <rect x=\"3\" y=\"3\" width=\"7.5\" height=\"7.5\" rx=\"2\"/>\n  <rect x=\"13.5\" y=\"3\" width=\"7.5\" height=\"7.5\" rx=\"2\"/>\n  <rect x=\"3\" y=\"13.5\" width=\"7.5\" height=\"7.5\" rx=\"2\"/>\n  <rect x=\"13.5\" y=\"13.5\" width=\"7.5\" height=\"7.5\" rx=\"2\"/>\n</svg>"
         case .sun:

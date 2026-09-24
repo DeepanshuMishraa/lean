@@ -34,6 +34,25 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     @Published private(set) var passwordSuggestionFrame: CGRect?
     @Published var snapshot: NSImage? = nil
     @Published var favicon: NSImage? = nil
+    @Published var isPinned: Bool = false
+    @Published var isPlayingMedia: Bool = false
+    @Published var isMuted: Bool = false
+    private var mediaPlayingFrames: [String: Bool] = [:]
+
+    // MARK: - Split Tab Support
+    @Published var splitTabs: [LeanTab] = []
+    @Published var activeSplitIndex: Int = 0
+    @Published var splitWidthRatios: [CGFloat] = []
+
+    var isSplit: Bool { splitTabs.count > 1 }
+
+    var activeTab: LeanTab {
+        if isSplit && activeSplitIndex >= 0 && activeSplitIndex < splitTabs.count {
+            return splitTabs[activeSplitIndex]
+        }
+        return self
+    }
+
     private(set) var scrollbarStyle: ScrollbarStyle
     private(set) var smoothScrollingEnabled: Bool
     private(set) var pageFont: LeanFont
@@ -95,9 +114,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     ) {
         self.dataStore = dataStore
         if let configuration {
-            configuration.userContentController = WKUserContentController()
+            let popupConfig = (configuration.copy() as? WKWebViewConfiguration) ?? configuration
+            popupConfig.userContentController = WKUserContentController()
+            self.initialConfiguration = popupConfig
+        } else {
+            self.initialConfiguration = nil
         }
-        self.initialConfiguration = configuration
         self.isDark = isDark
         self.scrollbarStyle = scrollbarStyle
         self.smoothScrollingEnabled = smoothScrolling
@@ -179,6 +201,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         configuration.userContentController.addUserScript(
             WKUserScript(source: PageScripts.audioActivity, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         )
+        configuration.userContentController.addUserScript(
+            WKUserScript(source: PageScripts.mediaStateTracker, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        )
         addPasswordCaptureScript(to: configuration.userContentController)
         addPasswordSuggestionScript(to: configuration.userContentController)
         configuration.userContentController.addUserScript(
@@ -192,6 +217,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.add(self, name: PageScripts.passwordFormMessageName)
         webView.configuration.userContentController.add(self, name: PageScripts.passwordFieldMessageName)
         webView.configuration.userContentController.add(self, name: PageScripts.middleClickMessageName)
+        webView.configuration.userContentController.add(self, name: PageScripts.mediaStateMessageName)
         webView.contextMenuHook = { [weak self] menu in
             self?.appendPageMenuItems(to: menu)
         }
@@ -382,6 +408,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.addUserScript(
             WKUserScript(source: PageScripts.audioActivity, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         )
+        webView.configuration.userContentController.addUserScript(
+            WKUserScript(source: PageScripts.mediaStateTracker, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        )
         addPasswordCaptureScript(to: webView.configuration.userContentController)
         addPasswordSuggestionScript(to: webView.configuration.userContentController)
         webView.configuration.userContentController.addUserScript(
@@ -511,6 +540,32 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         onStateChange?()
     }
 
+    func toggleMute() {
+        setMuted(!isMuted)
+    }
+
+    func setMuted(_ muted: Bool) {
+        isMuted = muted
+        guard let webView = storedWebView else { return }
+        let sel = NSSelectorFromString("_setPageMuted:")
+        typealias SetMutedFunc = @convention(c) (AnyObject, Selector, UInt32) -> Void
+        if webView.responds(to: sel), let method = webView.method(for: sel) {
+            let imp = unsafeBitCast(method, to: SetMutedFunc.self)
+            imp(webView, sel, muted ? 1 : 0)
+        }
+        let script = """
+        (function() {
+            try {
+                var media = document.querySelectorAll('audio, video');
+                for (var i = 0; i < media.length; i++) {
+                    media[i].muted = \(muted ? "true" : "false");
+                }
+            } catch(e) {}
+        })();
+        """
+        webView.evaluateJavaScript(script, completionHandler: nil)
+    }
+
     // MARK: - Page context menu
 
     /// Latest link under a right-click, reported by the injected tracker.
@@ -636,6 +691,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     func destroy() {
+        for sub in splitTabs where sub.id != self.id {
+            sub.destroy()
+        }
+        splitTabs.removeAll()
         sleepingInteractionState = nil
         restoreScrollPosition = nil
         isSleeping = false
@@ -689,6 +748,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.passwordFormMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.passwordFieldMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.middleClickMessageName)
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.mediaStateMessageName)
         webView.configuration.userContentController.removeAllUserScripts()
         zoomIndicatorWorkItem?.cancel()
         hidePasswordSuggestions()
@@ -972,6 +1032,26 @@ extension LeanTab: WKScriptMessageHandler {
             }
             return
         }
+        if message.name == PageScripts.mediaStateMessageName {
+            guard message.webView === storedWebView else { return }
+            if let dict = message.body as? [String: Any],
+               let frameId = dict["id"] as? String,
+               let playing = dict["isPlaying"] as? Bool {
+                if playing {
+                    mediaPlayingFrames[frameId] = true
+                } else {
+                    mediaPlayingFrames.removeValue(forKey: frameId)
+                }
+                let anyPlaying = !mediaPlayingFrames.isEmpty
+                if self.isPlayingMedia != anyPlaying {
+                    self.isPlayingMedia = anyPlaying
+                }
+                if let muted = dict["isMuted"] as? Bool, anyPlaying, muted != self.isMuted {
+                    self.isMuted = muted
+                }
+            }
+            return
+        }
         guard message.name == PageScripts.pageReadyMessageName,
               message.frameInfo.isMainFrame,
               message.webView === webView else {
@@ -1070,6 +1150,8 @@ extension LeanTab: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
         loadingProgress = 0
         isLoading = true
+        mediaPlayingFrames.removeAll()
+        isPlayingMedia = false
         refreshState()
     }
 

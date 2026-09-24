@@ -31,7 +31,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .downloads: return .arrowCircleDown
         case .importData: return .arrowCircleDown
         case .passwords: return .shield
-        case .extensions: return .package
+        case .extensions: return .extension
         }
     }
 

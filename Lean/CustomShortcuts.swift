@@ -10,6 +10,9 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
     case nextTab = "nextTab"
     case previousTab = "previousTab"
     case goToLastTab = "goToLastTab"
+    case togglePinTab = "togglePinTab"
+    case openSplitTab = "openSplitTab"
+    case separateSplitTabs = "separateSplitTabs"
 
     // Navigation
     case goBack = "goBack"
@@ -43,6 +46,9 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .nextTab: return "Next Tab"
         case .previousTab: return "Previous Tab"
         case .goToLastTab: return "Go to Last Tab"
+        case .togglePinTab: return "Pin / Unpin Tab"
+        case .openSplitTab: return "Open as Split"
+        case .separateSplitTabs: return "Separate Split Tabs"
         case .goBack: return "Back"
         case .goForward: return "Forward"
         case .reload: return "Reload Page"
@@ -70,6 +76,9 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .nextTab: return "Cycle forward through open tabs"
         case .previousTab: return "Cycle backward through open tabs"
         case .goToLastTab: return "Jump directly to the last tab"
+        case .togglePinTab: return "Pin or unpin the currently active tab"
+        case .openSplitTab: return "Split active tab into side-by-side panes"
+        case .separateSplitTabs: return "Separate split panes into standalone tabs"
         case .goBack: return "Navigate to previous page in session history"
         case .goForward: return "Navigate forward in session history"
         case .reload: return "Reload the current page"
@@ -101,7 +110,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
 
     var group: Group {
         switch self {
-        case .newTab, .closeTab, .reopenTab, .nextTab, .previousTab, .goToLastTab:
+        case .newTab, .closeTab, .reopenTab, .nextTab, .previousTab, .goToLastTab, .togglePinTab, .openSplitTab, .separateSplitTabs:
             return .tabs
         case .goBack, .goForward, .reload, .hardReload, .stopLoading:
             return .navigation
@@ -120,6 +129,9 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .nextTab: return CustomKeyCombo(key: "tab", modifiers: ["control"])
         case .previousTab: return CustomKeyCombo(key: "tab", modifiers: ["control", "shift"])
         case .goToLastTab: return CustomKeyCombo(key: "9", modifiers: ["command"])
+        case .togglePinTab: return CustomKeyCombo(key: "p", modifiers: ["command"])
+        case .openSplitTab: return CustomKeyCombo(key: "s", modifiers: ["option", "command"])
+        case .separateSplitTabs: return CustomKeyCombo(key: "s", modifiers: ["shift", "option", "command"])
         case .goBack: return CustomKeyCombo(key: "[", modifiers: ["command"])
         case .goForward: return CustomKeyCombo(key: "]", modifiers: ["command"])
         case .reload: return CustomKeyCombo(key: "r", modifiers: ["command"])
@@ -162,6 +174,24 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
             }
         case .goToLastTab:
             store.selectTab(number: 9)
+        case .togglePinTab:
+            if let selected = store.selectedTab, selected.url != nil {
+                store.togglePin(tab: selected)
+            }
+        case .openSplitTab:
+            if let selected = store.selectedTab {
+                if selected.isSplit {
+                    if selected.splitTabs.count < 4 {
+                        store.addTabToActiveSplit(store.createTab())
+                    }
+                } else {
+                    store.openTabAsSplit(selected)
+                }
+            }
+        case .separateSplitTabs:
+            if let selected = store.selectedTab, selected.isSplit {
+                store.separateSplitTabs(selected)
+            }
         case .goBack:
             store.selectedTab?.goBack()
         case .goForward:

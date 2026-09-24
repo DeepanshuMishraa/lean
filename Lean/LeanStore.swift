@@ -70,6 +70,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
     case forward = "forward"
     case reload = "reload"
     case newTab = "newTab"
+    case extensions = "extensions"
     case downloads = "downloads"
     case themeToggle = "themeToggle"
     case settings = "settings"
@@ -82,6 +83,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         case .forward: return "Forward"
         case .reload: return "Reload"
         case .newTab: return "New Tab"
+        case .extensions: return "Extensions"
         case .downloads: return "Downloads"
         case .themeToggle: return "Theme"
         case .settings: return "Settings"
@@ -94,6 +96,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         case .forward: return "chevron.right"
         case .reload: return "arrow.clockwise"
         case .newTab: return "plus"
+        case .extensions: return "puzzlepiece.extension"
         case .downloads: return "arrow.down.circle"
         case .themeToggle: return "sun.max.fill"
         case .settings: return "gearshape"
@@ -106,6 +109,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         case .forward: return .caretRight
         case .reload: return .arrowClockwise
         case .newTab: return .plus
+        case .extensions: return .extension
         case .downloads: return .arrowCircleDown
         case .themeToggle: return .sun
         case .settings: return .gear
@@ -116,7 +120,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         switch self {
         case .back, .forward, .reload:
             return true
-        case .newTab, .downloads, .themeToggle, .settings:
+        case .newTab, .extensions, .downloads, .themeToggle, .settings:
             return false
         }
     }
@@ -125,6 +129,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
 private struct BrowserSession: Codable {
     var urls: [String]
     var selectedIndex: Int
+    var pinnedIndices: [Int]?
 }
 
 struct HistoryItem: Identifiable, Equatable, Hashable, Codable, Sendable {
@@ -144,6 +149,12 @@ struct HistoryItem: Identifiable, Equatable, Hashable, Codable, Sendable {
 @MainActor
 final class LeanStore: ObservableObject {
     @Published private(set) var tabs: [LeanTab] = []
+    var pinnedTabs: [LeanTab] {
+        tabs.filter(\.isPinned)
+    }
+    var unpinnedTabs: [LeanTab] {
+        tabs.filter { !$0.isPinned }
+    }
     @Published var selectedID: LeanTab.ID? {
         didSet { handleTabSelectionChange(from: oldValue, to: selectedID) }
     }
@@ -168,6 +179,9 @@ final class LeanStore: ObservableObject {
     @Published var isDownloadsPresented = false
     @Published var downloadsButtonFrame: CGRect = .zero
     @Published var downloadsPopoverFrame: CGRect = .zero
+    @Published var isExtensionsPresented = false
+    @Published var extensionsButtonFrame: CGRect = .zero
+    @Published var extensionsPopoverFrame: CGRect = .zero
     @Published var downloadManager: DownloadManager
     @Published var customShortcuts: [String: CustomKeyCombo] = [:] {
         didSet {
@@ -387,7 +401,6 @@ final class LeanStore: ObservableObject {
     private var memoryPressureSource: DispatchSourceMemoryPressure?
     private let pictureInPicture = PictureInPicture()
     private var pictureInPictureTabID: LeanTab.ID?
-    private var isRestoringPictureInPictureTab = false
     /// Tab currently being reordered via native drag & drop. Plain (not
     /// @Published) on purpose: it is only read by drop delegates mid-drag.
     var draggingTabID: LeanTab.ID?
@@ -572,7 +585,7 @@ final class LeanStore: ObservableObject {
 
         let savedSession = databaseValue(self.database, BrowserSession.self, forKey: Self.sessionStateKey)
         let legacySessionURLs = databaseValue(self.database, [String].self, forKey: Self.sessionKey)
-            ?? UserDefaults.standard.stringArray(forKey: Self.sessionKey)
+            ?? (self.database == nil ? UserDefaults.standard.stringArray(forKey: Self.sessionKey) : nil)
             ?? []
         let sessionURLs = (savedSession?.urls ?? legacySessionURLs).compactMap(URL.init(string:))
         let selectedIndex = min(savedSession?.selectedIndex ?? sessionURLs.count - 1, sessionURLs.count - 1)
@@ -587,8 +600,12 @@ final class LeanStore: ObservableObject {
         if sessionURLs.isEmpty {
             newTab()
         } else {
+            let pinnedSet = Set(savedSession?.pinnedIndices ?? [])
             for (index, url) in sessionURLs.enumerated() {
-                newTab(url: url, select: index == selectedIndex)
+                let tab = newTab(url: url, select: index == selectedIndex)
+                if pinnedSet.contains(index) {
+                    tab.isPinned = true
+                }
             }
         }
     }
@@ -799,17 +816,17 @@ final class LeanStore: ObservableObject {
     private func returnFromPictureInPicture() {
         guard let id = pictureInPictureTabID,
               let tab = tabs.first(where: { $0.id == id }) else { return }
-        // Close the panel and restore the tab synchronously so the media tab
-        // reappears instantly. The DOM restore (Isolate.off) then runs
-        // concurrently instead of blocking the return on a JS roundtrip —
-        // waiting for it first is what made going back feel super laggy.
-        pictureInPictureTabID = nil
-        pictureInPicture.drop()
-        isRestoringPictureInPictureTab = true
-        selectedID = id
-        isRestoringPictureInPictureTab = false
-        objectWillChange.send()
-        tab.webView.evaluateJavaScript(Isolate.off, completionHandler: nil)
+        // Restore the video while the page is still in the PiP panel. Revealing
+        // the tab only after its DOM layout is back avoids showing the player
+        // resizing in front of the user.
+        tab.webView.evaluateJavaScript(Isolate.off) { [weak self, weak tab] _, _ in
+            DispatchQueue.main.async {
+                guard let self, tab != nil, self.pictureInPictureTabID == id else { return }
+                self.pictureInPictureTabID = nil
+                self.pictureInPicture.drop()
+                self.objectWillChange.send()
+            }
+        }
     }
 
     private func handleTabSelectionChange(from previous: LeanTab.ID?, to current: LeanTab.ID?) {
@@ -818,7 +835,7 @@ final class LeanStore: ObservableObject {
         if isReturningToPictureInPictureTab {
             returnFromPictureInPicture()
         }
-        if !isReturningToPictureInPictureTab, !isRestoringPictureInPictureTab,
+        if !isReturningToPictureInPictureTab,
            let previous, previous != pictureInPictureTabID,
            let tab = tabs.first(where: { $0.id == previous }) {
             showPictureInPicture(for: tab)
@@ -1102,8 +1119,27 @@ final class LeanStore: ObservableObject {
         let persistedTabs = tabs.filter { $0.url != nil }
         let urls = persistedTabs.compactMap { $0.url?.absoluteString }
         let selectedIndex = persistedTabs.firstIndex { $0.id == selectedID } ?? max(0, urls.count - 1)
-        persist(BrowserSession(urls: urls, selectedIndex: selectedIndex), forKey: Self.sessionStateKey)
+        let pinnedIndices = persistedTabs.enumerated().compactMap { $0.element.isPinned ? $0.offset : nil }
+        persist(BrowserSession(urls: urls, selectedIndex: selectedIndex, pinnedIndices: pinnedIndices), forKey: Self.sessionStateKey)
         persist(recentlyClosed.map(\.absoluteString), forKey: Self.recentlyClosedKey)
+    }
+
+    func togglePin(tab: LeanTab) {
+        guard tab.url != nil || tab.isPinned else { return }
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            tab.isPinned.toggle()
+            if let currentIndex = tabs.firstIndex(where: { $0.id == tab.id }) {
+                tabs.remove(at: currentIndex)
+                if tab.isPinned {
+                    let lastPinnedIndex = tabs.lastIndex(where: { $0.isPinned }) ?? -1
+                    tabs.insert(tab, at: lastPinnedIndex + 1)
+                } else {
+                    let firstUnpinnedIndex = tabs.firstIndex(where: { !$0.isPinned }) ?? tabs.count
+                    tabs.insert(tab, at: firstUnpinnedIndex)
+                }
+            }
+            saveSession()
+        }
     }
 
     @discardableResult
@@ -1114,54 +1150,7 @@ final class LeanStore: ObservableObject {
         focusAddress: Bool = true,
         popupOpenerID: LeanTab.ID? = nil
     ) -> LeanTab {
-        let tab = LeanTab(
-            dataStore: dataStore,
-            initialURL: configuration == nil ? url : nil,
-            isDark: isDarkMode,
-            scrollbarStyle: scrollbarStyle,
-            smoothScrolling: smoothScrollingEnabled,
-            pageFont: webPageFont,
-            adBlockingEnabled: adBlockingEnabled,
-            adBlockingExcludedHosts: adBlockingExcludedHosts,
-            passwordSavePromptsEnabled: passwordSavePromptsEnabled,
-            passwordSuggestionsEnabled: passwordSuggestionsEnabled,
-            configuration: configuration
-        )
-        tab.onStateChange = { [weak self] in
-            guard let self else { return }
-            self.objectWillChange.send()
-            if let tabURL = tab.url, !tab.isLoading {
-                self.recordHistory(url: tabURL, title: tab.title)
-            }
-            self.saveSession()
-        }
-        tab.downloadManager = downloadManager
-        tab.mediaPermissionStore = mediaPermissionStore
-        // Middle-click on the page background closes the tab. Previously this
-        // was only wired for popup children, so middle-clicking a normal page
-        // did nothing while middle-clicking the tab itself closed it.
-        tab.onCloseTab = { [weak self, weak tab] in
-            guard let self, let tab else { return }
-            self.close(tab)
-        }
-        tab.onOpenNewTab = { [weak self, weak tab] _, configuration in
-            guard let self, let tab else { return nil }
-            // WebKit drives the popup load itself through the returned
-            // web view — do not pre-load or the OAuth handshake double-loads.
-            let child = self.newTab(url: nil, configuration: configuration, popupOpenerID: tab.id)
-            child.onCloseTab = { [weak self, weak child] in
-                guard let self, let child else { return }
-                self.close(child)
-            }
-            return child.webView
-        }
-        tab.onOpenSourceTab = { [weak self] title, html in
-            self?.openPageSource(title: title, html: html)
-        }
-        tab.onOpenURLInNewTab = { [weak self] url in
-            self?.newTab(url: url)
-        }
-        tab.popupOpenerID = popupOpenerID
+        let tab = createTab(url: url, configuration: configuration, popupOpenerID: popupOpenerID)
         tabs.append(tab)
         if let popupOpenerID, let opener = tabs.first(where: { $0.id == popupOpenerID }) {
             opener.hasActivePopup = true
@@ -1177,6 +1166,130 @@ final class LeanStore: ObservableObject {
         saveSession()
         scheduleAutoSleep()
         return tab
+    }
+
+    func createTab(
+        url: URL? = nil,
+        configuration: WKWebViewConfiguration? = nil,
+        popupOpenerID: LeanTab.ID? = nil
+    ) -> LeanTab {
+        let tab = LeanTab(
+            dataStore: dataStore,
+            initialURL: configuration == nil ? url : nil,
+            isDark: isDarkMode,
+            scrollbarStyle: scrollbarStyle,
+            smoothScrolling: smoothScrollingEnabled,
+            pageFont: webPageFont,
+            adBlockingEnabled: adBlockingEnabled,
+            adBlockingExcludedHosts: adBlockingExcludedHosts,
+            passwordSavePromptsEnabled: passwordSavePromptsEnabled,
+            passwordSuggestionsEnabled: passwordSuggestionsEnabled,
+            configuration: configuration
+        )
+        wireTab(tab)
+        tab.popupOpenerID = popupOpenerID
+        return tab
+    }
+
+    private func wireTab(_ tab: LeanTab) {
+        tab.onStateChange = { [weak self, weak tab] in
+            guard let self, let tab else { return }
+            self.objectWillChange.send()
+            if let tabURL = tab.url, !tab.isLoading {
+                self.recordHistory(url: tabURL, title: tab.title)
+            }
+            self.saveSession()
+        }
+        tab.downloadManager = downloadManager
+        tab.mediaPermissionStore = mediaPermissionStore
+        tab.onCloseTab = { [weak self, weak tab] in
+            guard let self, let tab else { return }
+            self.close(tab)
+        }
+        tab.onOpenNewTab = { [weak self, weak tab] _, configuration in
+            guard let self, let tab else { return nil }
+            let child = self.newTab(url: nil, configuration: configuration, popupOpenerID: tab.id)
+            child.onCloseTab = { [weak self, weak child] in
+                guard let self, let child else { return }
+                self.close(child)
+            }
+            return child.webView
+        }
+        tab.onOpenSourceTab = { [weak self] title, html in
+            self?.openPageSource(title: title, html: html)
+        }
+        tab.onOpenURLInNewTab = { [weak self] url in
+            self?.newTab(url: url)
+        }
+    }
+
+    // MARK: - Split Tab Support
+
+    func select(tab: LeanTab) {
+        selectedID = tab.id
+        saveSession()
+    }
+
+    func openTabAsSplit(_ tab: LeanTab) {
+        guard !tab.isSplit else { return }
+        let companion = createTab(url: nil)
+        tab.splitTabs = [tab, companion]
+        tab.activeSplitIndex = 1
+        select(tab: tab)
+        objectWillChange.send()
+    }
+
+    func addTabToActiveSplit(_ tabToAdd: LeanTab) {
+        guard let active = selectedTab, active.id != tabToAdd.id else { return }
+        if active.isSplit {
+            guard active.splitTabs.count < 4 else { return }
+            tabs.removeAll { $0.id == tabToAdd.id }
+            active.splitTabs.append(tabToAdd)
+            active.activeSplitIndex = active.splitTabs.count - 1
+        } else {
+            tabs.removeAll { $0.id == tabToAdd.id }
+            active.splitTabs = [active, tabToAdd]
+            active.activeSplitIndex = 1
+        }
+        select(tab: active)
+        objectWillChange.send()
+    }
+
+    func separateSplitTabs(_ tab: LeanTab) {
+        guard tab.isSplit else { return }
+        let subTabs = tab.splitTabs
+        guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        tab.splitTabs.removeAll()
+        var insertIndex = index + 1
+        for other in subTabs where other.id != tab.id {
+            other.splitTabs.removeAll()
+            tabs.insert(other, at: min(insertIndex, tabs.count))
+            insertIndex += 1
+        }
+        objectWillChange.send()
+    }
+
+    func closeSplitPane(in parentTab: LeanTab, pane: LeanTab) {
+        guard parentTab.isSplit else { return }
+        pane.destroy()
+        parentTab.splitTabs.removeAll { $0.id == pane.id }
+        if parentTab.splitTabs.count <= 1 {
+            if let remaining = parentTab.splitTabs.first {
+                if parentTab.id != remaining.id {
+                    if let idx = tabs.firstIndex(where: { $0.id == parentTab.id }) {
+                        tabs[idx] = remaining
+                        select(tab: remaining)
+                    }
+                }
+                remaining.splitTabs.removeAll()
+            }
+            parentTab.splitTabs.removeAll()
+        } else {
+            if parentTab.activeSplitIndex >= parentTab.splitTabs.count {
+                parentTab.activeSplitIndex = max(0, parentTab.splitTabs.count - 1)
+            }
+        }
+        objectWillChange.send()
     }
 
     @discardableResult
@@ -1294,7 +1407,17 @@ final class LeanStore: ObservableObject {
         guard let source = tabs.firstIndex(where: { $0.id == id }), tabs.count > 1 else { return }
         var reordered = tabs
         let tab = reordered.remove(at: source)
-        reordered.insert(tab, at: min(max(destination, 0), reordered.count))
+
+        let targetIndex: Int
+        if tab.isPinned {
+            let pinnedCount = reordered.filter(\.isPinned).count
+            targetIndex = min(max(destination, 0), pinnedCount)
+        } else {
+            let pinnedCount = reordered.filter(\.isPinned).count
+            targetIndex = min(max(destination, pinnedCount), reordered.count)
+        }
+
+        reordered.insert(tab, at: targetIndex)
         guard reordered.map(\.id) != tabs.map(\.id) else { return }
         tabs = reordered
         saveSession()

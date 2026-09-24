@@ -124,46 +124,6 @@ final class HorizontalScrollWheelView: NSView {
     }
 }
 
-// MARK: - Window-drag veto for tab items
-//
-// The window uses a hidden title bar with full-size content, so a press-and-
-// move that starts on a tab is claimed as a window drag (titlebar region and
-// draggable SwiftUI backgrounds) and the whole window moves instead of the
-// tab. This transparent front overlay claims left-mouse presses so AppKit
-// asks IT — and it always answers NO — whether the window may move. The
-// press is then forwarded to the topmost SwiftUI view visually under it, so
-// clicks, text selection, close buttons and native drag-reorder behave
-// exactly as without it. Right/middle clicks and scrolling never touch it
-// and pass through as usual.
-struct WindowDragVeto: NSViewRepresentable {
-    func makeNSView(context: Context) -> VetoView { VetoView() }
-
-    func updateNSView(_ nsView: VetoView, context: Context) {}
-
-    final class VetoView: NSView {
-        override var mouseDownCanMoveWindow: Bool { false }
-
-        private var forwardingEvent = false
-
-        override func hitTest(_ point: NSPoint) -> NSView? {
-            guard !forwardingEvent,
-                  NSApp.currentEvent?.type == .leftMouseDown,
-                  bounds.contains(point) else { return nil }
-            return self
-        }
-
-        private func forward(_ event: NSEvent) {
-            forwardingEvent = true
-            NSApp.sendEvent(event)
-            forwardingEvent = false
-        }
-
-        override func mouseDown(with event: NSEvent) { forward(event) }
-        override func mouseDragged(with event: NSEvent) { forward(event) }
-        override func mouseUp(with event: NSEvent) { forward(event) }
-    }
-}
-
 // MARK: - Tab reorder (native drag & drop)
 //
 // The strips used to reorder with a SwiftUI DragGesture. That gesture only

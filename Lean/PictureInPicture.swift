@@ -102,6 +102,7 @@ final class PictureInPicture {
         page.frame = ground.bounds
         page.autoresizingMask = [.width, .height]
         ground.addSubview(page)
+        page.layoutSubtreeIfNeeded()
         CATransaction.commit()
 
         let controls = Controls(frame: ground.bounds)

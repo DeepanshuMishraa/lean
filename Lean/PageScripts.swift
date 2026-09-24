@@ -6,6 +6,7 @@ enum PageScripts {
     static let passwordFormMessageName = "leanPasswordFormSubmit"
     static let passwordFieldMessageName = "leanPasswordFieldFocus"
     static let middleClickMessageName = "leanMiddleClick"
+    static let mediaStateMessageName = "leanMediaState"
 
     /// Reports the anchor under every right-click (empty string for
     /// non-links) so the native menu can offer "Open Link in New Tab".
@@ -51,6 +52,64 @@ enum PageScripts {
             });
             Object.defineProperty(window, '__leanAudioContexts', { value: contexts, configurable: true });
         } catch (error) {}
+    })();
+    """
+
+    static let mediaStateTracker = """
+    (function() {
+        try {
+            var frameId = Math.random().toString(36).substring(2);
+            var timer = null;
+            var lastState = null;
+
+            function check() {
+                try {
+                    var mediaElements = Array.from(document.querySelectorAll('audio, video'));
+                    var isPlaying = mediaElements.some(function(el) {
+                        return !el.paused && !el.ended && el.readyState > 1;
+                    });
+                    var audioContexts = window.__leanAudioContexts || [];
+                    var webAudio = audioContexts.some(function(ref) {
+                        var ctx = ref && ref.deref && ref.deref();
+                        return ctx && ctx.state === 'running';
+                    });
+                    var active = isPlaying || webAudio;
+                    var muted = mediaElements.length > 0 && mediaElements.every(function(el) {
+                        return el.muted || el.volume === 0;
+                    });
+
+                    if (lastState === null || lastState.isPlaying !== active || lastState.isMuted !== muted) {
+                        lastState = { isPlaying: active, isMuted: muted };
+                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(mediaStateMessageName)) {
+                            window.webkit.messageHandlers.\(mediaStateMessageName).postMessage({
+                                id: frameId,
+                                isPlaying: active,
+                                isMuted: muted
+                            });
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            function scheduleCheck() {
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(check, 100);
+            }
+
+            var events = ['play', 'playing', 'pause', 'ended', 'volumechange', 'emptied', 'ratechange', 'suspend'];
+            events.forEach(function(evt) {
+                window.addEventListener(evt, scheduleCheck, true);
+            });
+
+            setInterval(check, 1500);
+
+            if (document.readyState === 'complete') {
+                scheduleCheck();
+            } else {
+                window.addEventListener('DOMContentLoaded', scheduleCheck, true);
+                window.addEventListener('load', scheduleCheck, true);
+            }
+        } catch (e) {}
     })();
     """
 

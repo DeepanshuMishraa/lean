@@ -161,11 +161,5 @@ struct LeanCommands: Commands {
             Button("Stop") { store.selectedTab?.stop() }
                 .keyboardShortcut(.escape, modifiers: [])
         }
-
-        CommandMenu("Help") {
-            Button("Welcome & Onboarding Tour...") {
-                store.startOnboarding()
-            }
-        }
     }
 }

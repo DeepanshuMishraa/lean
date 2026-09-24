@@ -72,6 +72,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
     case newTab = "newTab"
     case extensions = "extensions"
     case downloads = "downloads"
+    case bookmarks = "bookmarks"
     case themeToggle = "themeToggle"
     case settings = "settings"
 
@@ -85,6 +86,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         case .newTab: return "New Tab"
         case .extensions: return "Extensions"
         case .downloads: return "Downloads"
+        case .bookmarks: return "Bookmarks"
         case .themeToggle: return "Theme"
         case .settings: return "Settings"
         }
@@ -98,6 +100,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         case .newTab: return "plus"
         case .extensions: return "puzzlepiece.extension"
         case .downloads: return "arrow.down.circle"
+        case .bookmarks: return "bookmark"
         case .themeToggle: return "sun.max.fill"
         case .settings: return "gearshape"
         }
@@ -111,6 +114,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         case .newTab: return .plus
         case .extensions: return .extension
         case .downloads: return .arrowCircleDown
+        case .bookmarks: return .bookmark
         case .themeToggle: return .sun
         case .settings: return .gear
         }
@@ -120,7 +124,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         switch self {
         case .back, .forward, .reload:
             return true
-        case .newTab, .extensions, .downloads, .themeToggle, .settings:
+        case .newTab, .extensions, .downloads, .bookmarks, .themeToggle, .settings:
             return false
         }
     }
@@ -171,6 +175,17 @@ final class LeanStore: ObservableObject {
     @Published var switcherSelectedIndex = 0
     @Published var historyItems: [HistoryItem] = []
     @Published private(set) var importedBookmarks: [ImportedBookmark] = []
+    @Published var bookmarks: [BookmarkItem] = []
+    @Published var bookmarkFolders: [String] = [BookmarkFolder.defaultFolder]
+    @Published var selectedBookmarkFolder: String = BookmarkFolder.allFolder
+    @Published var isBookmarksPresented = false
+    @Published var bookmarksButtonFrame: CGRect = .zero
+    @Published var bookmarksPaletteFrame: CGRect = .zero
+    @Published var isBookmarkDialogPresented = false
+    @Published var dialogBookmarkTitle = ""
+    @Published var dialogBookmarkFolder = BookmarkFolder.defaultFolder
+    @Published var dialogBookmarkURL: URL? = nil
+    @Published var dialogBookmarkFrame: CGRect = .zero
     @Published var selectedSettingsCategory: SettingsCategory = .general
     @Published var isQuickSettingsPresented = false
     @Published var quickSettingsPopoverFrame: CGRect = .zero
@@ -322,6 +337,10 @@ final class LeanStore: ObservableObject {
         leanUIFont.font(size: scaled(size), fontWeight: uiBodyWeight)
     }
 
+    func bodyFont(size: CGFloat, weight: LeanFontWeight) -> Font {
+        leanUIFont.font(size: scaled(size), fontWeight: weight)
+    }
+
     @Published var webPageFont: LeanFont {
         didSet {
             persist(webPageFont.rawValue, forKey: Self.webPageFontKey)
@@ -469,7 +488,28 @@ final class LeanStore: ObservableObject {
             }
         }
 
-        self.importedBookmarks = databaseValue(self.database, [ImportedBookmark].self, forKey: Self.importedBookmarksKey) ?? []
+        let loadedImportedBookmarks = databaseValue(self.database, [ImportedBookmark].self, forKey: Self.importedBookmarksKey) ?? []
+        self.importedBookmarks = loadedImportedBookmarks
+
+        // Load bookmark folders
+        let savedFolders = databaseValue(self.database, [String].self, forKey: Self.bookmarkFoldersKey)
+            ?? UserDefaults.standard.stringArray(forKey: Self.bookmarkFoldersKey)
+        var folders = savedFolders ?? [BookmarkFolder.defaultFolder]
+        if !folders.contains(BookmarkFolder.defaultFolder) {
+            folders.insert(BookmarkFolder.defaultFolder, at: 0)
+        }
+        self.bookmarkFolders = folders
+
+        // Load bookmarks (with migration from importedBookmarks on first run)
+        let savedBookmarks = databaseValue(self.database, [BookmarkItem].self, forKey: Self.bookmarksKey)
+        if let savedBookmarks = savedBookmarks {
+            self.bookmarks = savedBookmarks
+        } else {
+            let migrated: [BookmarkItem] = loadedImportedBookmarks.map {
+                BookmarkItem(id: $0.id, title: $0.title, url: $0.url, folder: BookmarkFolder.defaultFolder)
+            }
+            self.bookmarks = migrated
+        }
 
         // Load saved theme (default to light or saved preference)
         let savedTheme = databaseValue(self.database, String.self, forKey: Self.themeKey)
@@ -604,6 +644,9 @@ final class LeanStore: ObservableObject {
 
         deduplicateHistory()
         saveHistory()
+        if savedBookmarks == nil && !self.bookmarks.isEmpty {
+            persist(self.bookmarks, forKey: Self.bookmarksKey)
+        }
 
         adBlockUpdateObserver = NotificationCenter.default.addObserver(
             forName: ContentBlocker.didUpdateNotification,
@@ -1062,6 +1105,13 @@ final class LeanStore: ObservableObject {
         importedBookmarks.append(contentsOf: newBookmarks)
         persist(importedBookmarks, forKey: Self.importedBookmarksKey)
 
+        for b in newBookmarks {
+            if !bookmarks.contains(where: { $0.url.absoluteString == b.url.absoluteString }) {
+                bookmarks.append(BookmarkItem(id: b.id, title: b.title, url: b.url, folder: BookmarkFolder.defaultFolder))
+            }
+        }
+        persist(bookmarks, forKey: Self.bookmarksKey)
+
         let previousHistoryCount = historyItems.count
         var seenHistory = Set(historyItems.map { $0.url.absoluteString })
         let newHistory = preview.history
@@ -1076,7 +1126,192 @@ final class LeanStore: ObservableObject {
 
     func deleteImportedBookmark(id: ImportedBookmark.ID) {
         importedBookmarks.removeAll { $0.id == id }
+        bookmarks.removeAll { $0.id == id }
         persist(importedBookmarks, forKey: Self.importedBookmarksKey)
+        persist(bookmarks, forKey: Self.bookmarksKey)
+    }
+
+    // MARK: - Bookmarks Management
+
+    func toggleBookmarks() {
+        isQuickSettingsPresented = false
+        isDownloadsPresented = false
+        isExtensionsPresented = false
+        isFloatingOmnibarVisible = false
+        isInlineURLEditing = false
+        isBookmarksPresented.toggle()
+    }
+
+    func dismissBookmarks() {
+        isBookmarksPresented = false
+    }
+
+    func isBookmarked(url: URL?) -> Bool {
+        guard let url else { return false }
+        let target = url.absoluteString.lowercased()
+        return bookmarks.contains { $0.url.absoluteString.lowercased() == target }
+    }
+
+    func bookmark(for url: URL?) -> BookmarkItem? {
+        guard let url else { return nil }
+        let target = url.absoluteString.lowercased()
+        return bookmarks.first { $0.url.absoluteString.lowercased() == target }
+    }
+
+    func addBookmark(title: String, url: URL, folder: String = BookmarkFolder.defaultFolder) {
+        let cleanFolder = folder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? BookmarkFolder.defaultFolder : folder
+        if !bookmarkFolders.contains(cleanFolder) && cleanFolder != BookmarkFolder.allFolder {
+            bookmarkFolders.append(cleanFolder)
+            persist(bookmarkFolders, forKey: Self.bookmarkFoldersKey)
+        }
+        if let index = bookmarks.firstIndex(where: { $0.url.absoluteString.lowercased() == url.absoluteString.lowercased() }) {
+            bookmarks[index].title = title
+            bookmarks[index].folder = cleanFolder
+        } else {
+            let item = BookmarkItem(title: title.isEmpty ? (url.host ?? url.absoluteString) : title, url: url, folder: cleanFolder)
+            bookmarks.insert(item, at: 0)
+        }
+        persist(bookmarks, forKey: Self.bookmarksKey)
+    }
+
+    func toggleBookmarkCurrentTab(folder: String? = nil) {
+        if isBookmarkDialogPresented {
+            dismissBookmarkDialog()
+        } else {
+            showBookmarkConfirmationDialogForCurrentTab(folder: folder)
+        }
+    }
+
+    func showBookmarkConfirmationDialogForCurrentTab(folder: String? = nil) {
+        guard let tab = selectedTab, let url = tab.url, !url.absoluteString.hasPrefix("lean://") else { return }
+        isQuickSettingsPresented = false
+        isDownloadsPresented = false
+        isExtensionsPresented = false
+        isFloatingOmnibarVisible = false
+        isInlineURLEditing = false
+        isBookmarksPresented = false
+
+        if let existing = bookmark(for: url) {
+            dialogBookmarkTitle = existing.title
+            dialogBookmarkFolder = existing.folder
+            dialogBookmarkURL = existing.url
+        } else {
+            let title = tab.title.isEmpty ? (url.host ?? url.absoluteString) : tab.title
+            let targetFolder = folder ?? (selectedBookmarkFolder == BookmarkFolder.allFolder ? BookmarkFolder.defaultFolder : selectedBookmarkFolder)
+            addBookmark(title: title, url: url, folder: targetFolder)
+            dialogBookmarkTitle = title
+            dialogBookmarkFolder = targetFolder
+            dialogBookmarkURL = url
+        }
+        withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
+            isBookmarkDialogPresented = true
+        }
+    }
+
+    func saveBookmarkDialog(title: String, folder: String) {
+        guard let url = dialogBookmarkURL else {
+            withAnimation(.easeOut(duration: 0.12)) {
+                isBookmarkDialogPresented = false
+            }
+            return
+        }
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanFolder = folder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? BookmarkFolder.defaultFolder : folder
+        addBookmark(title: cleanTitle.isEmpty ? (url.host ?? url.absoluteString) : cleanTitle, url: url, folder: cleanFolder)
+        withAnimation(.easeOut(duration: 0.12)) {
+            isBookmarkDialogPresented = false
+        }
+    }
+
+    func removeBookmarkFromDialog() {
+        if let url = dialogBookmarkURL, let existing = bookmark(for: url) {
+            deleteBookmark(id: existing.id)
+        }
+        withAnimation(.easeOut(duration: 0.12)) {
+            isBookmarkDialogPresented = false
+        }
+    }
+
+    func dismissBookmarkDialog() {
+        if let url = dialogBookmarkURL {
+            let cleanTitle = dialogBookmarkTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleanFolder = dialogBookmarkFolder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? BookmarkFolder.defaultFolder : dialogBookmarkFolder
+            addBookmark(title: cleanTitle.isEmpty ? (url.host ?? url.absoluteString) : cleanTitle, url: url, folder: cleanFolder)
+        }
+        withAnimation(.easeOut(duration: 0.12)) {
+            isBookmarkDialogPresented = false
+        }
+    }
+
+    func deleteBookmark(id: UUID) {
+        bookmarks.removeAll { $0.id == id }
+        importedBookmarks.removeAll { $0.id == id }
+        persist(bookmarks, forKey: Self.bookmarksKey)
+        persist(importedBookmarks, forKey: Self.importedBookmarksKey)
+    }
+
+    func updateBookmark(id: UUID, title: String, url: URL, folder: String) {
+        guard let index = bookmarks.firstIndex(where: { $0.id == id }) else { return }
+        let cleanFolder = folder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? BookmarkFolder.defaultFolder : folder
+        if !bookmarkFolders.contains(cleanFolder) && cleanFolder != BookmarkFolder.allFolder {
+            bookmarkFolders.append(cleanFolder)
+            persist(bookmarkFolders, forKey: Self.bookmarkFoldersKey)
+        }
+        bookmarks[index].title = title
+        bookmarks[index].url = url
+        bookmarks[index].folder = cleanFolder
+        persist(bookmarks, forKey: Self.bookmarksKey)
+    }
+
+    func moveBookmark(id: UUID, to folder: String) {
+        guard let index = bookmarks.firstIndex(where: { $0.id == id }) else { return }
+        let cleanFolder = folder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? BookmarkFolder.defaultFolder : folder
+        if !bookmarkFolders.contains(cleanFolder) && cleanFolder != BookmarkFolder.allFolder {
+            bookmarkFolders.append(cleanFolder)
+            persist(bookmarkFolders, forKey: Self.bookmarkFoldersKey)
+        }
+        bookmarks[index].folder = cleanFolder
+        persist(bookmarks, forKey: Self.bookmarksKey)
+    }
+
+    func addBookmarkFolder(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != BookmarkFolder.allFolder, !bookmarkFolders.contains(trimmed) else { return }
+        bookmarkFolders.append(trimmed)
+        persist(bookmarkFolders, forKey: Self.bookmarkFoldersKey)
+    }
+
+    func deleteBookmarkFolder(_ name: String) {
+        guard name != BookmarkFolder.defaultFolder && name != BookmarkFolder.allFolder else { return }
+        bookmarkFolders.removeAll { $0 == name }
+        // Re-assign bookmarks in deleted folder to defaultFolder
+        for index in bookmarks.indices {
+            if bookmarks[index].folder == name {
+                bookmarks[index].folder = BookmarkFolder.defaultFolder
+            }
+        }
+        persist(bookmarkFolders, forKey: Self.bookmarkFoldersKey)
+        persist(bookmarks, forKey: Self.bookmarksKey)
+        if selectedBookmarkFolder == name {
+            selectedBookmarkFolder = BookmarkFolder.allFolder
+        }
+    }
+
+    func renameBookmarkFolder(from oldName: String, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != BookmarkFolder.allFolder, oldName != BookmarkFolder.defaultFolder, oldName != BookmarkFolder.allFolder else { return }
+        guard let index = bookmarkFolders.firstIndex(of: oldName) else { return }
+        bookmarkFolders[index] = trimmed
+        for i in bookmarks.indices {
+            if bookmarks[i].folder == oldName {
+                bookmarks[i].folder = trimmed
+            }
+        }
+        persist(bookmarkFolders, forKey: Self.bookmarkFoldersKey)
+        persist(bookmarks, forKey: Self.bookmarksKey)
+        if selectedBookmarkFolder == oldName {
+            selectedBookmarkFolder = trimmed
+        }
     }
 
     func deleteHistoryItem(id: UUID) {
@@ -1640,6 +1875,8 @@ final class LeanStore: ObservableObject {
     private static let recentlyClosedKey = "recentlyClosedURLs"
     private static let historyKey = "visitedHistory"
     private static let importedBookmarksKey = "importedBookmarks_v1"
+    private static let bookmarksKey = "bookmarks_v1"
+    private static let bookmarkFoldersKey = "bookmarkFolders_v1"
     private static let searchEngineKey = "searchEngine"
     private static let adBlockingKey = "adBlockingEnabled"
     private static let passwordSavePromptsKey = "passwordSavePromptsEnabled"

@@ -34,6 +34,15 @@ struct LeanApp: App {
             LeanView(store: store, updater: updater)
                 .frame(minWidth: 720, minHeight: 480)
                 .ignoresSafeArea(.all)
+                // Links from elsewhere: a click in Mail, Slack, a PDF —
+                // macOS hands the address to whichever app owns http, which
+                // is this one once it is the default browser (see
+                // DefaultBrowser + Info.plist CFBundleURLTypes).
+                .onOpenURL { url in
+                    guard url.scheme?.lowercased().hasPrefix("http") == true else { return }
+                    store.openURL(url)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
         }
         .windowStyle(.hiddenTitleBar)
         // No automatic window-background dragging: with a hidden title bar and

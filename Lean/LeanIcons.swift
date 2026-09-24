@@ -22,6 +22,8 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
     case arrowUpRight
     case arrowsCounterClockwise
     case arrowsOutSimple
+    case bookmark
+    case bookmarkSimple
     case browser
     case caretDown
     case caretLeft
@@ -55,6 +57,7 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
     case fileVideo
     case fire
     case folder
+    case folderPlus
     case gear
     case githubLogo
     case hash
@@ -85,6 +88,7 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
     case speakerHigh
     case speakerSlash
     case squaresFour
+    case star
     case sun
     case tabs
     case textAlignLeft
@@ -176,6 +180,10 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M12 2a10 10 0 0 0-7.3 3.2L2.5 3v6h6L5.8 6.3A7.5 7.5 0 0 1 19.5 12h2.5A10 10 0 0 0 12 2zm7.5 13-2.7 2.7A7.5 7.5 0 0 1 4.5 12H2a10 10 0 0 0 17.3 6.8l2.2 2.2v-6h-6z\"/>\n</svg>"
         case .arrowsOutSimple:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M3.5 3.5A1 1 0 0 1 4.5 2.5h5a1 1 0 1 1 0 2H6.41l3.3 3.3a1 1 0 0 1-1.42 1.4l-3.3-3.3v3.09a1 1 0 1 1-2 0v-5a1 1 0 0 1 .5-.9zM19.5 2.5a1 1 0 0 1 1 1v5a1 1 0 1 1-2 0V5.41l-3.3 3.3a1 1 0 0 1-1.4-1.42l3.3-3.3h-3.1a1 1 0 1 1 0-2h5a1 1 0 0 1 .5.01zM8.3 14.3a1 1 0 0 1 1.4 1.4l-3.3 3.3h3.1a1 1 0 1 1 0 2h-5a1 1 0 0 1-1-1v-5a1 1 0 1 1 2 0v3.09l3.3-3.3zm7.4 0a1 1 0 0 1 1.42 0l3.3 3.3v-3.1a1 1 0 1 1 2 0v5a1 1 0 0 1-1 1h-5a1 1 0 1 1 0-2h3.09l-3.3-3.3a1 1 0 0 1 0-1.4z\"/>\n</svg>"
+        case .bookmark:
+            return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M18.25 3H5.75A2.75 2.75 0 0 0 3 5.75v15a1.25 1.25 0 0 0 1.95 1.03L12 16.92l7.05 4.86A1.25 1.25 0 0 0 21 20.75v-15A2.75 2.75 0 0 0 18.25 3z\"/>\n</svg>"
+        case .bookmarkSimple:
+            return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M6 3.5A2.5 2.5 0 0 0 3.5 6v14.5a1 1 0 0 0 1.58.82L12 16.27l6.92 5.05A1 1 0 0 0 20.5 20.5V6A2.5 2.5 0 0 0 18 3.5H6zm0 2h12a.5.5 0 0 1 .5.5v12.74l-5.92-4.32a1 1 0 0 0-1.16 0L5.5 18.74V6a.5.5 0 0 1 .5-.5z\"/>\n</svg>"
         case .browser:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M5.5 3A3.5 3.5 0 0 0 2 6.5v11A3.5 3.5 0 0 0 5.5 21h13a3.5 3.5 0 0 0 3.5-3.5v-11A3.5 3.5 0 0 0 18.5 3h-13zM4 9h16v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5V9zm2-2.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z\"/>\n</svg>"
         case .caretDown:
@@ -242,6 +250,8 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M12.5 2c-.3 1.5-.7 2.8-1.5 4-1.2 1.8-2.5 3.3-3.5 5.5-1.1 2.3-1.5 4.3-.8 6.5.9 2.7 3.3 4 5.8 4 3.7 0 6.5-2.8 6.5-6.5 0-3.3-2-6.5-3.8-9-.8 1.5-1.6 2.5-2.2 2.5-.5 0-.8-.5-.8-1.3 0-1.8.8-4.2.3-5.7z\"/>\n</svg>"
         case .folder:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M2.5 5A2.5 2.5 0 0 1 5 2.5h3.6a2.5 2.5 0 0 1 1.77.73L12 4.85h7A2.5 2.5 0 0 1 21.5 7.35v11.15a2.5 2.5 0 0 1-2.5 2.5H5a2.5 2.5 0 0 1-2.5-2.5V5z\"/>\n</svg>"
+        case .folderPlus:
+            return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M2.5 5A2.5 2.5 0 0 1 5 2.5h3.6a2.5 2.5 0 0 1 1.77.73L12 4.85h7A2.5 2.5 0 0 1 21.5 7.35v11.15a2.5 2.5 0 0 1-2.5 2.5H5a2.5 2.5 0 0 1-2.5-2.5V5zm9.5 4a.75.75 0 0 1 .75.75V12h2.25a.75.75 0 0 1 0 1.5H12.75v2.25a.75.75 0 0 1-1.5 0V13.5H9a.75.75 0 0 1 0-1.5h2.25V9.75A.75.75 0 0 1 12 9z\"/>\n</svg>"
         case .gear:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M22.307 10.051a0.75 0.75 0 0 0-0.365-0.506l-2.797-1.594-0.011-3.152a0.75 0.75 0 0 0-0.265-0.57 10.492 10.492 0 0 0-3.442-1.938 0.75 0.75 0 0 0-0.606 0.055L12 3.923 9.176 2.344a0.75 0.75 0 0 0-0.607-0.056A10.492 10.492 0 0 0 5.131 4.233a0.75 0.75 0 0 0-0.265 0.569l-0.014 3.155-2.797 1.594a0.75 0.75 0 0 0-0.365 0.506 9.982 9.982 0 0 0 0 3.896 0.75 0.75 0 0 0 0.365 0.506l2.797 1.594 0.011 3.153a0.75 0.75 0 0 0 0.265 0.57 10.492 10.492 0 0 0 3.442 1.938 0.75 0.75 0 0 0 0.606-0.055L12 20.077 14.824 21.656a0.742 0.742 0 0 0 0.366 0.094 0.758 0.758 0 0 0 0.241-0.039 10.509 10.509 0 0 0 3.439-1.943 0.75 0.75 0 0 0 0.265-0.569l0.014-3.155 2.797-1.594a0.75 0.75 0 0 0 0.365-0.506A9.982 9.982 0 0 0 22.307 10.051ZM12 15.75a3.75 3.75 0 1 1 3.75-3.75A3.75 3.75 0 0 1 12 15.75Z\"/>\n</svg>"
         case .githubLogo:
@@ -302,6 +312,8 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M3.28 2.22a.75.75 0 0 0-1.06 1.06l3.15 3.15L5.09 6.64A1 1 0 0 0 4 7.4v9.2a1 1 0 0 0 1.62.78l4.47-3.57 9.63 9.63a.75.75 0 0 0 1.06-1.06L3.28 2.22zM8.9 12.35 5.5 15.07V8.93l2.84 2.84.56.58zM14 3.23a1 1 0 0 0-1.09.21L8.85 7.02l1.09 1.09 3.06-2.63v8.66l2 2V3.23zM18.5 12c0-1.77-1.02-3.29-2.5-4.03v2.45l2.45 2.45c.03-.29.05-.58.05-.87z\"/>\n</svg>"
         case .squaresFour:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <rect x=\"3\" y=\"3\" width=\"7.5\" height=\"7.5\" rx=\"2\"/>\n  <rect x=\"13.5\" y=\"3\" width=\"7.5\" height=\"7.5\" rx=\"2\"/>\n  <rect x=\"3\" y=\"13.5\" width=\"7.5\" height=\"7.5\" rx=\"2\"/>\n  <rect x=\"13.5\" y=\"13.5\" width=\"7.5\" height=\"7.5\" rx=\"2\"/>\n</svg>"
+        case .star:
+            return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M12 2.5l2.84 6.22 6.81.6-5.14 4.54 1.54 6.64L12 17.07l-6.05 3.43 1.54-6.64-5.14-4.54 6.81-.6L12 2.5z\"/>\n</svg>"
         case .sun:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M11.25 3.75V1.5a0.75 0.75 0 0 1 1.5 0V3.75a0.75 0.75 0 0 1-1.5 0Zm0.75 2.25a6 6 0 1 0 6 6A6.007 6.007 0 0 0 12 6ZM5.469 6.531A0.75 0.75 0 0 0 6.531 5.469l-1.5-1.5A0.75 0.75 0 0 0 3.969 5.031Zm0 10.939-1.5 1.5a0.75 0.75 0 0 0 1.061 1.061l1.5-1.5a0.75 0.75 0 0 0-1.061-1.061ZM18 6.75a0.75 0.75 0 0 0 0.531-0.219l1.5-1.5a0.75 0.75 0 0 0-1.061-1.061l-1.5 1.5A0.75 0.75 0 0 0 18 6.75Zm0.531 10.719a0.75 0.75 0 0 0-1.061 1.061l1.5 1.5a0.75 0.75 0 0 0 1.061-1.061ZM4.5 12a0.75 0.75 0 0 0-0.75-0.75H1.5a0.75 0.75 0 0 0 0 1.5H3.75A0.75 0.75 0 0 0 4.5 12Zm7.5 7.5a0.75 0.75 0 0 0-0.75 0.75v2.25a0.75 0.75 0 0 0 1.5 0V20.25A0.75 0.75 0 0 0 12 19.5Zm10.5-8.25H20.25a0.75 0.75 0 0 0 0 1.5h2.25a0.75 0.75 0 0 0 0-1.5Z\"/>\n</svg>"
         case .tabs:

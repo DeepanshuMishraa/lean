@@ -200,6 +200,17 @@ struct SidebarView: View {
                         store.extensionsButtonFrame = frame
                     }
 
+                BookmarkToolbarButton(store: store)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .preference(key: BookmarksButtonFrameKey.self, value: proxy.frame(in: .global))
+                        }
+                    )
+                    .onPreferenceChange(BookmarksButtonFrameKey.self) { frame in
+                        store.bookmarksButtonFrame = frame
+                    }
+
                 DownloadToolbarButton(store: store)
                     .background(
                         GeometryReader { proxy in

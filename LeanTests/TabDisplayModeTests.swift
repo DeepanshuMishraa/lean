@@ -163,12 +163,13 @@ struct TabDisplayModeTests {
     func toolbarCustomizerTests() throws {
         let (store, directory) = try makeIsolatedTestStore()
         defer { try? FileManager.default.removeItem(at: directory) }
-        #expect(ToolbarItemType.allCases.count == 8)
+        #expect(ToolbarItemType.allCases.count == 9)
 
         // Reset to default
         store.resetToolbarItems()
-        #expect(store.shownToolbarItems.count == 8)
+        #expect(store.shownToolbarItems.count == 9)
         #expect(store.hiddenToolbarItems.isEmpty)
+        #expect(store.isToolbarItemShown(.bookmarks) == true)
 
         // Hide an item
         store.hideToolbarItem(.reload)

@@ -26,6 +26,10 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
     case findOnPage = "findOnPage"
     case dismiss = "dismiss"
 
+    // Bookmarks
+    case toggleBookmarks = "toggleBookmarks"
+    case bookmarkCurrentTab = "bookmarkCurrentTab"
+
     // View
     case toggleTheme = "toggleTheme"
     case toggleZen = "toggleZen"
@@ -57,6 +61,8 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .focusAddress: return "Focus Address Bar"
         case .findOnPage: return "Find on Page"
         case .dismiss: return "Dismiss / Unfocus"
+        case .toggleBookmarks: return "Show Bookmarks"
+        case .bookmarkCurrentTab: return "Bookmark Current Tab"
         case .toggleTheme: return "Toggle Light/Dark"
         case .toggleZen: return "Toggle Zen Mode"
         case .toggleFrame: return "Toggle Window Frame"
@@ -87,6 +93,8 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .focusAddress: return "Activate inline address field or Omnibar"
         case .findOnPage: return "Reveal interactive in-page text search bar"
         case .dismiss: return "Close dropdowns, Omnibar, or inline editing"
+        case .toggleBookmarks: return "Open bookmarks search and command palette"
+        case .bookmarkCurrentTab: return "Save or remove current tab in bookmarks"
         case .toggleTheme: return "Switch between light and dark theme mode"
         case .toggleZen: return "Hide interface elements for pure immersion"
         case .toggleFrame: return "Show or hide subtle framed border"
@@ -102,6 +110,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case all = "All"
         case tabs = "Tabs"
         case navigation = "Navigation"
+        case bookmarks = "Bookmarks"
         case omnibar = "Address & Search"
         case view = "View"
 
@@ -114,6 +123,8 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
             return .tabs
         case .goBack, .goForward, .reload, .hardReload, .stopLoading:
             return .navigation
+        case .toggleBookmarks, .bookmarkCurrentTab:
+            return .bookmarks
         case .focusAddress, .findOnPage, .dismiss:
             return .omnibar
         case .toggleTheme, .toggleZen, .toggleFrame, .toggleSidebar, .zoomIn, .zoomOut, .actualSize, .openSettings:
@@ -140,6 +151,8 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .focusAddress: return CustomKeyCombo(key: "l", modifiers: ["command"])
         case .findOnPage: return CustomKeyCombo(key: "f", modifiers: ["command"])
         case .dismiss: return CustomKeyCombo(key: "escape", modifiers: [])
+        case .toggleBookmarks: return CustomKeyCombo(key: "b", modifiers: ["option", "command"])
+        case .bookmarkCurrentTab: return CustomKeyCombo(key: "d", modifiers: ["command"])
         case .toggleTheme: return CustomKeyCombo(key: "d", modifiers: ["shift", "command"])
         case .toggleZen: return CustomKeyCombo(key: "z", modifiers: ["shift", "command"])
         case .toggleFrame: return CustomKeyCombo(key: "b", modifiers: ["shift", "command"])
@@ -212,9 +225,14 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .dismiss:
             store.dismissInlineURLEditing()
             store.dismissFloatingOmnibar()
+            store.dismissBookmarks()
             withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
                 store.isQuickSettingsPresented = false
             }
+        case .toggleBookmarks:
+            store.toggleBookmarks()
+        case .bookmarkCurrentTab:
+            store.toggleBookmarkCurrentTab()
         case .toggleTheme:
             store.toggleTheme()
         case .toggleZen:

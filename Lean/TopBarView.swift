@@ -185,13 +185,27 @@ struct TopBarView: View {
             }
 
             // Window & Workspace Actions
+            let showBookmarks = store.isToolbarItemShown(.bookmarks)
             let showExtensions = store.isToolbarItemShown(.extensions)
             let showDownloads = store.isToolbarItemShown(.downloads)
             let showTheme = store.isToolbarItemShown(.themeToggle)
             let showSettings = store.isToolbarItemShown(.settings)
 
-            if showExtensions || showDownloads || showTheme || showSettings {
+            if showBookmarks || showExtensions || showDownloads || showTheme || showSettings {
                 HStack(spacing: 2) {
+                    if showBookmarks {
+                        BookmarkToolbarButton(store: store)
+                            .background(
+                                GeometryReader { proxy in
+                                    Color.clear
+                                        .preference(key: BookmarksButtonFrameKey.self, value: proxy.frame(in: .global))
+                                }
+                            )
+                            .onPreferenceChange(BookmarksButtonFrameKey.self) { frame in
+                                store.bookmarksButtonFrame = frame
+                            }
+                    }
+
                     if showExtensions {
                         ExtensionToolbarButton(store: store)
                             .background(
@@ -1449,6 +1463,81 @@ private struct ExtensionToolbarButtonFallback: View {
         }
         .buttonStyle(.plain)
         .help("Extensions require macOS 15.4+")
+    }
+}
+
+// MARK: - PreferenceKey for Bookmarks Button Frame
+struct BookmarksButtonFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+// MARK: - Bookmarks Toolbar Button
+struct BookmarkToolbarButton: View {
+    @ObservedObject var store: LeanStore
+    @Environment(\.browserUIScale) private var browserUIScale
+
+    @State private var isHovered = false
+    @State private var isPressed = false
+
+    private var isCurrentTabBookmarked: Bool {
+        store.isBookmarked(url: store.selectedTab?.url)
+    }
+
+    private var foregroundColor: Color {
+        if store.isBookmarksPresented {
+            return store.adaptiveTheme.primaryText
+        }
+        if isCurrentTabBookmarked {
+            return Color(red: 0.98, green: 0.72, blue: 0.22)
+        }
+        if isHovered {
+            return store.adaptiveTheme.primaryText
+        }
+        return store.adaptiveTheme.secondaryText
+    }
+
+    private var backgroundColor: Color {
+        if isPressed {
+            return store.adaptiveTheme.iconPressedBackground
+        }
+        if isHovered || store.isBookmarksPresented {
+            return store.adaptiveTheme.iconHoverBackground
+        }
+        return Color.clear
+    }
+
+    var body: some View {
+        Button {
+            store.toggleBookmarks()
+        } label: {
+            ZStack {
+                (isCurrentTabBookmarked ? Ph.bookmark.fill : Ph.bookmark.bold)
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 12 * browserUIScale, height: 12 * browserUIScale)
+                    .foregroundColor(foregroundColor)
+                    .frame(width: 24 * browserUIScale, height: 24 * browserUIScale)
+                    .background(
+                        backgroundColor,
+                        in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    )
+                    .scaleEffect(isPressed ? 0.93 : 1.0)
+                    .animation(.easeOut(duration: 0.08), value: isPressed)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .help(isCurrentTabBookmarked ? "Bookmarks (⌥⌘B) • Current Tab Bookmarked" : "Bookmarks (⌥⌘B)")
+        .onHover { isHovered = $0 }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in isPressed = true }
+                .onEnded { _ in isPressed = false }
+        )
     }
 }
 

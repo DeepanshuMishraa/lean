@@ -138,6 +138,19 @@ struct LeanCommands: Commands {
             }
         }
 
+        CommandMenu("Bookmarks") {
+            Button(store.isBookmarked(url: store.selectedTab?.url) ? "Remove Bookmark for This Tab" : "Bookmark This Tab") {
+                store.toggleBookmarkCurrentTab()
+            }
+            .keyboardShortcut("d", modifiers: .command)
+            .disabled(store.selectedTab?.url == nil || (store.selectedTab?.url?.absoluteString.hasPrefix("lean://") ?? false))
+
+            Button(store.isBookmarksPresented ? "Hide Bookmarks" : "Show Bookmarks...") {
+                store.toggleBookmarks()
+            }
+            .keyboardShortcut("b", modifiers: [.option, .command])
+        }
+
         CommandMenu("Navigation") {
             Button("Back") { store.selectedTab?.goBack() }
                 .keyboardShortcut("[", modifiers: .command)

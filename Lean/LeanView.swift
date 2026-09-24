@@ -291,6 +291,36 @@ struct LeanView: View {
                 .zIndex(150)
             }
 
+            // Bookmarks Command Palette / Popover Overlay
+            if store.isBookmarksPresented {
+                VStack(spacing: 0) {
+                    Spacer().frame(height: store.scaled(72))
+                    BookmarksPaletteView(store: store)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .top)),
+                    removal: .opacity
+                ))
+                .animation(.easeOut(duration: 0.12), value: store.isBookmarksPresented)
+                .zIndex(160)
+            }
+
+            // Bookmark Confirmation / Edit Dialog (Cmd+D)
+            if store.isBookmarkDialogPresented {
+                VStack(spacing: 0) {
+                    Spacer().frame(height: store.scaled(72))
+                    BookmarkConfirmationDialog(store: store)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.96).combined(with: .opacity),
+                    removal: .opacity
+                ))
+                .animation(.spring(response: 0.22, dampingFraction: 0.84), value: store.isBookmarkDialogPresented)
+                .zIndex(170)
+            }
+
             // Bespoke Quick Settings Overlay
             if store.isQuickSettingsPresented {
                 ZStack(alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing) {
@@ -636,6 +666,60 @@ struct LeanView: View {
                 return event
             }
 
+            if store.isBookmarkDialogPresented {
+                let dialogFrame = store.dialogBookmarkFrame
+                let effectiveDialogFrame: CGRect
+                if dialogFrame.width > 0 && dialogFrame.height > 0 {
+                    effectiveDialogFrame = dialogFrame
+                } else {
+                    let windowWidth = window.contentView?.frame.width ?? window.frame.width
+                    let dialogWidth = store.scaled(360)
+                    let x = max(0, (windowWidth - dialogWidth) / 2)
+                    effectiveDialogFrame = CGRect(
+                        x: x,
+                        y: store.scaled(72),
+                        width: dialogWidth,
+                        height: store.scaled(200)
+                    )
+                }
+
+                if effectiveDialogFrame.contains(swiftUIPoint) {
+                    return event
+                } else {
+                    withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+                        store.dismissBookmarkDialog()
+                    }
+                    return event
+                }
+            }
+
+            if store.isBookmarksPresented {
+                let bookmarkFrame = store.bookmarksPaletteFrame
+                let effectiveBookmarkFrame: CGRect
+                if bookmarkFrame.width > 0 && bookmarkFrame.height > 0 {
+                    effectiveBookmarkFrame = bookmarkFrame
+                } else {
+                    let windowWidth = window.contentView?.frame.width ?? window.frame.width
+                    let paletteWidth = store.scaled(580)
+                    let x = max(0, (windowWidth - paletteWidth) / 2)
+                    effectiveBookmarkFrame = CGRect(
+                        x: x,
+                        y: store.scaled(72),
+                        width: paletteWidth,
+                        height: store.scaled(400)
+                    )
+                }
+
+                if effectiveBookmarkFrame.contains(swiftUIPoint) {
+                    return event
+                } else {
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        store.dismissBookmarks()
+                    }
+                    return event
+                }
+            }
+
             guard store.isFloatingOmnibarVisible else { return event }
 
             let paletteFrame = store.floatingPaletteFrame
@@ -666,8 +750,20 @@ struct LeanView: View {
 
         // Monitor keyDown for registered custom shortcuts and Escape
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            // Intercept Escape (keyCode 53) to close quick settings, inline url bar, floating omnibar, new tab omnibar, or tab switcher
+            // Intercept Escape (keyCode 53) to close quick settings, inline url bar, bookmarks, floating omnibar, new tab omnibar, or tab switcher
             if event.keyCode == 53 {
+                if store.isBookmarkDialogPresented {
+                    withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+                        store.dismissBookmarkDialog()
+                    }
+                    return nil
+                }
+                if store.isBookmarksPresented {
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        store.dismissBookmarks()
+                    }
+                    return nil
+                }
                 if store.isExtensionsPresented {
                     withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
                         store.isExtensionsPresented = false

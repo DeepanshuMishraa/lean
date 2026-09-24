@@ -636,10 +636,58 @@ private struct HistoryItemRow: View {
 private struct GeneralSection: View {
     @ObservedObject var store: LeanStore
     @ObservedObject var updater: AppUpdater
+    @State private var isDefault = DefaultBrowser.isDefault
+    @State private var isMakingDefault = false
+    @State private var defaultNotice: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             SettingsGroup(isDark: store.isDarkMode) {
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 2.5) {
+                        Text("Default browser")
+                            .font(store.leanUIFont.font(size: 13, weight: .medium))
+                            .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+
+                        Text(defaultNotice ?? (isDefault ? "Lean is the default browser on this Mac" : "Mail, Slack and the rest still send links elsewhere"))
+                            .font(store.leanUIFont.font(size: 11.5))
+                            .foregroundColor(defaultNotice != nil ? Color.red.opacity(0.85) : (store.isDarkMode ? Color(white: 0.50) : Color(white: 0.48)))
+                            .lineSpacing(1.5)
+                    }
+
+                    Spacer(minLength: 16)
+
+                    if isDefault {
+                        Ph.check.bold
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 13, height: 13)
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
+                            .frame(width: 26, height: 26)
+                    } else {
+                        SettingsActionButton(
+                            "Make Default…",
+                            isDark: store.isDarkMode,
+                            prominent: true,
+                            isLoading: isMakingDefault
+                        ) {
+                            isMakingDefault = true
+                            defaultNotice = nil
+                            DefaultBrowser.becomeDefault { worked in
+                                isMakingDefault = false
+                                isDefault = DefaultBrowser.isDefault
+                                if !worked || !isDefault {
+                                    defaultNotice = "macOS didn't change it — try again, or pick Lean in System Settings."
+                                }
+                            }
+                        }
+                        .disabled(isMakingDefault)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+
+                SettingsRowDivider(isDark: store.isDarkMode)
+
                 CustomToggleRow(
                     title: "Zen mode",
                     subtitle: "Distraction-free browsing. The top navigation bar hides completely and reveals smoothly when you hover the top edge.",
@@ -751,6 +799,12 @@ private struct GeneralSection: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
+        }
+        .onAppear {
+            // The default can change outside Lean (System Settings, another
+            // browser), so re-read it every time General is shown.
+            isDefault = DefaultBrowser.isDefault
+            if isDefault { defaultNotice = nil }
         }
     }
 }

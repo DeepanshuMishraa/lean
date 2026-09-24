@@ -880,6 +880,23 @@ export const Hash: React.FC<IconProps> = ({
   </svg>
 )
 
+export const Key: React.FC<IconProps> = ({
+  size = 24,
+  className,
+  ...props
+}) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    {...props}
+  >
+    <path fillRule="evenodd" clipRule="evenodd" d="M12.42 10.5A5.5 5.5 0 1 0 7.5 17.5a5.47 5.47 0 0 0 4.92-3h3.58v2.25a.75.75 0 0 0 .75.75h1.5a.75.75 0 0 0 .75-.75V14.5h1.25a.75.75 0 0 0 .75-.75V12a1.5 1.5 0 0 0-1.5-1.5h-6.98zM7.5 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/>
+  </svg>
+)
+
 export const Layout: React.FC<IconProps> = ({
   size = 24,
   className,
@@ -946,6 +963,23 @@ export const List: React.FC<IconProps> = ({
     {...props}
   >
     <path d="M4 6a1.25 1.25 0 0 1 1.25-1.25h14.5a1.25 1.25 0 1 1 0 2.5H5.25A1.25 1.25 0 0 1 4 6zm0 6a1.25 1.25 0 0 1 1.25-1.25h14.5a1.25 1.25 0 1 1 0 2.5H5.25A1.25 1.25 0 0 1 4 12zm0 6a1.25 1.25 0 0 1 1.25-1.25h14.5a1.25 1.25 0 1 1 0 2.5H5.25A1.25 1.25 0 0 1 4 18z"/>
+  </svg>
+)
+
+export const Lock: React.FC<IconProps> = ({
+  size = 24,
+  className,
+  ...props
+}) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    {...props}
+  >
+    <path fillRule="evenodd" clipRule="evenodd" d="M7 10V6.5a5 5 0 0 1 10 0V10h.75A2.25 2.25 0 0 1 20 12.25v7.5A2.25 2.25 0 0 1 17.75 22H6.25A2.25 2.25 0 0 1 4 19.75v-7.5A2.25 2.25 0 0 1 6.25 10H7zm2-3.5a3 3 0 1 1 6 0V10H9V6.5zm3 7a1.5 1.5 0 0 0-1 2.62V18a1 1 0 0 0 2 0v-1.88A1.5 1.5 0 0 0 12 13.5z"/>
   </svg>
 )
 

@@ -946,47 +946,108 @@ private struct SavedPasswordSuggestions: View {
     let select: (SavedPassword) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(logins) { login in
-                Button { select(login) } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "key.fill")
-                            .font(.system(size: 12, weight: .medium))
-                            .frame(width: 26, height: 26)
-                            .background(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(login.username.isEmpty ? "Saved sign-in" : login.username)
-                                .font(.system(size: 12, weight: .medium))
-                                .lineLimit(1)
-                            Text(login.host)
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        Spacer(minLength: 4)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(spacing: 2) {
+                ForEach(logins) { login in
+                    SavedPasswordRow(login: login, isDark: isDark, onSelect: { select(login) })
                 }
-                .buttonStyle(.plain)
             }
+            .padding(4)
+
+            Rectangle()
+                .fill(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06))
+                .frame(height: 1)
+
             HStack(spacing: 6) {
-                Image(systemName: "lock.fill")
+                LeanIcon.lock.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 10, height: 10)
+                    .foregroundColor(isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.4))
+
                 Text("From your Keychain")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundColor(isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.4))
+
+                Spacer()
             }
-            .font(.system(size: 10))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 12)
-            .padding(.top, 5)
-            .padding(.bottom, 8)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
+            .background(isDark ? Color.white.opacity(0.02) : Color.black.opacity(0.015))
         }
         .frame(width: 280, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(isDark ? .white.opacity(0.13) : .black.opacity(0.1)))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.regularMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.09), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .shadow(color: Color.black.opacity(isDark ? 0.35 : 0.12), radius: 16, x: 0, y: 6)
+        .shadow(color: Color.black.opacity(isDark ? 0.15 : 0.04), radius: 2, x: 0, y: 1)
         .padding(1)
+    }
+}
+
+private struct SavedPasswordRow: View {
+    let login: SavedPassword
+    let isDark: Bool
+    let onSelect: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 10) {
+                LeanIcon.key.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 12, height: 12)
+                    .foregroundColor(isDark ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
+                    .frame(width: 26, height: 26)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.05))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.04), lineWidth: 0.5)
+                    )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(login.username.isEmpty ? "Saved sign-in" : login.username)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(isDark ? Color.white.opacity(0.92) : Color.black.opacity(0.88))
+                        .lineLimit(1)
+                    Text(login.host)
+                        .font(.system(size: 10.5))
+                        .foregroundColor(isDark ? Color.white.opacity(0.48) : Color.black.opacity(0.45))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                if isHovered {
+                    LeanIcon.arrowSquareOut.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 11, height: 11)
+                        .foregroundColor(isDark ? Color.white.opacity(0.4) : Color.black.opacity(0.35))
+                        .transition(.opacity)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 7.5, style: .continuous)
+                    .fill(isHovered ? (isDark ? Color.white.opacity(0.09) : Color.black.opacity(0.055)) : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.12)) {
+                isHovered = hovering
+            }
+        }
     }
 }
 

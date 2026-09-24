@@ -61,10 +61,12 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
     case gear
     case githubLogo
     case hash
+    case key
     case layout
     case leaf
     case lightning
     case list
+    case lock
     case magnifyingGlass
     case minus
     case minusCircle
@@ -258,6 +260,8 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0 0 22 12.017C22 6.484 17.522 2 12 2z\"/>\n</svg>"
         case .hash:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M9.8 4a1 1 0 0 1 1 .86L10.3 8h4.4l-.5-3.14a1 1 0 1 1 2 .32L16.5 8H20a1 1 0 1 1 0 2h-3.8l-.6 4H19a1 1 0 1 1 0 2h-3.8l-.5 3.14a1 1 0 1 1-2-.32L13 16H8.6l-.5 3.14a1 1 0 1 1-2-.32L6.5 16H4a1 1 0 1 1 0-2h2.8l.6-4H4a1 1 0 1 1 0-2h3.8l.5-3.14A1 1 0 0 1 9.8 4zm1 6-.6 4h4.4l.6-4h-4.4z\"/>\n</svg>"
+        case .key:
+            return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M12.42 10.5A5.5 5.5 0 1 0 7.5 17.5a5.47 5.47 0 0 0 4.92-3h3.58v2.25a.75.75 0 0 0 .75.75h1.5a.75.75 0 0 0 .75-.75V14.5h1.25a.75.75 0 0 0 .75-.75V12a1.5 1.5 0 0 0-1.5-1.5h-6.98zM7.5 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4z\"/>\n</svg>"
         case .layout:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M3 5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 18.5v-13zM5.5 5h13a.5.5 0 0 1 .5.5V8H5V5.5a.5.5 0 0 1 .5-.5zM5 10v8.5a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V10H5z\"/>\n</svg>"
         case .leaf:
@@ -266,6 +270,8 @@ public enum LeanIcon: String, CaseIterable, Identifiable, Hashable, Codable {
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M12.5 2a1 1 0 0 0-.92.62L6.1 13.62A1 1 0 0 0 7 15h4v6a1 1 0 0 0 1.76.65l7.5-8.5A1 1 0 0 0 19.5 11.5H15V3a1 1 0 0 0-1-1h-1.5z\"/>\n</svg>"
         case .list:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path d=\"M4 6a1.25 1.25 0 0 1 1.25-1.25h14.5a1.25 1.25 0 1 1 0 2.5H5.25A1.25 1.25 0 0 1 4 6zm0 6a1.25 1.25 0 0 1 1.25-1.25h14.5a1.25 1.25 0 1 1 0 2.5H5.25A1.25 1.25 0 0 1 4 12zm0 6a1.25 1.25 0 0 1 1.25-1.25h14.5a1.25 1.25 0 1 1 0 2.5H5.25A1.25 1.25 0 0 1 4 18z\"/>\n</svg>"
+        case .lock:
+            return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M7 10V6.5a5 5 0 0 1 10 0V10h.75A2.25 2.25 0 0 1 20 12.25v7.5A2.25 2.25 0 0 1 17.75 22H6.25A2.25 2.25 0 0 1 4 19.75v-7.5A2.25 2.25 0 0 1 6.25 10H7zm2-3.5a3 3 0 1 1 6 0V10H9V6.5zm3 7a1.5 1.5 0 0 0-1 2.62V18a1 1 0 0 0 2 0v-1.88A1.5 1.5 0 0 0 12 13.5z\"/>\n</svg>"
         case .magnifyingGlass:
             return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"currentColor\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M10.5 3.5a7 7 0 1 0 4.29 12.52l4.49 4.49a1.25 1.25 0 0 0 1.77-1.77l-4.49-4.49A7 7 0 0 0 10.5 3.5zm-4.5 7a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0z\"/>\n</svg>"
         case .minus:

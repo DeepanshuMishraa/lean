@@ -6,6 +6,7 @@ struct OmnibarView: View {
 
     @State private var query = ""
     @State private var selectedIndex = 0
+    @State private var isNavigatingSuggestions = false
     @FocusState private var isFieldFocused: Bool
 
     private var openTabsForOmnibar: [(id: UUID, title: String, url: URL)] {
@@ -89,6 +90,7 @@ struct OmnibarView: View {
         }
         .onChange(of: query) { _, newQuery in
             selectedIndex = 0
+            isNavigatingSuggestions = false
             if !newQuery.isEmpty && !isFloating {
                 withAnimation(.easeOut(duration: 0.16)) {
                     store.isNewTabOmnibarFloating = true
@@ -122,16 +124,28 @@ struct OmnibarView: View {
                         submitCurrent()
                     }
                     .onKeyPress(.downArrow) {
+                        isNavigatingSuggestions = true
                         if !suggestions.isEmpty {
                             selectedIndex = (selectedIndex + 1) % suggestions.count
                         }
                         return .handled
                     }
                     .onKeyPress(.upArrow) {
+                        isNavigatingSuggestions = true
                         if selectedIndex > 0 {
                             selectedIndex -= 1
                         }
                         return .handled
+                    }
+                    .onKeyPress(.rightArrow) {
+                        if suggestions.indices.contains(selectedIndex) && (isNavigatingSuggestions || selectedIndex > 0) {
+                            let match = suggestions[selectedIndex]
+                            let fillText = match.isSearch ? match.primaryText : match.targetURL.absoluteString
+                            query = fillText
+                            isNavigatingSuggestions = false
+                            return .handled
+                        }
+                        return .ignored
                     }
                     .onKeyPress(.escape) {
                         handleEscape()
@@ -165,7 +179,10 @@ struct OmnibarView: View {
                         isSelected: index == selectedIndex,
                         store: store,
                         onSelect: { execute(match) },
-                        onHover: { selectedIndex = index }
+                        onHover: {
+                            selectedIndex = index
+                            isNavigatingSuggestions = true
+                        }
                     )
                 }
             }

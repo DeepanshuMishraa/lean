@@ -3876,8 +3876,33 @@ private struct ImportDataSection: View {
     @State private var credentialPreview: PasswordCSVPreview?
     @State private var message: String?
     @State private var error: String?
+    @State private var showingAllImportedBookmarks = false
+    @State private var bookmarkSearchQuery = ""
+    @State private var isBackHovered = false
+
+    private var filteredImportedBookmarks: [ImportedBookmark] {
+        let trimmed = bookmarkSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if trimmed.isEmpty {
+            return store.importedBookmarks
+        }
+        return store.importedBookmarks.filter { bookmark in
+            bookmark.title.lowercased().contains(trimmed) ||
+            (bookmark.url.host?.lowercased().contains(trimmed) ?? false) ||
+            bookmark.url.absoluteString.lowercased().contains(trimmed)
+        }
+    }
 
     var body: some View {
+        Group {
+            if showingAllImportedBookmarks {
+                importedBookmarksStackView
+            } else {
+                mainImportContent
+            }
+        }
+    }
+
+    private var mainImportContent: some View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 8) {
                 SettingsHeaderLabel("Import from a browser", uiFont: store.leanUIFont, isDark: store.isDarkMode)
@@ -4016,12 +4041,33 @@ private struct ImportDataSection: View {
 
             if !store.importedBookmarks.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    SettingsHeaderLabel("Imported bookmarks", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                    HStack {
+                        SettingsHeaderLabel("Imported bookmarks", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                        Spacer()
+                        if store.importedBookmarks.count > 5 {
+                            Button {
+                                withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                                    showingAllImportedBookmarks = true
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text("View all (\(store.importedBookmarks.count))")
+                                        .font(store.leanUIFont.font(size: 11.5, weight: .medium))
+                                    LeanIcon.caretRight.bold
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: 9, height: 9)
+                                }
+                                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.7) : Color.black.opacity(0.65))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                     SettingsGroup(isDark: store.isDarkMode) {
-                        ForEach(store.importedBookmarks) { bookmark in
+                        let previewBookmarks = Array(store.importedBookmarks.prefix(5))
+                        ForEach(previewBookmarks) { bookmark in
                             HStack(spacing: 10) {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(bookmark.title)
+                                    Text(bookmark.title.isEmpty ? bookmark.url.absoluteString : bookmark.title)
                                         .font(store.leanUIFont.font(size: 12.5, weight: .medium))
                                         .lineLimit(1)
                                     Text(bookmark.url.host ?? bookmark.url.absoluteString)
@@ -4034,14 +4080,19 @@ private struct ImportDataSection: View {
                                 Button {
                                     store.deleteImportedBookmark(id: bookmark.id)
                                 } label: {
-                                    LeanIcon.x.uiIcon
+                                    LeanIcon.x.fill
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: 10, height: 10)
+                                        .foregroundColor(secondaryText)
+                                        .frame(width: 24, height: 24)
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Remove bookmark")
                                 .help("Remove bookmark")
                             }
-                            .padding(12)
-                            if bookmark.id != store.importedBookmarks.last?.id {
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            if bookmark.id != previewBookmarks.last?.id {
                                 SettingsRowDivider(isDark: store.isDarkMode)
                             }
                         }
@@ -4103,6 +4154,112 @@ private struct ImportDataSection: View {
                 importSelected: importSelectedBrowserData,
                 cancel: { showsBrowserImportDialog = false }
             )
+        }
+    }
+
+    private var importedBookmarksStackView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header with Back button and Count
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                        showingAllImportedBookmarks = false
+                        bookmarkSearchQuery = ""
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        LeanIcon.caretLeft.bold
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 11, height: 11)
+                        Text("Data Import")
+                            .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                    }
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.8) : Color.black.opacity(0.75))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(
+                        isBackHovered ? (store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.055)) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    )
+                }
+                .buttonStyle(.plain)
+                .onHover { isBackHovered = $0 }
+
+                Spacer()
+
+                Text("\(store.importedBookmarks.count) total")
+                    .font(store.leanUIFont.font(size: 11.5))
+                    .foregroundColor(secondaryText)
+            }
+            .padding(.bottom, -4)
+
+            // Search Bar
+            HStack(spacing: 10) {
+                LeanIcon.magnifyingGlass.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 14, height: 14)
+                    .foregroundColor(secondaryText)
+
+                TextField("Search bookmarks by title or URL...", text: $bookmarkSearchQuery)
+                    .textFieldStyle(.plain)
+                    .font(store.leanUIFont.font(size: 13))
+
+                if !bookmarkSearchQuery.isEmpty {
+                    Button {
+                        bookmarkSearchQuery = ""
+                    } label: {
+                        LeanIcon.xCircle.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 14, height: 14)
+                            .foregroundColor(secondaryText)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear search")
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.035))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(store.isDarkMode ? Color.white.opacity(0.10) : Color.black.opacity(0.08), lineWidth: 1)
+            )
+
+            // Bookmarks List
+            if filteredImportedBookmarks.isEmpty {
+                SettingsGroup(isDark: store.isDarkMode) {
+                    VStack(spacing: 6) {
+                        Text(bookmarkSearchQuery.isEmpty ? "No imported bookmarks" : "No matching bookmarks")
+                            .font(store.leanUIFont.font(size: 13, weight: .medium))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.8) : Color.black.opacity(0.8))
+                        Text(bookmarkSearchQuery.isEmpty ? "Import bookmarks from your browser or HTML file above" : "Try searching for a different keyword or domain")
+                            .font(store.leanUIFont.font(size: 11.5))
+                            .foregroundColor(secondaryText)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 32)
+                }
+            } else {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(filteredImportedBookmarks.enumerated()), id: \.element.id) { index, bookmark in
+                        if index > 0 {
+                            SettingsRowDivider(isDark: store.isDarkMode)
+                        }
+                        ImportedBookmarkRow(bookmark: bookmark, store: store)
+                    }
+                }
+                .background(
+                    store.isDarkMode ? Color.white.opacity(0.035) : Color.black.opacity(0.02),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.05), lineWidth: 0.75)
+                )
+            }
         }
     }
 
@@ -4360,5 +4517,68 @@ private struct ImportDataSection: View {
             credentialPreview = nil
             self.error = error.localizedDescription
         }
+    }
+}
+
+// MARK: - Imported Bookmark Row
+private struct ImportedBookmarkRow: View {
+    let bookmark: ImportedBookmark
+    @ObservedObject var store: LeanStore
+    @State private var isDeleteHovered = false
+
+    private var secondaryText: Color {
+        store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48)
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            LeanIcon.bookmarkSimple.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 13, height: 13)
+                .foregroundColor(secondaryText.opacity(0.8))
+                .frame(width: 26, height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(bookmark.title.isEmpty ? bookmark.url.absoluteString : bookmark.title)
+                    .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                    .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                    .lineLimit(1)
+                Text(bookmark.url.host ?? bookmark.url.absoluteString)
+                    .font(store.leanUIFont.font(size: 11))
+                    .foregroundColor(secondaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            SettingsActionButton("Open", isDark: store.isDarkMode) {
+                store.openURL(bookmark.url)
+            }
+
+            Button {
+                store.deleteImportedBookmark(id: bookmark.id)
+            } label: {
+                LeanIcon.x.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 10, height: 10)
+                    .foregroundColor(isDeleteHovered ? (store.isDarkMode ? Color.white.opacity(0.9) : Color.black.opacity(0.85)) : secondaryText)
+                    .frame(width: 24, height: 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(isDeleteHovered ? (store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05)) : Color.clear)
+                    )
+            }
+            .buttonStyle(.plain)
+            .onHover { isDeleteHovered = $0 }
+            .accessibilityLabel("Remove bookmark")
+            .help("Remove bookmark")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
     }
 }

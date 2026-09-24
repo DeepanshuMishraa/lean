@@ -8,6 +8,7 @@ struct BookmarksPaletteView: View {
     @State private var selectedIndex = 0
     @State private var isCreatingFolder = false
     @State private var newFolderName = ""
+    @State private var isKeyboardNavigating = false
     @FocusState private var isFieldFocused: Bool
     @FocusState private var isNewFolderFocused: Bool
 
@@ -121,12 +122,14 @@ struct BookmarksPaletteView: View {
                         submitCurrent()
                     }
                     .onKeyPress(.downArrow) {
+                        isKeyboardNavigating = true
                         if !filteredBookmarks.isEmpty {
                             selectedIndex = min(selectedIndex + 1, filteredBookmarks.count - 1)
                         }
                         return .handled
                     }
                     .onKeyPress(.upArrow) {
+                        isKeyboardNavigating = true
                         if selectedIndex > 0 {
                             selectedIndex -= 1
                         }
@@ -374,7 +377,10 @@ struct BookmarksPaletteView: View {
                             onOpenInNewTab: { openBookmarkInNewTab(item) },
                             onOpenSplit: { openBookmarkInSplit(item) },
                             onDelete: { deleteBookmark(item) },
-                            onHover: { selectedIndex = index }
+                            onHover: {
+                                isKeyboardNavigating = false
+                                selectedIndex = index
+                            }
                         )
                         .id(item.id)
                     }
@@ -384,9 +390,10 @@ struct BookmarksPaletteView: View {
             }
             .frame(maxHeight: store.scaled(320))
             .onChange(of: selectedIndex) { _, newIndex in
+                guard isKeyboardNavigating else { return }
                 if filteredBookmarks.indices.contains(newIndex) {
                     withAnimation(.easeOut(duration: 0.1)) {
-                        proxy.scrollTo(filteredBookmarks[newIndex].id, anchor: .center)
+                        proxy.scrollTo(filteredBookmarks[newIndex].id, anchor: nil)
                     }
                 }
             }

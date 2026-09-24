@@ -307,19 +307,19 @@ final class LeanStore: ObservableObject {
     func scaled(_ value: CGFloat) -> CGFloat { value * browserUIScale }
 
     func headingFont(size: CGFloat) -> Font {
-        leanUIFont.font(size: scaled(size), weight: uiHeadingWeight.fontWeight)
+        leanUIFont.font(size: scaled(size), fontWeight: uiHeadingWeight)
     }
 
     var tabTitleTypeface: LeanFont {
-        webPageFont == .system ? leanUIFont : webPageFont
+        leanUIFont
     }
 
     func tabTitleFont(size: CGFloat) -> Font {
-        tabTitleTypeface.font(size: scaled(size), weight: uiHeadingWeight.fontWeight)
+        leanUIFont.font(size: scaled(size), fontWeight: uiHeadingWeight)
     }
 
     func bodyFont(size: CGFloat) -> Font {
-        leanUIFont.font(size: scaled(size), weight: uiBodyWeight.fontWeight)
+        leanUIFont.font(size: scaled(size), fontWeight: uiBodyWeight)
     }
 
     @Published var webPageFont: LeanFont {
@@ -507,10 +507,27 @@ final class LeanStore: ObservableObject {
             ?? true
         self.showFullTitleOnActiveTab = savedShowFullTitle
 
-        let savedLeanUIFont = databaseValue(self.database, String.self, forKey: Self.leanUIFontKey)
-            ?? UserDefaults.standard.string(forKey: Self.leanUIFontKey)
-            ?? LeanFont.system.rawValue
-        self.leanUIFont = LeanFont(rawValue: savedLeanUIFont) ?? .system
+        let defaultFont = LeanFont.geistSans.rawValue
+        let hasMigratedFontToGeist = databaseValue(self.database, Bool.self, forKey: "hasMigratedFontToGeistV2")
+            ?? UserDefaults.standard.bool(forKey: "hasMigratedFontToGeistV2")
+
+        let savedLeanUIFont: String
+        let savedWebPageFont: String
+        if !hasMigratedFontToGeist {
+            savedLeanUIFont = defaultFont
+            savedWebPageFont = defaultFont
+            UserDefaults.standard.set(defaultFont, forKey: Self.leanUIFontKey)
+            UserDefaults.standard.set(defaultFont, forKey: Self.webPageFontKey)
+            UserDefaults.standard.set(true, forKey: "hasMigratedFontToGeistV2")
+        } else {
+            savedLeanUIFont = databaseValue(self.database, String.self, forKey: Self.leanUIFontKey)
+                ?? UserDefaults.standard.string(forKey: Self.leanUIFontKey)
+                ?? defaultFont
+            savedWebPageFont = databaseValue(self.database, String.self, forKey: Self.webPageFontKey)
+                ?? UserDefaults.standard.string(forKey: Self.webPageFontKey)
+                ?? defaultFont
+        }
+        self.leanUIFont = LeanFont(rawValue: savedLeanUIFont) ?? .geistSans
 
         let savedHeadingWeight = databaseValue(self.database, Int.self, forKey: Self.uiHeadingWeightKey)
             ?? UserDefaults.standard.object(forKey: Self.uiHeadingWeightKey) as? Int
@@ -527,10 +544,7 @@ final class LeanStore: ObservableObject {
             ?? 100
         self.browserUIScalePercent = min(120, max(80, savedBrowserUIScale))
 
-        let savedWebPageFont = databaseValue(self.database, String.self, forKey: Self.webPageFontKey)
-            ?? UserDefaults.standard.string(forKey: Self.webPageFontKey)
-            ?? LeanFont.system.rawValue
-        self.webPageFont = LeanFont(rawValue: savedWebPageFont) ?? .system
+        self.webPageFont = LeanFont(rawValue: savedWebPageFont) ?? .geistSans
 
         let savedZen = databaseValue(self.database, Bool.self, forKey: Self.zenModeKey)
             ?? UserDefaults.standard.object(forKey: Self.zenModeKey) as? Bool
@@ -584,11 +598,9 @@ final class LeanStore: ObservableObject {
             self.hiddenToolbarItems = []
         }
 
-        let savedOnboarding = databaseValue(self.database, Bool.self, forKey: Self.hasCompletedOnboardingKey)
-            ?? UserDefaults.standard.object(forKey: Self.hasCompletedOnboardingKey) as? Bool
-            ?? false
-        self.hasCompletedOnboarding = savedOnboarding
-        self.isOnboardingPresented = !savedOnboarding
+        // FOR NOW: Always show onboarding on launch until requested to revert
+        self.hasCompletedOnboarding = false
+        self.isOnboardingPresented = true
 
         deduplicateHistory()
         saveHistory()
@@ -633,6 +645,11 @@ final class LeanStore: ObservableObject {
                     tab.isPinned = true
                 }
             }
+        }
+        if !hasMigratedFontToGeist {
+            persist(defaultFont, forKey: Self.leanUIFontKey)
+            persist(defaultFont, forKey: Self.webPageFontKey)
+            persist(true, forKey: "hasMigratedFontToGeistV2")
         }
     }
 

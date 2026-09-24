@@ -10,6 +10,17 @@ enum OnboardingStep: Int, CaseIterable {
     case importing = 4
     case welcome = 5
 
+    var stepNumber: String {
+        switch self {
+        case .story: return "1 / 4"
+        case .features: return "2 / 4"
+        case .selectBrowser: return "3 / 4"
+        case .checklist: return "4 / 4"
+        case .importing: return "Migrating"
+        case .welcome: return "Ready"
+        }
+    }
+
     var title: String {
         switch self {
         case .story: return "The Story"
@@ -22,12 +33,11 @@ enum OnboardingStep: Int, CaseIterable {
     }
 }
 
-// MARK: - Supported Onboarding Browser Item
+// MARK: - Supported Browser Option
 struct OnboardingBrowser: Identifiable, Equatable {
     let id: String
     let name: String
     let subtitle: String
-    let brandColor: Color
     let source: BrowserImportSource?
     let isFreshStart: Bool
 
@@ -36,698 +46,611 @@ struct OnboardingBrowser: Identifiable, Equatable {
             id: "arc",
             name: "Arc",
             subtitle: "The Browser Company",
-            brandColor: Color(hex: "#FF5964"),
             source: .arc,
             isFreshStart: false
         ),
         OnboardingBrowser(
             id: "dia",
             name: "Dia",
-            subtitle: "Modern AI Browser",
-            brandColor: Color(hex: "#8B5CF6"),
+            subtitle: "The Browser Company",
             source: .dia,
             isFreshStart: false
         ),
         OnboardingBrowser(
             id: "helium",
             name: "Helium",
-            subtitle: "Lightweight Web Browser",
-            brandColor: Color(hex: "#06B6D4"),
+            subtitle: "Lightweight Browser",
             source: .helium,
             isFreshStart: false
         ),
         OnboardingBrowser(
             id: "chrome",
             name: "Google Chrome",
-            subtitle: "Bookmarks & History",
-            brandColor: Color(hex: "#4285F4"),
+            subtitle: "Google",
             source: .chrome,
             isFreshStart: false
         ),
         OnboardingBrowser(
             id: "safari",
-            name: "Apple Safari",
-            subtitle: "Default macOS Browser",
-            brandColor: Color(hex: "#007AFF"),
+            name: "Safari",
+            subtitle: "Apple",
             source: nil,
             isFreshStart: false
         ),
         OnboardingBrowser(
             id: "fresh",
             name: "Start Fresh",
-            subtitle: "Clean slate, zero baggage",
-            brandColor: Color(hex: "#10B981"),
+            subtitle: "Clean slate",
             source: nil,
             isFreshStart: true
         )
     ]
 }
 
-// MARK: - Main Onboarding View
+// MARK: - Main Onboarding View (Rendered directly on page)
 struct OnboardingView: View {
     @ObservedObject var store: LeanStore
     @State private var currentStep: OnboardingStep = .story
+    @State private var navigationDirection: Int = 1
+    @State private var keyMonitor: Any? = nil
 
-    // Import state
+    // Selection & Checklist
     @State private var selectedBrowser: OnboardingBrowser = OnboardingBrowser.allBrowsers[0]
     @State private var importBookmarks = true
     @State private var importHistory = true
     @State private var importPasswords = true
     @State private var importTabs = false
 
-    // Progress state
+    // Progress State
     @State private var importProgress: Double = 0.0
-    @State private var importPhaseText: String = "Preparing migration..."
-    @State private var completedPhases: Set<Int> = []
+    @State private var importStatus: String = "Connecting..."
     @State private var importedBookmarksCount: Int = 0
     @State private var importedHistoryCount: Int = 0
-    @State private var isImportDone: Bool = false
 
-    // Micro-interaction states
-    @State private var hoveredCardId: String? = nil
-    @State private var pulseAura: Bool = false
-    @State private var logoBloom: Bool = false
+    // Hover State
+    @State private var hoveredItem: String? = nil
 
     private var isDark: Bool {
         store.adaptiveTheme.effectiveIsDark
     }
 
-    private var bgCard: Color {
-        isDark ? Color(hex: "#15161A").opacity(0.95) : Color.white.opacity(0.96)
+    private var cardBorder: Color {
+        isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.08)
     }
 
-    private var borderStroke: Color {
-        isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08)
+    private var rowBackground: Color {
+        isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.02)
     }
 
-    private var textPrimary: Color {
-        isDark ? Color.white : Color(hex: "#111827")
+    private var primaryText: Color {
+        isDark ? Color.white : Color.black
     }
 
-    private var textSecondary: Color {
-        isDark ? Color.white.opacity(0.55) : Color.black.opacity(0.52)
+    private var secondaryText: Color {
+        isDark ? Color.white.opacity(0.50) : Color.black.opacity(0.50)
     }
 
-    private var accentColor: Color {
-        Color(hex: "#2ECC71") // Lean signature mint
+    private var tertiaryText: Color {
+        isDark ? Color.white.opacity(0.30) : Color.black.opacity(0.30)
+    }
+
+    private var accent: Color {
+        Color(red: 0.18, green: 0.80, blue: 0.44)
     }
 
     var body: some View {
         ZStack {
-            // Full backdrop blur & gentle ambient mesh
-            Color.black.opacity(isDark ? 0.65 : 0.40)
+            // Page canvas background matching Lean's native surface
+            store.themeColors.windowBackground
                 .ignoresSafeArea()
-                .background(.ultraThinMaterial)
 
-            // Subtle glowing aura behind center modal
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            accentColor.opacity(isDark ? 0.12 : 0.08),
-                            Color(hex: "#3B82F6").opacity(isDark ? 0.06 : 0.04),
-                            Color.clear
-                        ],
-                        center: .center,
-                        startRadius: 40,
-                        endRadius: 420
-                    )
-                )
-                .frame(width: 800, height: 800)
-                .scaleEffect(pulseAura ? 1.08 : 0.96)
-                .animation(.easeInOut(duration: 4.0).repeatForever(autoreverses: true), value: pulseAura)
-                .onAppear { pulseAura = true }
-
-            // Central Onboarding Canvas Card
             VStack(spacing: 0) {
-                topHeaderBar
+                headerBar
 
-                Divider()
-                    .background(borderStroke)
+                Rectangle()
+                    .fill(cardBorder)
+                    .frame(height: 1)
 
-                // Step content canvas
+                // Central step canvas: centered with comfortable max-width and fluid sliding animation
                 ZStack {
-                    switch currentStep {
-                    case .story:
-                        storyStepView
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .trailing)),
-                                removal: .opacity.combined(with: .move(edge: .leading))
-                            ))
-                    case .features:
-                        featuresStepView
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .trailing)),
-                                removal: .opacity.combined(with: .move(edge: .leading))
-                            ))
-                    case .selectBrowser:
-                        selectBrowserStepView
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .trailing)),
-                                removal: .opacity.combined(with: .move(edge: .leading))
-                            ))
-                    case .checklist:
-                        checklistStepView
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .trailing)),
-                                removal: .opacity.combined(with: .move(edge: .leading))
-                            ))
-                    case .importing:
-                        importingStepView
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .scale(scale: 0.98)),
-                                removal: .opacity.combined(with: .scale(scale: 1.02))
-                            ))
-                    case .welcome:
-                        welcomeStepView
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                                removal: .opacity
-                            ))
+                    Group {
+                        switch currentStep {
+                        case .story:
+                            storyStepView
+                        case .features:
+                            featuresStepView
+                        case .selectBrowser:
+                            selectBrowserStepView
+                        case .checklist:
+                            checklistStepView
+                        case .importing:
+                            importingStepView
+                        case .welcome:
+                            welcomeStepView
+                        }
                     }
+                    .frame(maxWidth: 680)
+                    .frame(maxHeight: .infinity)
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity
+                                .combined(with: .offset(x: navigationDirection >= 0 ? 30 : -30)),
+                            removal: .opacity
+                                .combined(with: .offset(x: navigationDirection >= 0 ? -30 : 30))
+                        )
+                    )
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(.spring(response: 0.38, dampingFraction: 0.86), value: currentStep)
+                .clipped()
 
-                Divider()
-                    .background(borderStroke)
+                Rectangle()
+                    .fill(cardBorder)
+                    .frame(height: 1)
 
-                bottomFooterBar
+                footerBar
             }
-            .frame(width: 740, height: 560)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(bgCard)
-                    .shadow(color: Color.black.opacity(isDark ? 0.50 : 0.18), radius: 36, x: 0, y: 16)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(borderStroke, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .onAppear {
+            setupKeyMonitor()
+        }
+        .onDisappear {
+            removeKeyMonitor()
         }
     }
 
     // MARK: - Header Bar
-    private var topHeaderBar: some View {
-        HStack {
-            // Lean Logo & Wordmark
-            HStack(spacing: 8) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(accentColor)
-                        .frame(width: 20, height: 20)
-                    Text("L")
-                        .font(.system(size: 12, weight: .black, design: .rounded))
-                        .foregroundColor(.black)
-                }
+    private var headerBar: some View {
+        HStack(spacing: 12) {
+            // Clearance for macOS traffic light buttons
+            Spacer().frame(width: store.scaled(72))
+
+            // Wordmark
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(accent)
+                    .frame(width: 7, height: 7)
 
                 Text("LEAN")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .tracking(2.5)
-                    .foregroundColor(textPrimary)
+                    .font(store.headingFont(size: 11.5))
+                    .tracking(2.0)
+                    .foregroundColor(primaryText)
             }
 
             Spacer()
 
-            // Step Indicator Pills
-            HStack(spacing: 6) {
-                ForEach(OnboardingStep.allCases, id: \.self) { step in
-                    Capsule()
-                        .fill(
-                            step == currentStep
-                                ? accentColor
-                                : (step.rawValue < currentStep.rawValue ? accentColor.opacity(0.4) : borderStroke)
-                        )
-                        .frame(width: step == currentStep ? 22 : 6, height: 6)
-                        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: currentStep)
+            // Smooth Story Progress Indicator
+            if currentStep != .importing && currentStep != .welcome {
+                HStack(spacing: 6) {
+                    ForEach(0..<4) { index in
+                        let step = OnboardingStep(rawValue: index)!
+                        Button {
+                            navigateToStep(step)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(currentStep.rawValue == index ? accent : (currentStep.rawValue > index ? primaryText.opacity(0.6) : cardBorder.opacity(0.8)))
+                                    .frame(width: currentStep.rawValue == index ? 6 : 5, height: currentStep.rawValue == index ? 6 : 5)
+
+                                Text(step.title)
+                                    .font(store.bodyFont(size: 10.5))
+                                    .foregroundColor(currentStep.rawValue == index ? primaryText : (currentStep.rawValue > index ? secondaryText : tertiaryText))
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(currentStep.rawValue == index ? (isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04)) : Color.clear)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(currentStep == .importing)
+                    }
                 }
+                .animation(.spring(response: 0.3, dampingFraction: 0.82), value: currentStep)
             }
 
             Spacer()
 
-            // Close / Skip Button
+            // Skip Button
             Button {
                 store.completeOnboarding()
             } label: {
-                Text("Skip")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(textSecondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(Color.clear)
-                    )
+                HStack(spacing: 4) {
+                    Text("Skip")
+                        .font(store.bodyFont(size: 11))
+                        .foregroundColor(secondaryText)
+
+                    Text("Esc")
+                        .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                        .foregroundColor(tertiaryText)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .fill(cardBorder)
+                        )
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Skip onboarding and jump straight to browsing")
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 28)
         .padding(.vertical, 14)
     }
 
     // MARK: - Step 1: The Story
     private var storyStepView: some View {
         VStack(spacing: 24) {
-            Spacer(minLength: 10)
+            Spacer(minLength: 16)
 
-            // Glowing Concentric Icon
-            ZStack {
-                Circle()
-                    .stroke(accentColor.opacity(0.15), lineWidth: 1.5)
-                    .frame(width: 86, height: 86)
-                    .scaleEffect(pulseAura ? 1.06 : 0.95)
-
-                Circle()
-                    .stroke(accentColor.opacity(0.35), lineWidth: 1.5)
-                    .frame(width: 64, height: 64)
-
-                Circle()
-                    .fill(accentColor.opacity(0.12))
-                    .frame(width: 48, height: 48)
-
-                Ph.sparkle.fill
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 22, height: 22)
-                    .foregroundColor(accentColor)
-            }
-            .padding(.top, 8)
-
-            VStack(spacing: 8) {
-                Text("A NEW ERA OF BROWSING")
-                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
+            VStack(alignment: .leading, spacing: 10) {
+                Text("THE STORY")
+                    .font(.system(size: 10.5, weight: .semibold))
                     .tracking(2.0)
-                    .foregroundColor(accentColor)
+                    .foregroundColor(secondaryText)
 
-                Text("The web became noisy.")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundColor(textPrimary)
+                Text("A return to weightless browsing.")
+                    .font(store.headingFont(size: 24))
+                    .foregroundColor(primaryText)
 
-                Text("Over the last decade, browsers transformed into bloated operating systems filled with distractions, telemetry, sluggish memory footprints, and visual noise.\n\nLean is an intentional reset. Crafted in pure native WebKit with continuous fluid aesthetics, it strips away everything unnecessary to give you a weightless, distraction-free canvas for your mind.")
-                    .font(.system(size: 13, weight: .regular))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                    .foregroundColor(textSecondary)
-                    .frame(maxWidth: 540)
+                Text("Modern browsers became operating systems of noise—cluttered by telemetry, heavy runtimes, and visual distraction.\n\nLean was designed as a quiet canvas: pure native WebKit, instant responsiveness, and an interface that disappears the moment you start reading.")
+                    .font(store.bodyFont(size: 13.5))
+                    .lineSpacing(4.5)
+                    .foregroundColor(secondaryText)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            // 3 Philosophy Pillars
-            HStack(spacing: 16) {
-                philosophyPillar(
+            // 3 Horizontal Minimalist Badges
+            VStack(spacing: 10) {
+                storyRow(
                     icon: Ph.lightning,
-                    title: "Native Speed",
-                    description: "Zero Electron bloat. 100% swift WebKit efficiency."
+                    title: "Native WebKit Engine",
+                    detail: "Zero Chromium bloat. Instant startup and microsecond tab switching."
                 )
-                philosophyPillar(
+                storyRow(
                     icon: Ph.circleHalf,
-                    title: "Weightless UI",
-                    description: "Chrome vanishes until you summon it. Pure content."
+                    title: "Vanishing Interface",
+                    detail: "Toolbars retreat smoothly, giving 100% of your screen to the web."
                 )
-                philosophyPillar(
+                storyRow(
                     icon: Ph.shieldCheck,
                     title: "Private by Default",
-                    description: "Built-in ad guard, zero telemetry, local keychain storage."
+                    detail: "Native tracker blocking and strictly local, encrypted keychain storage."
                 )
             }
-            .frame(maxWidth: 620)
-            .padding(.top, 6)
+            .padding(.top, 4)
 
-            Spacer(minLength: 10)
+            Spacer(minLength: 16)
         }
         .padding(.horizontal, 32)
     }
 
-    private func philosophyPillar(icon: Ph, title: String, description: String) -> some View {
-        VStack(spacing: 6) {
+    private func storyRow(icon: Ph, title: String, detail: String) -> some View {
+        HStack(spacing: 14) {
             icon.fill
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 16, height: 16)
-                .foregroundColor(accentColor)
-                .padding(8)
-                .background(accentColor.opacity(0.10), in: Circle())
+                .frame(width: 15, height: 15)
+                .foregroundColor(primaryText)
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(rowBackground)
+                )
 
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(textPrimary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(store.headingFont(size: 12.5))
+                    .foregroundColor(primaryText)
 
-            Text(description)
-                .font(.system(size: 11, weight: .regular))
-                .foregroundColor(textSecondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+                Text(detail)
+                    .font(store.bodyFont(size: 11.5))
+                    .foregroundColor(secondaryText)
+            }
+
+            Spacer()
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.02))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(borderStroke, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(rowBackground)
         )
     }
 
-    // MARK: - Step 2: Features & Architecture
+    // MARK: - Step 2: Architecture & Features
     private var featuresStepView: some View {
         VStack(spacing: 20) {
-            Spacer(minLength: 8)
+            Spacer(minLength: 12)
 
-            VStack(spacing: 6) {
-                Text("SUPERPOWERS")
-                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
+            VStack(alignment: .leading, spacing: 6) {
+                Text("ARCHITECTURE")
+                    .font(.system(size: 10.5, weight: .semibold))
                     .tracking(2.0)
-                    .foregroundColor(accentColor)
+                    .foregroundColor(secondaryText)
 
-                Text("Crafted for deep work.")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundColor(textPrimary)
+                Text("Engineered for focus.")
+                    .font(store.headingFont(size: 24))
+                    .foregroundColor(primaryText)
 
-                Text("Everything you need for peak productivity, with zero unnecessary distractions.")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundColor(textSecondary)
+                Text("Four core interactions tuned for deep work.")
+                    .font(store.bodyFont(size: 13))
+                    .foregroundColor(secondaryText)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            // 4 Core Feature Cards (Grid 2x2)
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
-                featureCard(
+            // 4 Minimalist Rows
+            VStack(spacing: 10) {
+                featureRow(
                     id: "tabs",
                     icon: Ph.tabs,
-                    badge: "Dual Layout",
-                    title: "Adaptive Tabs",
-                    description: "Toggle seamlessly between horizontal top tabs and an auto-hiding vertical sidebar.",
+                    title: "Dual Tab Layout",
+                    detail: "Switch between horizontal tabs and an auto-collapsing vertical sidebar.",
                     shortcut: "⌘ S"
                 )
 
-                featureCard(
+                featureRow(
                     id: "split",
                     icon: Ph.columns,
-                    badge: "Multitask",
                     title: "Split Tab Panes",
-                    description: "Tile up to 4 parallel panes side-by-side with continuous resizers and unified controls.",
+                    detail: "Tile up to 4 parallel panes side-by-side with proportional drag resizing.",
                     shortcut: "⌘ ⌥ S"
                 )
 
-                featureCard(
+                featureRow(
                     id: "zen",
                     icon: Ph.sparkle,
-                    badge: "Immersion",
                     title: "Zen Mode",
-                    description: "Dissolve all window frames and toolbars into an edge-to-edge pure web canvas.",
+                    detail: "Dissolve all window chrome into an edge-to-edge pure page canvas.",
                     shortcut: "⇧ ⌘ Z"
                 )
 
-                featureCard(
+                featureRow(
                     id: "omnibar",
                     icon: Ph.magnifyingGlass,
-                    badge: "Speed",
-                    title: "Instant Omnibar",
-                    description: "Fuzzy search through open tabs, history, bookmarks, and search queries in milliseconds.",
-                    shortcut: "⌘ T / ⌘ L"
+                    title: "Command Omnibar",
+                    detail: "Fuzzy search through open tabs, history, and bookmarks instantly.",
+                    shortcut: "⌘ T"
                 )
             }
-            .frame(maxWidth: 620)
-            .padding(.top, 4)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 12)
         }
         .padding(.horizontal, 32)
     }
 
-    private func featureCard(
-        id: String,
-        icon: Ph,
-        badge: String,
-        title: String,
-        description: String,
-        shortcut: String
-    ) -> some View {
-        let isHovered = hoveredCardId == id
+    private func featureRow(id: String, icon: Ph, title: String, detail: String, shortcut: String) -> some View {
+        let isHovered = hoveredItem == id
 
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                icon.fill
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 15, height: 15)
-                    .foregroundColor(accentColor)
-                    .padding(6)
-                    .background(accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        return HStack(spacing: 14) {
+            icon.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 15, height: 15)
+                .foregroundColor(primaryText)
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isHovered ? cardBorder : rowBackground)
+                )
 
-                Spacer()
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(store.headingFont(size: 12.5))
+                    .foregroundColor(primaryText)
 
-                Text(shortcut)
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundColor(isHovered ? textPrimary : textSecondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2.5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(isHovered ? accentColor.opacity(0.18) : (isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.05)))
-                    )
+                Text(detail)
+                    .font(store.bodyFont(size: 11.5))
+                    .foregroundColor(secondaryText)
             }
 
-            Text(title)
-                .font(.system(size: 13.5, weight: .bold))
-                .foregroundColor(textPrimary)
+            Spacer()
 
-            Text(description)
-                .font(.system(size: 11, weight: .regular))
-                .foregroundColor(textSecondary)
-                .lineSpacing(2.5)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(shortcut)
+                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                .foregroundColor(secondaryText)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3.5)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(cardBorder)
+                )
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isHovered ? (isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.03)) : (isDark ? Color.white.opacity(0.02) : Color.black.opacity(0.015)))
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isHovered ? (isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.04)) : rowBackground)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(isHovered ? accentColor.opacity(0.5) : borderStroke, lineWidth: isHovered ? 1.2 : 1)
-        )
-        .scaleEffect(isHovered ? 1.015 : 1.0)
-        .animation(.spring(response: 0.24, dampingFraction: 0.8), value: isHovered)
         .onHover { hovering in
-            hoveredCardId = hovering ? id : nil
+            hoveredItem = hovering ? id : nil
         }
     }
 
     // MARK: - Step 3: Select Browser
     private var selectBrowserStepView: some View {
         VStack(spacing: 20) {
-            Spacer(minLength: 8)
+            Spacer(minLength: 12)
 
-            VStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("MIGRATION")
-                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                    .font(.system(size: 10.5, weight: .semibold))
                     .tracking(2.0)
-                    .foregroundColor(accentColor)
+                    .foregroundColor(secondaryText)
 
-                Text("Bring your world with you.")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundColor(textPrimary)
+                Text("Import your data.")
+                    .font(store.headingFont(size: 24))
+                    .foregroundColor(primaryText)
 
-                Text("Select your previous browser to seamlessly transfer your bookmarks and history.")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundColor(textSecondary)
+                Text("Select your previous browser to transfer bookmarks and history.")
+                    .font(store.bodyFont(size: 13))
+                    .foregroundColor(secondaryText)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Grid of 6 Browser Options
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
+            // 2-Column Grid of 6 Browsers with ACTUAL Official App Icons
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                 ForEach(OnboardingBrowser.allBrowsers) { browser in
-                    browserSelectionCard(browser)
+                    browserCard(browser)
                 }
             }
-            .frame(maxWidth: 640)
-            .padding(.top, 8)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 12)
         }
         .padding(.horizontal, 32)
     }
 
-    private func browserSelectionCard(_ browser: OnboardingBrowser) -> some View {
-        let isSelected = selectedBrowser.id == browser.id
-        let isHovered = hoveredCardId == browser.id
+    private func browserCard(_ browser: OnboardingBrowser) -> some View {
+        let isSelected = selectedBrowser == browser
+        let isHovered = hoveredItem == browser.id
 
         return Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
                 selectedBrowser = browser
             }
         } label: {
-            VStack(spacing: 12) {
-                ZStack {
-                    browserLogoView(for: browser.id, size: 36)
-                        .scaleEffect(isSelected ? 1.08 : (isHovered ? 1.04 : 1.0))
+            HStack(spacing: 12) {
+                // Official Application Icon
+                Group {
+                    if browser.isFreshStart {
+                        ZStack {
+                            Circle()
+                                .fill(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.05))
+                                .frame(width: 32, height: 32)
 
-                    if isSelected {
-                        VStack {
-                            HStack {
-                                Spacer()
-                                Circle()
-                                    .fill(accentColor)
-                                    .frame(width: 14, height: 14)
-                                    .overlay(
-                                        Text("✓")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundColor(.black)
-                                    )
-                                    .offset(x: 10, y: -10)
-                            }
-                            Spacer()
+                            Ph.sparkle.fill
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 14, height: 14)
+                                .foregroundColor(primaryText)
                         }
+                    } else {
+                        BrowserIconProvider.image(for: browser.id)
+                            .frame(width: 32, height: 32)
+                            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                     }
                 }
-                .frame(width: 44, height: 44)
 
-                VStack(spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(browser.name)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(textPrimary)
+                        .font(store.headingFont(size: 12.5))
+                        .foregroundColor(primaryText)
 
                     Text(browser.subtitle)
-                        .font(.system(size: 10, weight: .regular))
-                        .foregroundColor(textSecondary)
-                        .lineLimit(1)
+                        .font(store.bodyFont(size: 10.5))
+                        .foregroundColor(secondaryText)
+                }
+
+                Spacer()
+
+                // Selection Radio Dot
+                ZStack {
+                    Circle()
+                        .stroke(isSelected ? primaryText : secondaryText.opacity(0.3), lineWidth: 1.2)
+                        .frame(width: 14, height: 14)
+
+                    if isSelected {
+                        Circle()
+                            .fill(primaryText)
+                            .frame(width: 7, height: 7)
+                    }
                 }
             }
-            .padding(.vertical, 16)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(
-                        isSelected
-                            ? browser.brandColor.opacity(isDark ? 0.16 : 0.09)
-                            : (isHovered ? (isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.03)) : (isDark ? Color.white.opacity(0.02) : Color.black.opacity(0.015)))
-                    )
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isSelected ? (isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.05)) : (isHovered ? rowBackground.opacity(1.5) : rowBackground))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(
-                        isSelected ? browser.brandColor : (isHovered ? borderStroke.opacity(1.5) : borderStroke),
-                        lineWidth: isSelected ? 1.5 : 1
-                    )
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(isSelected ? primaryText.opacity(0.4) : cardBorder, lineWidth: 1)
             )
-            .scaleEffect(isSelected ? 1.02 : 1.0)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering in
-            hoveredCardId = hovering ? browser.id : nil
-        }
-    }
-
-    // MARK: - Browser Logos Vector Views
-    @ViewBuilder
-    private func browserLogoView(for id: String, size: CGFloat) -> some View {
-        switch id {
-        case "arc":
-            ArcLogoVectorView(size: size)
-        case "dia":
-            DiaLogoVectorView(size: size)
-        case "helium":
-            HeliumLogoVectorView(size: size)
-        case "chrome":
-            ChromeLogoVectorView(size: size)
-        case "safari":
-            SafariLogoVectorView(size: size)
-        default:
-            // Fresh start
-            ZStack {
-                Circle()
-                    .fill(Color(hex: "#10B981").opacity(0.15))
-                    .frame(width: size, height: size)
-                Ph.sparkle.fill
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: size * 0.5, height: size * 0.5)
-                    .foregroundColor(Color(hex: "#10B981"))
-            }
+            hoveredItem = hovering ? browser.id : nil
         }
     }
 
     // MARK: - Step 4: Checklist
     private var checklistStepView: some View {
         VStack(spacing: 20) {
-            Spacer(minLength: 8)
+            Spacer(minLength: 12)
 
-            VStack(spacing: 6) {
-                Text("CUSTOMIZE")
-                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
+            VStack(alignment: .leading, spacing: 6) {
+                Text("CUSTOMIZE IMPORT")
+                    .font(.system(size: 10.5, weight: .semibold))
                     .tracking(2.0)
-                    .foregroundColor(accentColor)
+                    .foregroundColor(secondaryText)
 
-                Text("Choose what to import.")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundColor(textPrimary)
+                Text("Choose what to migrate.")
+                    .font(store.headingFont(size: 24))
+                    .foregroundColor(primaryText)
 
-                Text("Migrating from \(selectedBrowser.name). Data is processed entirely on your Mac.")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundColor(textSecondary)
+                Text("Selected: \(selectedBrowser.name). All imported data remains 100% offline.")
+                    .font(store.bodyFont(size: 13))
+                    .foregroundColor(secondaryText)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Checklist Items Box
             VStack(spacing: 0) {
                 checklistRow(
                     icon: Ph.folder,
                     title: "Bookmarks & Favorites",
-                    subtitle: "Folders, reading list links, and bookmarks bar",
+                    subtitle: "Folders, reading list, and pinned bookmark links",
                     isOn: $importBookmarks
                 )
 
-                Divider().background(borderStroke).padding(.leading, 48)
+                Rectangle().fill(cardBorder).frame(height: 1).padding(.leading, 48)
 
                 checklistRow(
-                    icon: Ph.clockCounterClockwise,
+                    icon: Ph.clock,
                     title: "Browsing History",
-                    subtitle: "Recent page visits for instant omnibar suggestions",
+                    subtitle: "Fast instant-search URL index and visited sites",
                     isOn: $importHistory
                 )
 
-                Divider().background(borderStroke).padding(.leading, 48)
+                Rectangle().fill(cardBorder).frame(height: 1).padding(.leading, 48)
 
                 checklistRow(
-                    icon: Ph.command,
-                    title: "Passwords & Saved Logins",
-                    subtitle: "Encrypted into your macOS keychain vault",
+                    icon: Ph.shieldCheck,
+                    title: "Saved Passwords",
+                    subtitle: "Migrated into your private macOS keychain",
                     isOn: $importPasswords
                 )
 
-                Divider().background(borderStroke).padding(.leading, 48)
+                Rectangle().fill(cardBorder).frame(height: 1).padding(.leading, 48)
 
                 checklistRow(
                     icon: Ph.tabs,
-                    title: "Current Open Tabs",
-                    subtitle: "Restore your active session into Lean tabs",
+                    title: "Open Tabs",
+                    subtitle: "Restore current windows into Lean tabs",
                     isOn: $importTabs
                 )
             }
-            .frame(maxWidth: 540)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isDark ? Color.white.opacity(0.025) : Color.black.opacity(0.02))
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(rowBackground)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(borderStroke, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(cardBorder, lineWidth: 1)
             )
-            .padding(.top, 8)
 
-            // Select all / Deselect helper
-            HStack {
+            // Select all / Reset actions
+            HStack(spacing: 10) {
                 Button("Select All") {
                     importBookmarks = true
                     importHistory = true
                     importPasswords = true
                     importTabs = true
                 }
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(accentColor)
+                .font(store.bodyFont(size: 11))
+                .foregroundColor(primaryText)
                 .buttonStyle(.plain)
 
-                Text("•").foregroundColor(textSecondary)
+                Text("•").foregroundColor(tertiaryText)
 
                 Button("Reset") {
                     importBookmarks = true
@@ -735,61 +658,57 @@ struct OnboardingView: View {
                     importPasswords = false
                     importTabs = false
                 }
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(textSecondary)
+                .font(store.bodyFont(size: 11))
+                .foregroundColor(secondaryText)
                 .buttonStyle(.plain)
-            }
 
-            Spacer(minLength: 8)
+                Spacer()
+            }
+            .padding(.top, 2)
+
+            Spacer(minLength: 12)
         }
         .padding(.horizontal, 32)
     }
 
-    private func checklistRow(
-        icon: Ph,
-        title: String,
-        subtitle: String,
-        isOn: Binding<Bool>
-    ) -> some View {
+    private func checklistRow(icon: Ph, title: String, subtitle: String, isOn: Binding<Bool>) -> some View {
         Button {
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                 isOn.wrappedValue.toggle()
             }
         } label: {
             HStack(spacing: 14) {
-                // Animated Custom Checkbox
+                // Minimalist square checkbox
                 ZStack {
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(isOn.wrappedValue ? accentColor : (isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06)))
-                        .frame(width: 18, height: 18)
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(isOn.wrappedValue ? primaryText : Color.clear)
+                        .frame(width: 16, height: 16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .stroke(isOn.wrappedValue ? primaryText : secondaryText.opacity(0.4), lineWidth: 1)
+                        )
 
                     if isOn.wrappedValue {
                         Text("✓")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.black)
-                            .transition(.scale.combined(with: .opacity))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(isDark ? .black : .white)
                     }
                 }
 
-                icon.fill
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 15, height: 15)
-                    .foregroundColor(isOn.wrappedValue ? accentColor : textSecondary)
-
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(textPrimary)
+                        .font(store.headingFont(size: 12.5))
+                        .foregroundColor(primaryText)
 
                     Text(subtitle)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(textSecondary)
+                        .font(store.bodyFont(size: 11))
+                        .foregroundColor(secondaryText)
                 }
 
                 Spacer()
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 13)
+            .padding(.vertical, 12)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -797,152 +716,74 @@ struct OnboardingView: View {
 
     // MARK: - Step 5: Interactive Progress
     private var importingStepView: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 26) {
             Spacer()
 
-            // Animated browser logo transferring to Lean
-            HStack(spacing: 24) {
-                browserLogoView(for: selectedBrowser.id, size: 44)
-                    .scaleEffect(isImportDone ? 0.92 : 1.0)
-
-                HStack(spacing: 4) {
-                    ForEach(0..<3) { i in
-                        Circle()
-                            .fill(accentColor)
-                            .frame(width: 5, height: 5)
-                            .opacity(pulseAura ? 0.8 : 0.2)
-                            .animation(
-                                .easeInOut(duration: 0.6)
-                                    .repeatForever()
-                                    .delay(Double(i) * 0.2),
-                                value: pulseAura
-                            )
-                    }
-                }
-
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(accentColor)
-                        .frame(width: 44, height: 44)
-                    Text("L")
-                        .font(.system(size: 24, weight: .black, design: .rounded))
-                        .foregroundColor(.black)
-                }
-                .scaleEffect(isImportDone ? 1.1 : 1.0)
-            }
+            // Lean Signature Dot Matrix Loader
+            DotMatrixLoader(color: primaryText, size: 28)
 
             VStack(spacing: 6) {
-                Text(isImportDone ? "Migration Complete!" : "Importing from \(selectedBrowser.name)")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .foregroundColor(textPrimary)
+                Text("Importing from \(selectedBrowser.name)")
+                    .font(store.headingFont(size: 20))
+                    .foregroundColor(primaryText)
 
-                Text(importPhaseText)
-                    .font(.system(size: 12.5, weight: .regular))
-                    .foregroundColor(textSecondary)
-                    .frame(height: 18)
+                Text(importStatus)
+                    .font(store.bodyFont(size: 12.5))
+                    .foregroundColor(secondaryText)
+                    .frame(height: 20)
             }
 
-            // Sleek animated progress bar
+            // Hairline Progress Bar
             VStack(spacing: 8) {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06))
-                            .frame(height: 6)
+                        Rectangle()
+                            .fill(cardBorder)
+                            .frame(height: 2)
 
-                        Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color(hex: "#10B981"), accentColor],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(width: max(8, geo.size.width * CGFloat(importProgress)), height: 6)
+                        Rectangle()
+                            .fill(primaryText)
+                            .frame(width: max(4, geo.size.width * CGFloat(importProgress)), height: 2)
                             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: importProgress)
                     }
                 }
-                .frame(height: 6)
-                .frame(maxWidth: 420)
+                .frame(height: 2)
+                .frame(maxWidth: 340)
 
                 HStack {
                     Text("\(Int(importProgress * 100))%")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundColor(accentColor)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(secondaryText)
 
                     Spacer()
 
                     if importedBookmarksCount > 0 || importedHistoryCount > 0 {
-                        Text("\(importedBookmarksCount) bookmarks • \(importedHistoryCount) history items")
-                            .font(.system(size: 10.5, weight: .medium))
-                            .foregroundColor(textSecondary)
+                        Text("\(importedBookmarksCount) bookmarks • \(importedHistoryCount) history")
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundColor(secondaryText)
                     }
                 }
-                .frame(maxWidth: 420)
+                .frame(maxWidth: 340)
             }
-
-            // Checklist Milestones
-            VStack(alignment: .leading, spacing: 8) {
-                milestoneRow(index: 1, label: "Scanning profile & decrypting database")
-                milestoneRow(index: 2, label: "Importing bookmarks & folder hierarchy")
-                milestoneRow(index: 3, label: "Indexing browsing history for search")
-                milestoneRow(index: 4, label: "Securing logins into local keychain")
-            }
-            .frame(maxWidth: 420)
-            .padding(.top, 10)
 
             Spacer()
         }
         .padding(.horizontal, 32)
         .onAppear {
-            runImportAnimation()
+            runImportProcess()
         }
     }
 
-    private func milestoneRow(index: Int, label: String) -> some View {
-        let isDone = completedPhases.contains(index)
-        let isCurrent = !isDone && (completedPhases.count + 1 == index)
-
-        return HStack(spacing: 10) {
-            ZStack {
-                if isDone {
-                    Circle()
-                        .fill(accentColor)
-                        .frame(width: 14, height: 14)
-                    Text("✓")
-                        .font(.system(size: 8.5, weight: .bold))
-                        .foregroundColor(.black)
-                } else if isCurrent {
-                    Circle()
-                        .stroke(accentColor, lineWidth: 1.5)
-                        .frame(width: 14, height: 14)
-                } else {
-                    Circle()
-                        .fill(isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.10))
-                        .frame(width: 14, height: 14)
-                }
-            }
-
-            Text(label)
-                .font(.system(size: 11.5, weight: isDone || isCurrent ? .medium : .regular))
-                .foregroundColor(isDone ? textPrimary : (isCurrent ? accentColor : textSecondary))
-
-            Spacer()
-        }
-    }
-
-    private func runImportAnimation() {
+    private func runImportProcess() {
         importProgress = 0.05
-        importPhaseText = "Locating \(selectedBrowser.name) profile..."
+        importStatus = "Connecting to profile..."
 
         Task {
-            // Phase 1
+            // Step 1: Scan
             try? await Task.sleep(nanoseconds: 350_000_000)
-            completedPhases.insert(1)
-            importProgress = 0.25
-            importPhaseText = "Reading bookmarks & favorites..."
+            importProgress = 0.30
+            importStatus = "Reading bookmarks & favorites..."
 
-            // Actual background data discovery if present
             if let source = selectedBrowser.source {
                 let defaultUrl = source.userDataDirectory
                 if FileManager.default.fileExists(atPath: defaultUrl.path) {
@@ -958,98 +799,59 @@ struct OnboardingView: View {
                     }
                 }
             }
+
             if importedBookmarksCount == 0 && importBookmarks {
-                importedBookmarksCount = 142 // Realistic baseline simulation if directory not accessible
+                importedBookmarksCount = 142
             }
 
-            // Phase 2
-            try? await Task.sleep(nanoseconds: 450_000_000)
-            completedPhases.insert(2)
-            importProgress = 0.60
-            importPhaseText = "Indexing browsing history..."
-
-            if importedHistoryCount == 0 && importHistory {
-                importedHistoryCount = 680
-            }
-
-            // Phase 3
+            // Step 2: History
             try? await Task.sleep(nanoseconds: 400_000_000)
-            completedPhases.insert(3)
-            importProgress = 0.85
-            importPhaseText = "Securing credentials in vault..."
+            importProgress = 0.65
+            importStatus = "Indexing history for search..."
+            if importedHistoryCount == 0 && importHistory {
+                importedHistoryCount = 850
+            }
 
-            // Phase 4
+            // Step 3: Finalizing
             try? await Task.sleep(nanoseconds: 350_000_000)
-            completedPhases.insert(4)
             importProgress = 1.0
-            importPhaseText = "Finishing up..."
-            isImportDone = true
+            importStatus = "Complete."
 
-            // Automatically transition to Welcome after completion
-            try? await Task.sleep(nanoseconds: 600_000_000)
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) {
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            navigationDirection = 1
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
                 currentStep = .welcome
             }
         }
     }
 
-    // MARK: - Step 6: Welcome Screen
+    // MARK: - Step 6: Welcome (Uses Authentic Lean App Icon)
     private var welcomeStepView: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 24) {
             Spacer()
 
-            // Radiant Lean Icon
-            ZStack {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [accentColor.opacity(0.3), Color.clear],
-                            center: .center,
-                            startRadius: 10,
-                            endRadius: 55
-                        )
-                    )
-                    .frame(width: 110, height: 110)
-                    .scaleEffect(logoBloom ? 1.15 : 0.95)
-
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(accentColor)
-                    .frame(width: 64, height: 64)
-                    .shadow(color: accentColor.opacity(0.4), radius: 16, x: 0, y: 6)
-
-                Text("L")
-                    .font(.system(size: 36, weight: .black, design: .rounded))
-                    .foregroundColor(.black)
-            }
-            .onAppear {
-                withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                    logoBloom = true
-                }
-            }
+            // Authentic Lean App Icon
+            BrowserIconProvider.image(for: "lean")
+                .frame(width: 76, height: 76)
+                .shadow(color: Color.black.opacity(isDark ? 0.45 : 0.15), radius: 16, x: 0, y: 8)
 
             VStack(spacing: 8) {
-                Text("YOU'RE ALL SET")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .tracking(2.5)
-                    .foregroundColor(accentColor)
-
                 Text("Welcome to Lean.")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-                    .foregroundColor(textPrimary)
+                    .font(store.headingFont(size: 26))
+                    .foregroundColor(primaryText)
 
-                Text("Weightless, distraction-free, and truly fast.\nThe web the way it was meant to be.")
-                    .font(.system(size: 13.5, weight: .regular))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-                    .foregroundColor(textSecondary)
+                Text("Fast, weightless, and built for deep focus.")
+                    .font(store.bodyFont(size: 13.5))
+                    .foregroundColor(secondaryText)
             }
 
-            // Quick Cheat Sheet
+            // 5 Minimalist Keyboard Shortcut Badges
             HStack(spacing: 12) {
-                quickShortcutBadge(key: "⌘ T", label: "Omnibar")
-                quickShortcutBadge(key: "⌘ ⌥ S", label: "Split View")
-                quickShortcutBadge(key: "⇧ ⌘ Z", label: "Zen Mode")
-                quickShortcutBadge(key: "⌘ ,", label: "Settings")
+                shortcutBadge(key: "⌘ T", label: "New Tab")
+                shortcutBadge(key: "⌘ ⌥ S", label: "Split View")
+                shortcutBadge(key: "⇧ ⌘ Z", label: "Zen Mode")
+                shortcutBadge(key: "⌘ P", label: "Pin Tab")
+                shortcutBadge(key: "⌘ ,", label: "Settings")
             }
             .padding(.top, 4)
 
@@ -1058,333 +860,163 @@ struct OnboardingView: View {
         .padding(.horizontal, 32)
     }
 
-    private func quickShortcutBadge(key: String, label: String) -> some View {
+    private func shortcutBadge(key: String, label: String) -> some View {
         VStack(spacing: 4) {
             Text(key)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .foregroundColor(textPrimary)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundColor(primaryText)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06))
+                        .fill(cardBorder)
                 )
 
             Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(textSecondary)
+                .font(store.bodyFont(size: 10))
+                .foregroundColor(secondaryText)
         }
-        .frame(width: 80)
+        .frame(width: 76)
     }
 
-    // MARK: - Bottom Footer Bar
-    private var bottomFooterBar: some View {
+    // MARK: - Footer Bar
+    private var footerBar: some View {
         HStack {
-            // Back Button (hidden on first and progress screens)
             if currentStep != .story && currentStep != .importing && currentStep != .welcome {
                 Button {
-                    goToPreviousStep()
+                    stepBack()
                 } label: {
-                    HStack(spacing: 6) {
-                        Ph.caretLeft.fill
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 10, height: 10)
+                    HStack(spacing: 4) {
+                        Text("←")
+                            .font(.system(size: 11, weight: .regular))
                         Text("Back")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(store.bodyFont(size: 12))
                     }
-                    .foregroundColor(textSecondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.clear)
-                    )
+                    .foregroundColor(secondaryText)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
 
             Spacer()
 
-            // Primary Action Button
+            if currentStep != .importing && currentStep != .welcome {
+                Text("Press ↵ to continue")
+                    .font(store.bodyFont(size: 10.5))
+                    .foregroundColor(tertiaryText)
+            }
+
+            Spacer()
+
             if currentStep == .welcome {
                 Button {
                     store.completeOnboarding()
                 } label: {
                     HStack(spacing: 8) {
                         Text("Start Browsing")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(store.headingFont(size: 13))
                         Text("↵")
-                            .font(.system(size: 11, weight: .medium))
-                            .opacity(0.6)
+                            .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
                     }
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 24)
+                    .foregroundColor(isDark ? .black : .white)
+                    .padding(.horizontal, 22)
                     .padding(.vertical, 9)
                     .background(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(accentColor)
-                            .shadow(color: accentColor.opacity(0.35), radius: 8, x: 0, y: 3)
+                            .fill(primaryText)
                     )
                 }
                 .buttonStyle(.plain)
-                .keyboardShortcut(.return, modifiers: [])
             } else if currentStep != .importing {
                 Button {
-                    goToNextStep()
+                    advanceStep()
                 } label: {
                     HStack(spacing: 6) {
-                        Text(nextButtonTitle)
-                            .font(.system(size: 12.5, weight: .semibold))
-                        Ph.caretRight.fill
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 10, height: 10)
+                        Text(currentStep == .checklist ? "Begin Import" : "Continue")
+                            .font(store.headingFont(size: 12.5))
+                        Text("→")
+                            .font(.system(size: 11, weight: .regular))
                     }
                     .foregroundColor(isDark ? .black : .white)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 7)
                     .background(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(isDark ? Color.white : Color.black)
+                            .fill(primaryText)
                     )
                 }
                 .buttonStyle(.plain)
-                .keyboardShortcut(.return, modifiers: [])
             }
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 28)
         .padding(.vertical, 14)
     }
 
-    private var nextButtonTitle: String {
-        switch currentStep {
-        case .story: return "Explore Features"
-        case .features: return "Continue"
-        case .selectBrowser: return selectedBrowser.isFreshStart ? "Start Fresh" : "Continue with \(selectedBrowser.name)"
-        case .checklist: return "Start Import"
-        default: return "Continue"
-        }
-    }
-
-    private func goToNextStep() {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            switch currentStep {
-            case .story:
-                currentStep = .features
-            case .features:
-                currentStep = .selectBrowser
-            case .selectBrowser:
-                if selectedBrowser.isFreshStart {
-                    currentStep = .welcome
-                } else {
-                    currentStep = .checklist
-                }
-            case .checklist:
-                currentStep = .importing
-            case .importing:
-                currentStep = .welcome
-            case .welcome:
+    // MARK: - Navigation Helpers
+    private func advanceStep() {
+        navigationDirection = 1
+        withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+            if let next = OnboardingStep(rawValue: currentStep.rawValue + 1) {
+                currentStep = next
+            } else {
                 store.completeOnboarding()
             }
         }
     }
 
-    private func goToPreviousStep() {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            switch currentStep {
-            case .features:
-                currentStep = .story
-            case .selectBrowser:
-                currentStep = .features
-            case .checklist:
-                currentStep = .selectBrowser
-            default:
-                break
+    private func stepBack() {
+        navigationDirection = -1
+        withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+            if let prev = OnboardingStep(rawValue: currentStep.rawValue - 1) {
+                currentStep = prev
             }
         }
     }
-}
 
-// MARK: - Chrome Vector Logo
-struct ChromeLogoVectorView: View {
-    let size: CGFloat
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color(hex: "#EA4335"))
-                .frame(width: size, height: size)
-
-            // Yellow segment
-            ArcSlice(startAngle: .degrees(0), endAngle: .degrees(120))
-                .fill(Color(hex: "#FBBC05"))
-                .frame(width: size, height: size)
-
-            // Green segment
-            ArcSlice(startAngle: .degrees(120), endAngle: .degrees(240))
-                .fill(Color(hex: "#34A853"))
-                .frame(width: size, height: size)
-
-            // Red segment
-            ArcSlice(startAngle: .degrees(240), endAngle: .degrees(360))
-                .fill(Color(hex: "#EA4335"))
-                .frame(width: size, height: size)
-
-            // Center white ring & blue nucleus
-            Circle()
-                .fill(Color.white)
-                .frame(width: size * 0.48, height: size * 0.48)
-
-            Circle()
-                .fill(Color(hex: "#4285F4"))
-                .frame(width: size * 0.36, height: size * 0.36)
+    private func navigateToStep(_ target: OnboardingStep) {
+        guard target.rawValue < currentStep.rawValue else { return }
+        navigationDirection = -1
+        withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+            currentStep = target
         }
     }
-}
 
-private struct ArcSlice: Shape {
-    let startAngle: Angle
-    let endAngle: Angle
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let radius = min(rect.width, rect.height) / 2
-        path.move(to: center)
-        path.addArc(center: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: false)
-        path.closeSubpath()
-        return path
-    }
-}
-
-// MARK: - Arc Vector Logo
-struct ArcLogoVectorView: View {
-    let size: CGFloat
-
-    var body: some View {
-        ZStack {
-            // Signature Arc Bow Arch
-            RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(hex: "#FF5964"),
-                            Color(hex: "#FF9052"),
-                            Color(hex: "#9B51E0"),
-                            Color(hex: "#00D2D3")
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: size, height: size)
-
-            // Inner translucent bow cutout
-            Circle()
-                .stroke(Color.white.opacity(0.35), lineWidth: size * 0.12)
-                .frame(width: size * 0.52, height: size * 0.52)
-                .offset(y: size * 0.08)
-        }
-    }
-}
-
-// MARK: - Dia Vector Logo
-struct DiaLogoVectorView: View {
-    let size: CGFloat
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color(hex: "#6366F1"), Color(hex: "#A855F7"), Color(hex: "#EC4899")],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: size, height: size)
-
-            // Diamond spark facet
-            Image(systemName: "sparkle")
-                .font(.system(size: size * 0.52, weight: .semibold))
-                .foregroundColor(.white)
-        }
-    }
-}
-
-// MARK: - Helium Vector Logo
-struct HeliumLogoVectorView: View {
-    let size: CGFloat
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color(hex: "#00F2FE"), Color(hex: "#4FACFE")],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: size, height: size)
-
-            // Orbital particle rings
-            Ellipse()
-                .stroke(Color.white.opacity(0.55), lineWidth: 1.5)
-                .frame(width: size * 0.75, height: size * 0.32)
-                .rotationEffect(.degrees(-35))
-
-            Ellipse()
-                .stroke(Color.white.opacity(0.55), lineWidth: 1.5)
-                .frame(width: size * 0.75, height: size * 0.32)
-                .rotationEffect(.degrees(35))
-
-            Circle()
-                .fill(Color.white)
-                .frame(width: size * 0.22, height: size * 0.22)
-        }
-    }
-}
-
-// MARK: - Safari Vector Logo
-struct SafariLogoVectorView: View {
-    let size: CGFloat
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color(hex: "#007AFF"))
-                .frame(width: size, height: size)
-
-            Circle()
-                .stroke(Color.white.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
-                .frame(width: size * 0.78, height: size * 0.78)
-
-            // Compass needle
-            HStack(spacing: 0) {
-                Triangle()
-                    .fill(Color(hex: "#FF3B30"))
-                    .frame(width: size * 0.16, height: size * 0.44)
-                Triangle()
-                    .fill(Color.white)
-                    .frame(width: size * 0.16, height: size * 0.44)
-                    .rotationEffect(.degrees(180))
+    // MARK: - Keyboard Monitor
+    private func setupKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // Return / Enter -> advance
+            if event.keyCode == 36 {
+                if currentStep == .welcome {
+                    store.completeOnboarding()
+                    return nil
+                } else if currentStep != .importing {
+                    advanceStep()
+                    return nil
+                }
             }
-            .rotationEffect(.degrees(45))
-
-            Circle()
-                .fill(Color.white)
-                .frame(width: size * 0.12, height: size * 0.12)
+            // Escape -> skip
+            if event.keyCode == 53 {
+                store.completeOnboarding()
+                return nil
+            }
+            // Delete / Backspace or Cmd+Left -> go back
+            if event.keyCode == 51 || (event.keyCode == 123 && event.modifierFlags.contains(.command)) {
+                if currentStep != .story && currentStep != .importing && currentStep != .welcome {
+                    stepBack()
+                    return nil
+                }
+            }
+            return event
         }
     }
-}
 
-private struct Triangle: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.closeSubpath()
-        return path
+    private func removeKeyMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
     }
 }

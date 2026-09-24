@@ -108,6 +108,113 @@ struct LeanView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
+            if store.isOnboardingPresented {
+                OnboardingView(store: store)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.asymmetric(
+                        insertion: .opacity,
+                        removal: .opacity.combined(with: .scale(scale: 0.99))
+                    ))
+                    .zIndex(100)
+            } else {
+                browserWorkspace
+                    .transition(.opacity)
+            }
+        }
+        .environment(\.browserUIScale, store.browserUIScale)
+        .ignoresSafeArea(.all)
+        .background(
+            store.enableWindowBorder
+                ? AnyView(store.effectiveZenColor.ignoresSafeArea())
+                : AnyView(store.themeColors.windowBackground.ignoresSafeArea())
+        )
+        .background(WindowConfigurator(store: store, isTopBarVisible: isTopBarVisible, isSidebarVisible: isSidebarEffectivelyVisible))
+        .preferredColorScheme(store.colorScheme)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: store.isOnboardingPresented)
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: isTopBarVisible)
+        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: isSidebarEffectivelyVisible)
+        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: store.isSidebarCollapsed)
+        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: cardLeadingPadding)
+        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.tabLayout)
+        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.enableZenMode)
+        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.enableWindowBorder)
+        .animation(.easeInOut(duration: 0.2), value: store.effectiveZenColor)
+        .animation(.spring(response: 0.24, dampingFraction: 0.8), value: store.windowBorderWidth)
+        .onAppear {
+            setupKeyMonitor()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .focusAddress)) { _ in
+            if store.selectedTab?.url != nil {
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                    store.isInlineURLEditing = true
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
+            if store.isInlineURLEditing {
+                store.dismissInlineURLEditing()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            if store.isInlineURLEditing {
+                store.dismissInlineURLEditing()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showFind)) { _ in
+            store.showsFindBar = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showSettings)) { _ in
+            store.openSettings()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                if store.isSidebarCollapsed {
+                    // Auto-hide enabled: if mouse is not over sidebar, hide it immediately
+                    if !isMouseOverSidebar {
+                        isZenSidebarRevealed = false
+                    }
+                } else {
+                    // Pinned / Always Expanded
+                    isZenSidebarRevealed = true
+                }
+            }
+        }
+        .onChange(of: store.isQuickSettingsPresented) { _, presented in
+            if !presented {
+                if store.enableZenMode && store.tabLayout == .top {
+                    setZenHoverState(isHoveringTop: false)
+                }
+                if store.isSidebarCollapsed && store.tabLayout == .sidebar && !isMouseOverSidebar {
+                    setSidebarHoverState(isHovering: false)
+                }
+            }
+        }
+        .onChange(of: store.isDownloadsPresented) { _, presented in
+            if !presented {
+                if store.enableZenMode && store.tabLayout == .top {
+                    setZenHoverState(isHoveringTop: false)
+                }
+                if store.isSidebarCollapsed && store.tabLayout == .sidebar && !isMouseOverSidebar {
+                    setSidebarHoverState(isHovering: false)
+                }
+            }
+        }
+        .onChange(of: store.isExtensionsPresented) { _, presented in
+            if !presented {
+                if store.enableZenMode && store.tabLayout == .top {
+                    setZenHoverState(isHoveringTop: false)
+                }
+                if store.isSidebarCollapsed && store.tabLayout == .sidebar && !isMouseOverSidebar {
+                    setSidebarHoverState(isHovering: false)
+                }
+            }
+        }
+    }
+
+    // MARK: - Main Browser Workspace
+    @ViewBuilder
+    private var browserWorkspace: some View {
+        ZStack(alignment: .topLeading) {
             if store.tabLayout == .sidebar {
                 ZStack(alignment: .topLeading) {
                     mainContentCard
@@ -270,105 +377,9 @@ struct LeanView: View {
                     .allowsHitTesting(false)
             }
 
-            // Onboarding Overlay (First launch or manual invocation)
-            if store.isOnboardingPresented {
-                OnboardingView(store: store)
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.98)),
-                        removal: .opacity.combined(with: .scale(scale: 1.02))
-                    ))
-                    .zIndex(300)
-            }
 
             // Inline URL editing dismiss is owned by the NSEvent mouse monitor
             // below (pass-through, no click swallowing), so no overlay here.
-        }
-        .environment(\.browserUIScale, store.browserUIScale)
-        .ignoresSafeArea(.all)
-        .background(
-            store.enableWindowBorder
-                ? AnyView(store.effectiveZenColor.ignoresSafeArea())
-                : AnyView(store.themeColors.windowBackground.ignoresSafeArea())
-        )
-        .background(WindowConfigurator(store: store, isTopBarVisible: isTopBarVisible, isSidebarVisible: isSidebarEffectivelyVisible))
-        .preferredColorScheme(store.colorScheme)
-        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: isTopBarVisible)
-        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: isSidebarEffectivelyVisible)
-        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: store.isSidebarCollapsed)
-        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: cardLeadingPadding)
-        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.tabLayout)
-        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.enableZenMode)
-        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.enableWindowBorder)
-        .animation(.easeInOut(duration: 0.2), value: store.effectiveZenColor)
-        .animation(.spring(response: 0.24, dampingFraction: 0.8), value: store.windowBorderWidth)
-        .onAppear {
-            setupKeyMonitor()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .focusAddress)) { _ in
-            if store.selectedTab?.url != nil {
-                withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
-                    store.isInlineURLEditing = true
-                }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
-            if store.isInlineURLEditing {
-                store.dismissInlineURLEditing()
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
-            if store.isInlineURLEditing {
-                store.dismissInlineURLEditing()
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showFind)) { _ in
-            store.showsFindBar = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showSettings)) { _ in
-            store.openSettings()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                if store.isSidebarCollapsed {
-                    // Auto-hide enabled: if mouse is not over sidebar, hide it immediately
-                    if !isMouseOverSidebar {
-                        isZenSidebarRevealed = false
-                    }
-                } else {
-                    // Pinned / Always Expanded
-                    isZenSidebarRevealed = true
-                }
-            }
-        }
-        .onChange(of: store.isQuickSettingsPresented) { _, presented in
-            if !presented {
-                if store.enableZenMode && store.tabLayout == .top {
-                    setZenHoverState(isHoveringTop: false)
-                }
-                if store.isSidebarCollapsed && store.tabLayout == .sidebar && !isMouseOverSidebar {
-                    setSidebarHoverState(isHovering: false)
-                }
-            }
-        }
-        .onChange(of: store.isDownloadsPresented) { _, presented in
-            if !presented {
-                if store.enableZenMode && store.tabLayout == .top {
-                    setZenHoverState(isHoveringTop: false)
-                }
-                if store.isSidebarCollapsed && store.tabLayout == .sidebar && !isMouseOverSidebar {
-                    setSidebarHoverState(isHovering: false)
-                }
-            }
-        }
-        .onChange(of: store.isExtensionsPresented) { _, presented in
-            if !presented {
-                if store.enableZenMode && store.tabLayout == .top {
-                    setZenHoverState(isHoveringTop: false)
-                }
-                if store.isSidebarCollapsed && store.tabLayout == .sidebar && !isMouseOverSidebar {
-                    setSidebarHoverState(isHovering: false)
-                }
-            }
         }
     }
 
@@ -411,7 +422,8 @@ struct LeanView: View {
     }
 
     private var isCurrentTabWebPage: Bool {
-        store.selectedTab?.url != nil || store.selectedTab?.isSettingsPage == true
+        store.selectedTab?.url != nil
+            || store.selectedTab?.isSettingsPage == true
             || store.selectedTab?.isPageSource == true
     }
 
@@ -920,7 +932,14 @@ private struct WindowConfigurator: NSViewRepresentable {
             ? (store.adaptiveTheme.isFrameLight ? NSAppearance(named: .aqua) : NSAppearance(named: .darkAqua))
             : (store.isDarkMode ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua))
 
-        if store.tabLayout == .sidebar {
+        if store.isOnboardingPresented {
+            window.standardWindowButton(.closeButton)?.isHidden = false
+            window.standardWindowButton(.miniaturizeButton)?.isHidden = false
+            window.standardWindowButton(.zoomButton)?.isHidden = false
+            window.standardWindowButton(.closeButton)?.alphaValue = 1.0
+            window.standardWindowButton(.miniaturizeButton)?.alphaValue = 1.0
+            window.standardWindowButton(.zoomButton)?.alphaValue = 1.0
+        } else if store.tabLayout == .sidebar {
             window.standardWindowButton(.closeButton)?.isHidden = true
             window.standardWindowButton(.miniaturizeButton)?.isHidden = true
             window.standardWindowButton(.zoomButton)?.isHidden = true

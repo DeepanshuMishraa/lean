@@ -2,28 +2,83 @@ import AppKit
 import SwiftUI
 
 enum LeanFont: String, CaseIterable, Identifiable {
+    case geistSans = "Geist"
     case system = "System"
+    case geistMono = "Geist Mono"
     case avenirNext = "Avenir Next"
     case helveticaNeue = "Helvetica Neue"
     case jetBrainsMono = "JetBrains Mono"
-    case geistMono = "Geist Mono"
     case splineSansMono = "Spline Sans Mono"
 
     var id: String { rawValue }
 
+    var displayName: String {
+        switch self {
+        case .geistSans: return "Geist Sans"
+        default: return rawValue
+        }
+    }
+
+    static func appKitWeight(for weight: Font.Weight) -> Int {
+        switch weight {
+        case .ultraLight: return 2
+        case .thin: return 3
+        case .light: return 4
+        case .regular: return 5
+        case .medium: return 6
+        case .semibold: return 8
+        case .bold: return 9
+        case .heavy: return 10
+        case .black: return 11
+        default: return 5
+        }
+    }
+
     func font(size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        guard self != .system else {
+        if self == .system {
             return .system(size: size, weight: weight)
         }
-        return .custom(rawValue, size: size).weight(weight)
+        let familyName: String = {
+            switch self {
+            case .geistSans: return "Geist"
+            case .geistMono: return "Geist Mono"
+            default: return rawValue
+            }
+        }()
+        let weightInt = Self.appKitWeight(for: weight)
+        if let matched = NSFontManager.shared.font(withFamily: familyName, traits: [], weight: weightInt, size: size) {
+            return Font(matched)
+        }
+        if let base = NSFontManager.shared.font(withFamily: familyName, traits: [], weight: 5, size: size) {
+            return Font(base)
+        }
+        return .custom(familyName, size: size).weight(weight)
     }
 
     func font(size: CGFloat, fontWeight: LeanFontWeight) -> Font {
-        font(size: size, weight: fontWeight.fontWeight)
+        if self == .system {
+            return .system(size: size, weight: fontWeight.fontWeight)
+        }
+        let familyName: String = {
+            switch self {
+            case .geistSans: return "Geist"
+            case .geistMono: return "Geist Mono"
+            default: return rawValue
+            }
+        }()
+        let weightInt = fontWeight.appKitWeight
+        if let matched = NSFontManager.shared.font(withFamily: familyName, traits: [], weight: weightInt, size: size) {
+            return Font(matched)
+        }
+        if let base = NSFontManager.shared.font(withFamily: familyName, traits: [], weight: 5, size: size) {
+            return Font(base)
+        }
+        return .custom(familyName, size: size).weight(fontWeight.fontWeight)
     }
 
     var cssFamily: String {
         switch self {
+        case .geistSans: return "'Geist', 'Geist Sans', -apple-system, BlinkMacSystemFont, sans-serif"
         case .system: return "-apple-system, BlinkMacSystemFont, sans-serif"
         default: return "'\(rawValue)', -apple-system, BlinkMacSystemFont, sans-serif"
         }
@@ -86,6 +141,20 @@ enum LeanFontWeight: Int, CaseIterable, Identifiable, Comparable, Codable {
         case .bold: return .bold
         case .heavy: return .heavy
         case .black: return .black
+        }
+    }
+
+    var appKitWeight: Int {
+        switch self {
+        case .ultraLight: return 2
+        case .thin: return 3
+        case .light: return 4
+        case .regular: return 5
+        case .medium: return 6
+        case .semibold: return 8
+        case .bold: return 9
+        case .heavy: return 10
+        case .black: return 11
         }
     }
 

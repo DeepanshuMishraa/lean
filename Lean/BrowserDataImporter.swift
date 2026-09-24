@@ -87,8 +87,12 @@ enum BrowserDataImporter {
 
     static func readBookmarkExport(_ data: Data) throws -> [ImportedBookmark] {
         let bookmarks = decodeBookmarks(data)
-        guard !bookmarks.isEmpty else { throw ImportError.invalidBookmarks }
-        return bookmarks
+        if !bookmarks.isEmpty { return bookmarks }
+        if let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) {
+            let htmlBookmarks = decodeHTMLBookmarks(text)
+            if !htmlBookmarks.isEmpty { return htmlBookmarks }
+        }
+        throw ImportError.invalidBookmarks
     }
 
     static func readHistoryCSV(_ data: Data) throws -> [HistoryItem] {
@@ -242,6 +246,26 @@ enum BrowserDataImporter {
             else { return [] }
             return [ImportedBookmark(title: node["name"] as? String ?? url.host ?? rawURL, url: url)]
         }
+    }
+
+    static func decodeHTMLBookmarks(_ html: String) -> [ImportedBookmark] {
+        let pattern = "(?i)<a\\s+[^>]*href=[\"']([^\"']+)[\"'][^>]*>(.*?)<\\/a>"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let nsString = html as NSString
+        let matches = regex.matches(in: html, options: [], range: NSRange(location: 0, length: nsString.length))
+        var seen = Set<String>()
+        var result: [ImportedBookmark] = []
+        for match in matches {
+            guard match.numberOfRanges >= 3 else { continue }
+            let rawURL = nsString.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let url = URL(string: rawURL), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { continue }
+            if !seen.insert(url.absoluteString).inserted { continue }
+            var rawTitle = nsString.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines)
+            rawTitle = rawTitle.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            if rawTitle.isEmpty { rawTitle = url.host ?? url.absoluteString }
+            result.append(ImportedBookmark(title: rawTitle, url: url))
+        }
+        return result
     }
 
     private static func readHistory(at url: URL) throws -> [HistoryItem] {

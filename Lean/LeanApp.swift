@@ -6,6 +6,28 @@ struct LeanApp: App {
     @StateObject private var store = LeanStore()
     @StateObject private var updater = AppUpdater()
 
+    init() {
+        Self.registerCustomFonts()
+    }
+
+    private static func registerCustomFonts() {
+        let fontNames = ["Geist-Variable", "GeistMono-Variable"]
+        for name in fontNames {
+            if let url = Bundle.main.url(forResource: name, withExtension: "ttf") {
+                CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+            }
+        }
+        let devPaths = [
+            "Lean/Resources/Fonts/Geist-Variable.ttf",
+            "Lean/Resources/Fonts/GeistMono-Variable.ttf"
+        ]
+        for path in devPaths {
+            if FileManager.default.fileExists(atPath: path) {
+                let url = URL(fileURLWithPath: path)
+                CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+            }
+        }
+    }
 
     var body: some Scene {
         WindowGroup {

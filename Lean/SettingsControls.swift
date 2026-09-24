@@ -544,7 +544,7 @@ struct FontPickerRow: View {
             Spacer(minLength: 16)
 
             CustomDropdownButton(
-                text: selection.rawValue,
+                text: selection.displayName,
                 font: selection.font(size: 12.5, weight: .medium),
                 isDark: isDark,
                 isPresented: isPresented,
@@ -557,7 +557,7 @@ struct FontPickerRow: View {
                     ForEach(LeanFont.allCases) { fontChoice in
                         let isChosen = selection == fontChoice
                         CustomDropdownItemRow(
-                            title: fontChoice.rawValue,
+                            title: fontChoice.displayName,
                             font: fontChoice.font(size: 13, weight: isChosen ? .semibold : .regular),
                             isSelected: isChosen,
                             isDark: isDark,

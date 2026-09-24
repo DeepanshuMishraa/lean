@@ -1133,7 +1133,7 @@ private struct AppearanceSection: View {
 
                     FontPickerRow(
                         title: "Web pages",
-                        subtitle: "Typeface override for readable webpage text and browser tab titles",
+                        subtitle: "Typeface override for readable webpage text",
                         selection: $store.webPageFont,
                         uiFont: store.leanUIFont,
                         isDark: store.isDarkMode,
@@ -3655,9 +3655,155 @@ private struct ExtensionInstallReviewSheet: View {
     }
 }
 
+private struct InstalledImportBrowser: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let subtitle: String
+    let source: BrowserImportSource?
+    let bundleId: String
+    let iconName: String
+
+    static let supportedOnboardingBrowsers: [InstalledImportBrowser] = [
+        InstalledImportBrowser(
+            id: "arc",
+            name: "Arc",
+            subtitle: "The Browser Company",
+            source: .arc,
+            bundleId: "company.thebrowser.Browser",
+            iconName: "arc"
+        ),
+        InstalledImportBrowser(
+            id: "dia",
+            name: "Dia",
+            subtitle: "The Browser Company",
+            source: .dia,
+            bundleId: "company.thebrowser.dia",
+            iconName: "dia"
+        ),
+        InstalledImportBrowser(
+            id: "helium",
+            name: "Helium",
+            subtitle: "Lightweight Browser",
+            source: .helium,
+            bundleId: "net.imput.helium",
+            iconName: "helium"
+        ),
+        InstalledImportBrowser(
+            id: "chrome",
+            name: "Google Chrome",
+            subtitle: "Google",
+            source: .chrome,
+            bundleId: "com.google.Chrome",
+            iconName: "chrome"
+        ),
+        InstalledImportBrowser(
+            id: "safari",
+            name: "Safari",
+            subtitle: "Apple",
+            source: nil,
+            bundleId: "com.apple.Safari",
+            iconName: "safari"
+        )
+    ]
+
+    static func detectInstalled() -> [InstalledImportBrowser] {
+        let installed = supportedOnboardingBrowsers.filter { browser in
+            if NSWorkspace.shared.urlForApplication(withBundleIdentifier: browser.bundleId) != nil {
+                return true
+            }
+            let fallbacks = [
+                "/Applications/\(browser.name).app",
+                "/Applications/\(browser.name.replacingOccurrences(of: "Google ", with: "")).app",
+                "/Applications/\(browser.id.capitalized).app",
+                "/System/Applications/\(browser.name).app",
+                "/System/Volumes/Preboot/Cryptexes/App/System/Applications/\(browser.name).app",
+                FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/\(browser.name).app").path
+            ]
+            return fallbacks.contains { FileManager.default.fileExists(atPath: $0) }
+        }
+        return installed.isEmpty ? supportedOnboardingBrowsers : installed
+    }
+}
+
+private struct InstalledBrowserCard: View {
+    let browser: InstalledImportBrowser
+    let isSelected: Bool
+    let isHovered: Bool
+    let isDark: Bool
+    let uiFont: LeanFont
+    let onSelect: () -> Void
+
+    private var cardBackground: Color {
+        if isSelected {
+            return isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.06)
+        }
+        if isHovered {
+            return isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.03)
+        }
+        return Color.clear
+    }
+
+    private var cardStroke: Color {
+        if isSelected {
+            return isDark ? Color.white.opacity(0.26) : Color.black.opacity(0.18)
+        }
+        if isHovered {
+            return isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.07)
+        }
+        return isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04)
+    }
+
+    private var labelColor: Color {
+        if isSelected {
+            return isDark ? Color.white : Color.black
+        }
+        return isDark ? Color.white.opacity(0.85) : Color.black.opacity(0.80)
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 8) {
+                BrowserIconProvider.image(for: browser.iconName)
+                    .frame(width: 24, height: 24)
+                    .clipShape(RoundedRectangle(cornerRadius: 5.5, style: .continuous))
+
+                Text(browser.name)
+                    .font(uiFont.font(size: 12, weight: isSelected ? .semibold : .medium))
+                    .foregroundColor(labelColor)
+                    .lineLimit(1)
+
+                Spacer(minLength: 2)
+
+                if isSelected {
+                    Circle()
+                        .fill(isDark ? Color.white : Color.black)
+                        .frame(width: 5.5, height: 5.5)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(cardBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(cardStroke, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct ImportDataSection: View {
     @ObservedObject var store: LeanStore
-    @State private var selectedBrowser = BrowserImportSource.chrome
+    @State private var installedBrowsers = InstalledImportBrowser.detectInstalled()
+    @State private var selectedBrowser: InstalledImportBrowser = {
+        let detected = InstalledImportBrowser.detectInstalled()
+        return detected.first(where: { $0.id == "chrome" }) ?? detected.first ?? InstalledImportBrowser.supportedOnboardingBrowsers[0]
+    }()
+    @State private var hoveredBrowserId: String? = nil
     @State private var profilePreview: BrowserImportPreview?
     @State private var browserImportPreview: BrowserImportPreview?
     @State private var importBookmarks = true
@@ -3676,37 +3822,75 @@ private struct ImportDataSection: View {
             VStack(alignment: .leading, spacing: 8) {
                 SettingsHeaderLabel("Import from a browser", uiFont: store.leanUIFont, isDark: store.isDarkMode)
                 SettingsGroup(isDark: store.isDarkMode) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        CustomSegmentedPicker(
-                            options: BrowserImportSource.allCases.map { SegmentOption(id: $0.rawValue, label: $0.title) },
-                            selectedId: selectedBrowser.rawValue,
-                            isDark: store.isDarkMode,
-                            uiFont: store.leanUIFont
-                        ) { id in
-                            guard let source = BrowserImportSource(rawValue: id) else { return }
-                            selectedBrowser = source
-                            profilePreview = nil
-                            browserImportPreview = nil
-                            browserImportError = nil
-                            error = nil
+                    VStack(alignment: .leading, spacing: 14) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 135), spacing: 8)], spacing: 8) {
+                            ForEach(installedBrowsers) { browser in
+                                InstalledBrowserCard(
+                                    browser: browser,
+                                    isSelected: selectedBrowser.id == browser.id,
+                                    isHovered: hoveredBrowserId == browser.id,
+                                    isDark: store.isDarkMode,
+                                    uiFont: store.leanUIFont,
+                                    onSelect: {
+                                        withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                                            selectedBrowser = browser
+                                            profilePreview = nil
+                                            browserImportPreview = nil
+                                            browserImportError = nil
+                                            error = nil
+                                        }
+                                    }
+                                )
+                                .onHover { hovering in
+                                    hoveredBrowserId = hovering ? browser.id : nil
+                                }
+                            }
                         }
-                        HStack(alignment: .center, spacing: 12) {
+
+                        SettingsRowDivider(isDark: store.isDarkMode)
+
+                        // Action / Info Card
+                        HStack(alignment: .center, spacing: 14) {
+                            BrowserIconProvider.image(for: selectedBrowser.iconName)
+                                .frame(width: 34, height: 34)
+                                .clipShape(RoundedRectangle(cornerRadius: 7.5, style: .continuous))
+                                .shadow(color: Color.black.opacity(store.isDarkMode ? 0.35 : 0.08), radius: 3, x: 0, y: 1)
+
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("Bookmarks and history")
-                                    .font(store.leanUIFont.font(size: 13, weight: .medium))
-                                Text("Choose a browser. On first import, allow Lean to access its data folder; profiles are found automatically and that access is remembered.")
+                                HStack(spacing: 6) {
+                                    Text("Import from \(selectedBrowser.name)")
+                                        .font(store.leanUIFont.font(size: 13, weight: .semibold))
+                                        .foregroundColor(store.isDarkMode ? .white : .black)
+
+                                    if let source = selectedBrowser.source, UserDefaults.standard.data(forKey: source.bookmarkKey) != nil {
+                                        HStack(spacing: 3) {
+                                            Text("✓")
+                                                .font(.system(size: 9, weight: .bold))
+                                            Text("Access Granted")
+                                                .font(store.leanUIFont.font(size: 10, weight: .medium))
+                                        }
+                                        .foregroundColor(Color(red: 0.18, green: 0.80, blue: 0.44))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color(red: 0.18, green: 0.80, blue: 0.44).opacity(0.12), in: Capsule())
+                                    }
+                                }
+
+                                Text(descriptionText(for: selectedBrowser))
                                     .font(store.leanUIFont.font(size: 11.5))
                                     .foregroundColor(secondaryText)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
+
                             Spacer(minLength: 8)
+
                             SettingsActionButton(
-                                "Import from \(selectedBrowser.title)",
+                                "Import from \(selectedBrowser.name)",
                                 isDark: store.isDarkMode,
                                 prominent: true,
                                 isLoading: isReadingBrowserData
                             ) {
-                                importFromSelectedBrowser()
+                                triggerImport(for: selectedBrowser)
                             }
                         }
                     }
@@ -3813,7 +3997,8 @@ private struct ImportDataSection: View {
         }
         .sheet(isPresented: $showsBrowserImportDialog) {
             BrowserImportProgressDialog(
-                sourceTitle: selectedBrowser.title,
+                sourceTitle: selectedBrowser.name,
+                sourceIconName: selectedBrowser.iconName,
                 isDark: store.isDarkMode,
                 uiFont: store.leanUIFont,
                 stage: $browserImportStage,
@@ -3823,7 +4008,11 @@ private struct ImportDataSection: View {
                 errorMessage: $browserImportError,
                 resultMessage: $browserImportResult,
                 availableHistorySlots: max(0, 200 - store.historyItems.count),
-                chooseFolder: chooseBrowserDataFolder,
+                chooseFolder: {
+                    if let source = selectedBrowser.source {
+                        chooseBrowserDataFolder(source: source)
+                    }
+                },
                 importSelected: importSelectedBrowserData,
                 cancel: { showsBrowserImportDialog = false }
             )
@@ -3834,14 +4023,53 @@ private struct ImportDataSection: View {
         store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48)
     }
 
-    private func importFromSelectedBrowser() {
+    private func descriptionText(for browser: InstalledImportBrowser) -> String {
+        if browser.id == "safari" {
+            return "Transfer bookmarks from Safari. Export your bookmarks via Safari > File > Export > Bookmarks, then select the file to transfer."
+        } else {
+            return "Automatic migration. Lean discovers your \(browser.name) profile to transfer bookmarks, folders, and history with one click."
+        }
+    }
+
+    private func triggerImport(for browser: InstalledImportBrowser) {
+        if let source = browser.source {
+            importFromSelectedBrowser(source: source)
+        } else if browser.id == "safari" {
+            chooseSafariExport()
+        }
+    }
+
+    private func chooseSafariExport() {
+        let panel = NSOpenPanel()
+        panel.title = "Import Safari Bookmarks"
+        panel.message = "Choose your exported Safari Bookmarks.html file (Safari > File > Export > Bookmarks…)"
+        panel.prompt = "Import"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.html, .json, .plainText]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        error = nil
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let bookmarks = try BrowserDataImporter.readBookmarkExport(Data(contentsOf: url))
+            let imported = store.importBrowserData(BrowserImportPreview(bookmarks: bookmarks, history: []))
+            message = "Successfully imported \(imported.bookmarks) bookmarks from Safari."
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func importFromSelectedBrowser(source: BrowserImportSource) {
         error = nil
         message = nil
         browserImportError = nil
         browserImportResult = nil
         browserImportPreview = nil
         showsBrowserImportDialog = true
-        guard let data = UserDefaults.standard.data(forKey: selectedBrowser.bookmarkKey) else {
+        guard let data = UserDefaults.standard.data(forKey: source.bookmarkKey) else {
             browserImportStage = .access
             return
         }
@@ -3857,11 +4085,11 @@ private struct ImportDataSection: View {
                 let didAccess = url.startAccessingSecurityScopedResource()
                 defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
                 let renewed = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
-                UserDefaults.standard.set(renewed, forKey: selectedBrowser.bookmarkKey)
+                UserDefaults.standard.set(renewed, forKey: source.bookmarkKey)
             }
             startBrowserScan(at: url)
         } catch {
-            browserImportError = "Couldn't restore access to the saved \(selectedBrowser.title) folder. Choose it again."
+            browserImportError = "Couldn't restore access to the saved \(source.title) folder. Choose it again."
             browserImportStage = .access
         }
     }
@@ -3906,21 +4134,21 @@ private struct ImportDataSection: View {
         }
     }
 
-    private func chooseBrowserDataFolder() {
+    private func chooseBrowserDataFolder(source: BrowserImportSource) {
         let panel = NSOpenPanel()
-        panel.title = "Allow access to \(selectedBrowser.title) data"
+        panel.title = "Allow access to \(source.title) data"
         panel.message = "Select the browser data folder to import bookmarks and history. Lean finds profiles automatically."
         panel.prompt = "Allow Access"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.directoryURL = selectedBrowser.userDataDirectory
+        panel.directoryURL = source.userDataDirectory
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
             let bookmark = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
-            UserDefaults.standard.set(bookmark, forKey: selectedBrowser.bookmarkKey)
+            UserDefaults.standard.set(bookmark, forKey: source.bookmarkKey)
             browserImportError = nil
             startBrowserScan(at: url)
         } catch {
@@ -3931,12 +4159,12 @@ private struct ImportDataSection: View {
 
     private func chooseBrowserExport(bookmarks: Bool) {
         let panel = NSOpenPanel()
-        panel.title = bookmarks ? "Choose a bookmarks JSON export" : "Choose a history CSV export"
+        panel.title = bookmarks ? "Choose a bookmarks JSON or HTML export" : "Choose a history CSV export"
         panel.prompt = "Import"
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = bookmarks ? [.json] : [.commaSeparatedText, .plainText]
+        panel.allowedContentTypes = bookmarks ? [.json, .html, .plainText] : [.commaSeparatedText, .plainText]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         error = nil
         profilePreview = nil

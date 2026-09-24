@@ -20,6 +20,7 @@ enum BrowserImportStage: Equatable {
 
 struct BrowserImportProgressDialog: View {
     let sourceTitle: String
+    var sourceIconName: String? = nil
     let isDark: Bool
     let uiFont: LeanFont
     @Binding var stage: BrowserImportStage
@@ -40,9 +41,16 @@ struct BrowserImportProgressDialog: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Import from \(sourceTitle)")
-                .font(uiFont.font(size: 17, weight: .semibold))
-                .foregroundColor(ink)
+            HStack(spacing: 12) {
+                if let icon = sourceIconName {
+                    BrowserIconProvider.image(for: icon)
+                        .frame(width: 28, height: 28)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+                Text("Import from \(sourceTitle)")
+                    .font(uiFont.font(size: 17, weight: .semibold))
+                    .foregroundColor(ink)
+            }
 
             progressIndicator
             Rectangle().fill(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.07)).frame(height: 1)

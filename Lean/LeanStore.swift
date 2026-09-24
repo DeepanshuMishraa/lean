@@ -106,7 +106,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         }
     }
 
-    var icon: Ph {
+    var icon: LeanIcon {
         switch self {
         case .back: return .caretLeft
         case .forward: return .caretRight
@@ -323,6 +323,10 @@ final class LeanStore: ObservableObject {
 
     func headingFont(size: CGFloat) -> Font {
         leanUIFont.font(size: scaled(size), fontWeight: uiHeadingWeight)
+    }
+
+    func headingFont(size: CGFloat, weight: LeanFontWeight) -> Font {
+        leanUIFont.font(size: scaled(size), fontWeight: weight)
     }
 
     var tabTitleTypeface: LeanFont {

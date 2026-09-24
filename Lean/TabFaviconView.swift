@@ -31,12 +31,12 @@ struct TabFaviconView: View {
     @ViewBuilder
     private var fallbackIcon: some View {
         if tab.isSettingsPage {
-            Ph.gear.fill
+            LeanIcon.gear.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: scaledSize * 0.85, height: scaledSize * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
         } else if tab.url == nil {
-            Ph.browser.fill
+            LeanIcon.browser.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: scaledSize * 0.85, height: scaledSize * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
@@ -61,7 +61,7 @@ struct SiteFallbackGlyph: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 2.5, style: .continuous)
                     .fill(Color(red: 255/255, green: 0, blue: 0))
-                Ph.play.fill
+                LeanIcon.play.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: size * 0.45, height: size * 0.45)
                     .foregroundColor(.white)
@@ -75,7 +75,7 @@ struct SiteFallbackGlyph: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(isDark ? Color.white : Color.black)
-                Ph.code.fill
+                LeanIcon.code.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: size * 0.5, height: size * 0.5)
                     .foregroundColor(isDark ? Color.black : Color.white)
@@ -89,32 +89,32 @@ struct SiteFallbackGlyph: View {
                     .foregroundColor(.white)
             }
         } else if host.contains("apple") {
-            Ph.appleLogo.fill
+            LeanIcon.appleLogo.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(isDark ? Color.white : Color.black)
         } else if host.contains("discord") {
-            Ph.chats.fill
+            LeanIcon.chats.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.8, height: size * 0.8)
                 .foregroundColor(Color(red: 88/255, green: 101/255, blue: 242/255))
         } else if host.contains("slack") {
-            Ph.hash.fill
+            LeanIcon.hash.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(Color(red: 224/255, green: 30/255, blue: 90/255))
         } else if host.contains("claude") || host.contains("anthropic") {
-            Ph.sparkle.fill
+            LeanIcon.sparkle.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(Color(red: 217/255, green: 119/255, blue: 87/255))
         } else if host.contains("cloudflare") {
-            Ph.cloud.fill
+            LeanIcon.cloud.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.8, height: size * 0.8)
                 .foregroundColor(Color(red: 243/255, green: 128/255, blue: 32/255))
         } else if host.contains("reddit") {
-            Ph.redditLogo.fill
+            LeanIcon.redditLogo.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(Color(red: 255/255, green: 69/255, blue: 0))
@@ -127,7 +127,7 @@ struct SiteFallbackGlyph: View {
                     .foregroundColor(isDark ? Color.white.opacity(0.9) : Color.black.opacity(0.75))
             }
         } else {
-            Ph.browser.fill
+            LeanIcon.browser.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 0.85, height: size * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.70) : Color.black.opacity(0.60))
@@ -175,12 +175,12 @@ struct SiteFaviconView: View {
     @ViewBuilder
     private var fallbackIcon: some View {
         if let url = url, url.absoluteString.hasPrefix("lean://settings") {
-            Ph.gear.fill
+            LeanIcon.gear.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: scaledSize * 0.85, height: scaledSize * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
         } else if url == nil {
-            Ph.browser.fill
+            LeanIcon.browser.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: scaledSize * 0.85, height: scaledSize * 0.85)
                 .foregroundColor(isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
@@ -214,13 +214,13 @@ struct TabMediaIndicatorView: View {
             ZStack {
                 if isHovered {
                     // Hover state: show the action that clicking will perform
-                    (tab.isMuted ? Ph.speaker : Ph.speakerMute).fill
+                    (tab.isMuted ? LeanIcon.speaker : LeanIcon.speakerMute).fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: iconSize, height: iconSize)
                         .foregroundColor(theme.primaryText)
                 } else if tab.isMuted {
                     // Muted state: speaker slash icon
-                    Ph.speakerMute.fill
+                    LeanIcon.speakerMute.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: iconSize, height: iconSize)
                         .foregroundColor(theme.secondaryText)

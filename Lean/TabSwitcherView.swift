@@ -228,7 +228,7 @@ struct TabThumbnailCard: View {
                 }
             } else {
                 // Loading or placeholder
-                Ph.browser.fill
+                LeanIcon.browser.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 24, height: 24)
                     .foregroundColor(isDark ? Color.white.opacity(0.5) : Color.black.opacity(0.4))

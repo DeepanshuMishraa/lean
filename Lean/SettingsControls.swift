@@ -216,7 +216,7 @@ struct SearchEngineBadgeView: View {
         case .duckDuckGo:
             ZStack {
                 Circle().fill(Color(red: 222/255, green: 88/255, blue: 51/255))
-                Ph.shield.fill
+                LeanIcon.shield.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: size * 0.55, height: size * 0.55)
                     .foregroundColor(.white)
@@ -231,7 +231,7 @@ struct SearchEngineBadgeView: View {
         case .brave:
             ZStack {
                 Circle().fill(Color(red: 251/255, green: 84/255, blue: 43/255))
-                Ph.fire.fill
+                LeanIcon.fire.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: size * 0.55, height: size * 0.55)
                     .foregroundColor(.white)
@@ -239,7 +239,7 @@ struct SearchEngineBadgeView: View {
         case .ecosia:
             ZStack {
                 Circle().fill(Color(red: 0/255, green: 138/255, blue: 94/255))
-                Ph.leaf.fill
+                LeanIcon.leaf.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: size * 0.55, height: size * 0.55)
                     .foregroundColor(.white)
@@ -295,7 +295,7 @@ struct CustomDropdownButton<Leading: View>: View {
                     .font(font)
                     .foregroundColor(isDark ? Color(white: 0.94) : Color(white: 0.12))
 
-                Ph.caretDown.fill
+                LeanIcon.caretDown.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 9, height: 9)
                     .foregroundColor(isDark ? Color.white.opacity(0.50) : Color.black.opacity(0.45))
@@ -398,7 +398,7 @@ struct CustomDropdownItemRow<Leading: View>: View {
                 Spacer(minLength: 8)
 
                 if isSelected {
-                    Ph.check.bold
+                    LeanIcon.check.bold
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 10, height: 10)
                         .foregroundColor(isDark ? Color.white : Color.black)
@@ -587,9 +587,9 @@ struct FontPickerRow: View {
 struct SegmentOption: Identifiable {
     let id: String
     let label: String
-    let icon: Ph?
+    let icon: LeanIcon?
 
-    init(id: String, label: String, icon: Ph? = nil) {
+    init(id: String, label: String, icon: LeanIcon? = nil) {
         self.id = id
         self.label = label
         self.icon = icon
@@ -864,7 +864,7 @@ struct CustomChecklistRow: View {
                     }
                     .overlay {
                         if isOn {
-                            Ph.check.bold
+                            LeanIcon.check.bold
                                 .foregroundColor(isDark ? .black : .white)
                                 .frame(width: 9, height: 9)
                         }

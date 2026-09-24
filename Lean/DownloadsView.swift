@@ -59,7 +59,7 @@ struct DownloadsPopover: View {
 
             if downloads.isEmpty {
                 VStack(spacing: 8) {
-                    Ph.arrowCircleDown.fill
+                    LeanIcon.arrowCircleDown.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 24, height: 24)
                         .foregroundColor(store.adaptiveTheme.secondaryText.opacity(0.7))
@@ -97,13 +97,13 @@ struct DownloadsPopover: View {
                 store.openSettings(category: .downloads)
             } label: {
                 HStack(spacing: 8) {
-                    Ph.arrowCircleDown.fill
+                    LeanIcon.arrowCircleDown.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 12, height: 12)
                     Text("Show All Downloads...")
                         .font(store.headingFont(size: 12))
                     Spacer()
-                    Ph.caretRight.fill
+                    LeanIcon.caretRight.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 8, height: 8)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -348,7 +348,7 @@ private struct DownloadProgressBar: View {
 }
 
 private struct HoverIconButton: View {
-    let icon: Ph
+    let icon: LeanIcon
     let help: String
     @ObservedObject var store: LeanStore
     let action: () -> Void

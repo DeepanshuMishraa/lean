@@ -305,17 +305,17 @@ struct OnboardingView: View {
             // 3 Horizontal Minimalist Badges
             VStack(spacing: 10) {
                 storyRow(
-                    icon: Ph.lightning,
+                    icon: LeanIcon.lightning,
                     title: "Native WebKit Engine",
                     detail: "Zero Chromium bloat. Instant startup and microsecond tab switching."
                 )
                 storyRow(
-                    icon: Ph.circleHalf,
+                    icon: LeanIcon.circleHalf,
                     title: "Vanishing Interface",
                     detail: "Toolbars retreat smoothly, giving 100% of your screen to the web."
                 )
                 storyRow(
-                    icon: Ph.shieldCheck,
+                    icon: LeanIcon.shieldCheck,
                     title: "Private by Default",
                     detail: "Native tracker blocking and strictly local, encrypted keychain storage."
                 )
@@ -327,7 +327,7 @@ struct OnboardingView: View {
         .padding(.horizontal, 32)
     }
 
-    private func storyRow(icon: Ph, title: String, detail: String) -> some View {
+    private func storyRow(icon: LeanIcon, title: String, detail: String) -> some View {
         HStack(spacing: 14) {
             icon.fill
                 .aspectRatio(contentMode: .fit)
@@ -384,7 +384,7 @@ struct OnboardingView: View {
             VStack(spacing: 10) {
                 featureRow(
                     id: "tabs",
-                    icon: Ph.tabs,
+                    icon: LeanIcon.tabs,
                     title: "Dual Tab Layout",
                     detail: "Switch between horizontal tabs and an auto-collapsing vertical sidebar.",
                     shortcut: "⌘ S"
@@ -392,7 +392,7 @@ struct OnboardingView: View {
 
                 featureRow(
                     id: "split",
-                    icon: Ph.columns,
+                    icon: LeanIcon.columns,
                     title: "Split Tab Panes",
                     detail: "Tile up to 4 parallel panes side-by-side with proportional drag resizing.",
                     shortcut: "⌘ ⌥ S"
@@ -400,7 +400,7 @@ struct OnboardingView: View {
 
                 featureRow(
                     id: "zen",
-                    icon: Ph.sparkle,
+                    icon: LeanIcon.sparkle,
                     title: "Zen Mode",
                     detail: "Dissolve all window chrome into an edge-to-edge pure page canvas.",
                     shortcut: "⇧ ⌘ Z"
@@ -408,7 +408,7 @@ struct OnboardingView: View {
 
                 featureRow(
                     id: "omnibar",
-                    icon: Ph.magnifyingGlass,
+                    icon: LeanIcon.magnifyingGlass,
                     title: "Command Omnibar",
                     detail: "Fuzzy search through open tabs, history, and bookmarks instantly.",
                     shortcut: "⌘ T"
@@ -420,7 +420,7 @@ struct OnboardingView: View {
         .padding(.horizontal, 32)
     }
 
-    private func featureRow(id: String, icon: Ph, title: String, detail: String, shortcut: String) -> some View {
+    private func featureRow(id: String, icon: LeanIcon, title: String, detail: String, shortcut: String) -> some View {
         let isHovered = hoveredItem == id
 
         return HStack(spacing: 14) {
@@ -518,7 +518,7 @@ struct OnboardingView: View {
                                 .fill(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.05))
                                 .frame(width: 32, height: 32)
 
-                            Ph.sparkle.fill
+                            LeanIcon.sparkle.fill
                                 .aspectRatio(contentMode: .fit)
                                 .frame(width: 14, height: 14)
                                 .foregroundColor(primaryText)
@@ -596,7 +596,7 @@ struct OnboardingView: View {
 
             VStack(spacing: 0) {
                 checklistRow(
-                    icon: Ph.folder,
+                    icon: LeanIcon.folder,
                     title: "Bookmarks & Favorites",
                     subtitle: "Folders, reading list, and pinned bookmark links",
                     isOn: $importBookmarks
@@ -605,7 +605,7 @@ struct OnboardingView: View {
                 Rectangle().fill(cardBorder).frame(height: 1).padding(.leading, 48)
 
                 checklistRow(
-                    icon: Ph.clock,
+                    icon: LeanIcon.clock,
                     title: "Browsing History",
                     subtitle: "Fast instant-search URL index and visited sites",
                     isOn: $importHistory
@@ -614,7 +614,7 @@ struct OnboardingView: View {
                 Rectangle().fill(cardBorder).frame(height: 1).padding(.leading, 48)
 
                 checklistRow(
-                    icon: Ph.shieldCheck,
+                    icon: LeanIcon.shieldCheck,
                     title: "Saved Passwords",
                     subtitle: "Migrated into your private macOS keychain",
                     isOn: $importPasswords
@@ -623,7 +623,7 @@ struct OnboardingView: View {
                 Rectangle().fill(cardBorder).frame(height: 1).padding(.leading, 48)
 
                 checklistRow(
-                    icon: Ph.tabs,
+                    icon: LeanIcon.tabs,
                     title: "Open Tabs",
                     subtitle: "Restore current windows into Lean tabs",
                     isOn: $importTabs
@@ -671,7 +671,7 @@ struct OnboardingView: View {
         .padding(.horizontal, 32)
     }
 
-    private func checklistRow(icon: Ph, title: String, subtitle: String, isOn: Binding<Bool>) -> some View {
+    private func checklistRow(icon: LeanIcon, title: String, subtitle: String, isOn: Binding<Bool>) -> some View {
         Button {
             withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                 isOn.wrappedValue.toggle()

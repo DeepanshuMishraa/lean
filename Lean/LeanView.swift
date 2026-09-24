@@ -854,7 +854,7 @@ struct LeanView: View {
 
     private var floatingFindBar: some View {
         HStack(spacing: 8) {
-            Ph.magnifyingGlass.fill
+            LeanIcon.magnifyingGlass.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 12, height: 12)
                 .foregroundColor(store.themeColors.secondaryText)
@@ -869,7 +869,7 @@ struct LeanView: View {
             Button {
                 store.selectedTab?.find(findQuery)
             } label: {
-                Ph.caretDown.fill
+                LeanIcon.caretDown.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 10, height: 10)
                     .foregroundColor(store.themeColors.secondaryText)
@@ -881,7 +881,7 @@ struct LeanView: View {
                 store.showsFindBar = false
                 findQuery = ""
             } label: {
-                Ph.x.bold
+                LeanIcon.x.bold
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 10, height: 10)
                     .foregroundColor(store.themeColors.secondaryText)
@@ -1613,13 +1613,13 @@ private struct SplitPaneEmptyView: View {
         VStack(spacing: 16) {
             Spacer()
 
-            Ph.compass.fill
+            LeanIcon.compass.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 32, height: 32)
                 .foregroundColor(store.adaptiveTheme.secondaryText.opacity(0.5))
 
             HStack(spacing: 8) {
-                Ph.magnifyingGlass.fill
+                LeanIcon.magnifyingGlass.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 14, height: 14)
                     .foregroundColor(store.adaptiveTheme.secondaryText)

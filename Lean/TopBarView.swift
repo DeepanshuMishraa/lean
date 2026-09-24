@@ -746,7 +746,7 @@ private struct TopBarTabItem: View {
 
     private var closeButton: some View {
         Button(action: onClose) {
-            Ph.x.bold
+            LeanIcon.x.bold
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
                 .frame(width: store.scaled(8), height: store.scaled(8))
@@ -765,7 +765,7 @@ private struct TopBarTabItem: View {
 
     private var iconOnlyCloseBadge: some View {
         Button(action: onClose) {
-            Ph.x.bold
+            LeanIcon.x.bold
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
                 .frame(width: store.scaled(6), height: store.scaled(6))
@@ -1010,7 +1010,7 @@ struct InlineURLBar: View {
         )
     }
 
-    private func suggestionIcon(for match: OmnibarSuggestion) -> Ph {
+    private func suggestionIcon(for match: OmnibarSuggestion) -> LeanIcon {
         if match.isSearch {
             return .magnifyingGlass
         } else if match.isSwitchToTab {
@@ -1074,7 +1074,7 @@ struct InlineURLBar: View {
                         onClose()
                     }
                 } label: {
-                    Ph.xCircle.fill
+                    LeanIcon.xCircle.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 11, height: 11)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -1216,7 +1216,7 @@ struct InlineURLBar: View {
 
 struct InlineSuggestionRow: View {
     let match: OmnibarSuggestion
-    let icon: Ph
+    let icon: LeanIcon
     let isSelected: Bool
     let store: LeanStore
     let onSelect: () -> Void
@@ -1257,7 +1257,7 @@ struct InlineSuggestionRow: View {
 struct InteractiveIconButton: View {
     @Environment(\.browserUIScale) private var browserUIScale
 
-    let icon: Ph
+    let icon: LeanIcon
     let helpText: String
     let size: CGFloat
     let iconSize: CGFloat
@@ -1397,7 +1397,7 @@ private struct ExtensionToolbarButtonContent: View {
             store.isExtensionsPresented.toggle()
         } label: {
             ZStack {
-                Ph.extension.fill
+                LeanIcon.extension.fill
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 12 * browserUIScale, height: 12 * browserUIScale)
@@ -1455,7 +1455,7 @@ private struct ExtensionToolbarButtonFallback: View {
         Button {
             store.isExtensionsPresented.toggle()
         } label: {
-            Ph.extension.fill
+            LeanIcon.extension.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 12 * browserUIScale, height: 12 * browserUIScale)
                 .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -1514,7 +1514,7 @@ struct BookmarkToolbarButton: View {
             store.toggleBookmarks()
         } label: {
             ZStack {
-                (isCurrentTabBookmarked ? Ph.bookmark.fill : Ph.bookmark.bold)
+                (isCurrentTabBookmarked ? LeanIcon.bookmark.fill : LeanIcon.bookmark.bold)
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 12 * browserUIScale, height: 12 * browserUIScale)
@@ -1587,7 +1587,7 @@ struct DownloadToolbarButton: View {
             store.isDownloadsPresented.toggle()
         } label: {
             ZStack {
-                Ph.arrowCircleDown.fill
+                LeanIcon.arrowCircleDown.fill
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 12 * browserUIScale, height: 12 * browserUIScale)
@@ -1882,7 +1882,7 @@ struct QuickSettingsPopover: View {
                     store.openSettings()
                 } label: {
                     HStack(spacing: 8) {
-                        Ph.gear.fill
+                        LeanIcon.gear.fill
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 12, height: 12)
                         Text("All Settings...")
@@ -1891,7 +1891,7 @@ struct QuickSettingsPopover: View {
                         Text("⌘,")
                             .font(.system(size: 10, weight: .semibold, design: .monospaced))
                             .foregroundColor(store.adaptiveTheme.secondaryText)
-                        Ph.caretRight.fill
+                        LeanIcon.caretRight.fill
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 8, height: 8)
                             .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -1948,7 +1948,7 @@ struct QuickSettingsHistoryRow: View {
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 8) {
-                Ph.clock.fill
+                LeanIcon.clock.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 12, height: 12)
                     .foregroundColor(isDark ? Color.white.opacity(0.70) : Color.black.opacity(0.60))
@@ -1960,7 +1960,7 @@ struct QuickSettingsHistoryRow: View {
 
                 Spacer()
 
-                Ph.caretRight.fill
+                LeanIcon.caretRight.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 8, height: 8)
                     .foregroundColor(isDark ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
@@ -1997,7 +1997,7 @@ struct QuickSettingsHistorySubmenu: View {
 
             if recentItems.isEmpty {
                 HStack(spacing: 8) {
-                    Ph.clock.fill
+                    LeanIcon.clock.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 12, height: 12)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -2033,7 +2033,7 @@ struct QuickSettingsHistorySubmenu: View {
             // Option to view all which opens the history tab in the settings
             Button(action: onOpenHistoryTab) {
                 HStack(spacing: 8) {
-                    Ph.clockCounterClockwise.fill
+                    LeanIcon.clockCounterClockwise.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 12, height: 12)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -2045,7 +2045,7 @@ struct QuickSettingsHistorySubmenu: View {
 
                     Spacer()
 
-                    Ph.caretRight.fill
+                    LeanIcon.caretRight.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 8, height: 8)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -2152,7 +2152,7 @@ private struct QuickSettingsHistorySubmenuItem: View {
 
 // MARK: - Quick Toggle Item
 struct QuickToggleItem: View {
-    let icon: Ph
+    let icon: LeanIcon
     let title: String
     @Binding var isOn: Bool
     let isDark: Bool

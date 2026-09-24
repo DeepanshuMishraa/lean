@@ -8,7 +8,7 @@ import {
   ShieldCheck,
   Copy,
   Check,
-} from '@phosphor-icons/react'
+} from '../icons'
 
 export const Route = createFileRoute('/')({ component: Home })
 

@@ -8,10 +8,19 @@ import os
 import re
 import xml.etree.ElementTree as ET
 
-from icons_data import ICONS
-
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+def load_icons():
+    svg_dir = os.path.join(ROOT, "icons/svg")
+    icons = {}
+    for fname in sorted(os.listdir(svg_dir)):
+        if fname.endswith(".svg"):
+            name = fname[:-4]
+            with open(os.path.join(svg_dir, fname), "r") as f:
+                icons[name] = f.read().strip()
+    return icons
+
+ICONS = load_icons()
 
 def validate_all():
     print(f"Validating {len(ICONS)} icons...")
@@ -24,14 +33,6 @@ def validate_all():
             print(f"Error in {name}: {e}")
             raise e
     print("All icons successfully validated as valid SVG XML!")
-
-def export_svg_files():
-    out_dir = os.path.join(ROOT, "icons/svg")
-    os.makedirs(out_dir, exist_ok=True)
-    for name, svg in ICONS.items():
-        with open(os.path.join(out_dir, f"{name}.svg"), "w") as f:
-            f.write(svg + "\n")
-    print(f"Exported {len(ICONS)} SVG files to {out_dir}")
 
 def generate_swift_file():
     swift_path = os.path.join(ROOT, "Lean/LeanIcons.swift")
@@ -53,9 +54,19 @@ def generate_swift_file():
     ]
 
     for c in cases:
-        swift_code.append(f"    case {c}")
+        if c == "extension":
+            swift_code.append('    case `extension` = "extension"')
+        else:
+            swift_code.append(f"    case {c}")
 
     swift_code.extend([
+        "",
+        "    public static let puzzlePiece: LeanIcon = .extension",
+        "    public static let extensionIcon: LeanIcon = .extension",
+        "    public static let speaker: LeanIcon = .speakerHigh",
+        "    public static let speakerMute: LeanIcon = .speakerSlash",
+        "    public static let mute: LeanIcon = .speakerSlash",
+        "    public static let split: LeanIcon = .columns",
         "",
         "    public var id: String { rawValue }",
         "",
@@ -118,9 +129,6 @@ def generate_swift_file():
         "        }",
         "    }",
         "}",
-        "",
-        "/// Drop-in alias for LeanIcon across the browser UI.",
-        "public typealias Ph = LeanIcon",
         ""
     ])
 
@@ -184,7 +192,6 @@ def generate_react_file():
 
 if __name__ == "__main__":
     validate_all()
-    export_svg_files()
     generate_swift_file()
     generate_react_file()
 

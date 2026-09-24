@@ -377,7 +377,7 @@ enum DownloadFormat {
     private enum FileCategory {
         case pdf, archive, image, video, audio, text, csv, presentation, app, package, other
 
-        var icon: Ph {
+        var icon: LeanIcon {
             switch self {
             case .pdf: .filePdf
             case .archive: .fileArchive
@@ -426,7 +426,7 @@ enum DownloadFormat {
         }
     }
 
-    static func icon(for fileName: String) -> Ph { category(for: fileName).icon }
+    static func icon(for fileName: String) -> LeanIcon { category(for: fileName).icon }
 
     static func systemImage(for fileName: String) -> String { category(for: fileName).systemImage }
 }

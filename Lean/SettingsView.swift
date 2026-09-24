@@ -18,7 +18,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var icon: Ph {
+    var icon: LeanIcon {
         switch self {
         case .general: return .slidersHorizontal
         case .topBar: return .layout
@@ -316,7 +316,7 @@ private struct HistorySection: View {
         VStack(alignment: .leading, spacing: 20) {
             // Search and Filter Bar
             HStack(spacing: 8) {
-                Ph.magnifyingGlass.fill
+                LeanIcon.magnifyingGlass.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 12, height: 12)
                     .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
@@ -330,7 +330,7 @@ private struct HistorySection: View {
                     Button {
                         searchText = ""
                     } label: {
-                        Ph.xCircle.fill
+                        LeanIcon.xCircle.fill
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 12, height: 12)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
@@ -369,7 +369,7 @@ private struct HistorySection: View {
                             }
                         } label: {
                             HStack(spacing: 4) {
-                                Ph.trash.fill
+                                LeanIcon.trash.fill
                                     .aspectRatio(contentMode: .fit)
                                     .frame(width: 10, height: 10)
                                 Text("Confirm Clear All")
@@ -396,7 +396,7 @@ private struct HistorySection: View {
                             }
                         } label: {
                             HStack(spacing: 4) {
-                                Ph.trash.fill
+                                LeanIcon.trash.fill
                                     .aspectRatio(contentMode: .fit)
                                     .frame(width: 10, height: 10)
                                 Text("Clear All")
@@ -419,7 +419,7 @@ private struct HistorySection: View {
             if store.historyItems.isEmpty {
                 // Empty History Canvas
                 VStack(spacing: 12) {
-                    Ph.clockCounterClockwise.fill
+                    LeanIcon.clockCounterClockwise.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 32, height: 32)
                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.30) : Color.black.opacity(0.30))
@@ -437,7 +437,7 @@ private struct HistorySection: View {
             } else if filteredItems.isEmpty {
                 // No Search Matches
                 VStack(spacing: 12) {
-                    Ph.magnifyingGlass.fill
+                    LeanIcon.magnifyingGlass.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 28, height: 28)
                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.30) : Color.black.opacity(0.30))
@@ -559,7 +559,7 @@ private struct HistoryItemRow: View {
                             }
                         }
                     } label: {
-                        (isCopied ? Ph.check.bold : Ph.copy.fill)
+                        (isCopied ? LeanIcon.check.bold : LeanIcon.copy.fill)
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 12, height: 12)
                             .foregroundColor(isCopied ? Color.green : (store.isDarkMode ? Color.white.opacity(0.7) : Color.black.opacity(0.65)))
@@ -576,7 +576,7 @@ private struct HistoryItemRow: View {
                     Button {
                         store.openHistoryItem(item, inNewTab: true)
                     } label: {
-                        Ph.arrowSquareOut.fill
+                        LeanIcon.arrowSquareOut.fill
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 12, height: 12)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.7) : Color.black.opacity(0.65))
@@ -595,7 +595,7 @@ private struct HistoryItemRow: View {
                             store.deleteHistoryItem(id: item.id)
                         }
                     } label: {
-                        Ph.trash.fill
+                        LeanIcon.trash.fill
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 12, height: 12)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.6) : Color.black.opacity(0.55))
@@ -658,7 +658,7 @@ private struct GeneralSection: View {
                     Spacer(minLength: 16)
 
                     if isDefault {
-                        Ph.check.bold
+                        LeanIcon.check.bold
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 13, height: 13)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.85) : Color.black.opacity(0.75))
@@ -829,7 +829,7 @@ private struct TopBarCustomizerSection: View {
                     }
                 } label: {
                     HStack(spacing: 5) {
-                        Ph.arrowCounterClockwise.fill
+                        LeanIcon.arrowCounterClockwise.fill
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 10, height: 10)
                         Text("Reset Default")
@@ -943,7 +943,7 @@ private struct ToolbarShelf: View {
 
             if items.isEmpty {
                 HStack(spacing: 8) {
-                    (isShownShelf ? Ph.tray.fill : Ph.checkCircle.fill)
+                    (isShownShelf ? LeanIcon.tray.fill : LeanIcon.checkCircle.fill)
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 12, height: 12)
                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.3) : Color.black.opacity(0.3))
@@ -1051,7 +1051,7 @@ private struct ToolbarInteractiveChip: View {
                         )
 
                     if isHovered {
-                        (isShown ? Ph.minusCircle.fill : Ph.plusCircle.fill)
+                        (isShown ? LeanIcon.minusCircle.fill : LeanIcon.plusCircle.fill)
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 9, height: 9)
                             .foregroundColor(isShown ? Color.red.opacity(0.85) : Color.green.opacity(0.85))
@@ -1895,7 +1895,7 @@ private struct ShortcutsSection: View {
             VStack(spacing: 12) {
                 // Search Input Field
                 HStack(spacing: 8) {
-                    Ph.magnifyingGlass.fill
+                    LeanIcon.magnifyingGlass.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 12, height: 12)
                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.35))
@@ -1909,7 +1909,7 @@ private struct ShortcutsSection: View {
                         Button {
                             searchQuery = ""
                         } label: {
-                            Ph.xCircle.fill
+                            LeanIcon.xCircle.fill
                                 .aspectRatio(contentMode: .fit)
                                 .frame(width: 12, height: 12)
                                 .foregroundColor(secondaryText)
@@ -1965,7 +1965,7 @@ private struct ShortcutsSection: View {
                             }
                         } label: {
                             HStack(spacing: 4) {
-                                Ph.arrowCounterClockwise.fill
+                                LeanIcon.arrowCounterClockwise.fill
                                     .aspectRatio(contentMode: .fit)
                                     .frame(width: 10, height: 10)
                                 Text("Reset All")
@@ -2038,7 +2038,7 @@ private struct ShortcutsSection: View {
                             } label: {
                                 HStack(spacing: 4) {
                                     if wasTriggered {
-                                        Ph.check.bold
+                                        LeanIcon.check.bold
                                             .aspectRatio(contentMode: .fit)
                                             .frame(width: 9.5, height: 9.5)
                                             .foregroundColor(Color(red: 48/255, green: 209/255, blue: 88/255))
@@ -2118,7 +2118,7 @@ private struct ShortcutsSection: View {
                                         store.resetShortcut(for: action)
                                     }
                                 } label: {
-                                    Ph.arrowCounterClockwise.fill
+                                    LeanIcon.arrowCounterClockwise.fill
                                         .aspectRatio(contentMode: .fit)
                                         .frame(width: 9.5, height: 9.5)
                                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.45) : Color.black.opacity(0.40))
@@ -2240,7 +2240,7 @@ private struct DownloadsSection: View {
 
                 SettingsGroup(isDark: store.isDarkMode) {
                     HStack(alignment: .center, spacing: 16) {
-                        Ph.folder.fill
+                        LeanIcon.folder.fill
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 15, height: 15)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
@@ -2313,7 +2313,7 @@ private struct DownloadsSection: View {
                             }
                         } label: {
                             HStack(spacing: 4) {
-                                Ph.trash.fill
+                                LeanIcon.trash.fill
                                     .aspectRatio(contentMode: .fit)
                                     .frame(width: 9.5, height: 9.5)
                                 Text("Clear Finished")
@@ -2333,7 +2333,7 @@ private struct DownloadsSection: View {
 
                 if !store.downloadManager.downloads.isEmpty {
                     HStack(spacing: 8) {
-                        Ph.magnifyingGlass.fill
+                        LeanIcon.magnifyingGlass.fill
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 12, height: 12)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
@@ -2347,7 +2347,7 @@ private struct DownloadsSection: View {
                             Button {
                                 searchText = ""
                             } label: {
-                                Ph.xCircle.fill
+                                LeanIcon.xCircle.fill
                                     .aspectRatio(contentMode: .fit)
                                     .frame(width: 12, height: 12)
                                     .foregroundColor(secondaryText)
@@ -2369,7 +2369,7 @@ private struct DownloadsSection: View {
 
                 if store.downloadManager.downloads.isEmpty {
                     VStack(spacing: 12) {
-                        Ph.arrowCircleDown.fill
+                        LeanIcon.arrowCircleDown.fill
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 32, height: 32)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.30) : Color.black.opacity(0.30))
@@ -2384,7 +2384,7 @@ private struct DownloadsSection: View {
                     .padding(.vertical, 48)
                 } else if filteredItems.isEmpty {
                     VStack(spacing: 12) {
-                        Ph.magnifyingGlass.fill
+                        LeanIcon.magnifyingGlass.fill
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 28, height: 28)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.30) : Color.black.opacity(0.30))
@@ -2575,7 +2575,7 @@ private struct DownloadSettingsRow: View {
 }
 
 private struct SettingsIconButton: View {
-    let icon: Ph
+    let icon: LeanIcon
     let help: String
     @ObservedObject var store: LeanStore
     let action: () -> Void
@@ -2779,7 +2779,7 @@ private struct PasswordManagerSection: View {
                 if !logins.isEmpty {
                     // Minimal search bar
                     HStack(spacing: 8) {
-                        Ph.magnifyingGlass.fill
+                        LeanIcon.magnifyingGlass.fill
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 12, height: 12)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.35))
@@ -2793,7 +2793,7 @@ private struct PasswordManagerSection: View {
                             Button {
                                 searchText = ""
                             } label: {
-                                Ph.xCircle.fill
+                                LeanIcon.xCircle.fill
                                     .aspectRatio(contentMode: .fit)
                                     .frame(width: 12, height: 12)
                                     .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
@@ -4024,7 +4024,7 @@ private struct ImportDataSection: View {
                                 Button {
                                     store.deleteImportedBookmark(id: bookmark.id)
                                 } label: {
-                                    Ph.x.uiIcon
+                                    LeanIcon.x.uiIcon
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Remove bookmark")

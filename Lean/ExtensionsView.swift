@@ -19,7 +19,7 @@ private struct ExtensionsPopoverFallback: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Ph.extension.fill
+            LeanIcon.extension.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 24, height: 24)
                 .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -139,7 +139,7 @@ private struct ExtensionsPopoverContent: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Ph.arrowSquareOut.fill
+                        LeanIcon.arrowSquareOut.fill
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 10, height: 10)
                         Text("Store")
@@ -165,7 +165,7 @@ private struct ExtensionsPopoverContent: View {
             // Content
             if manager.installed.isEmpty {
                 VStack(spacing: 8) {
-                    Ph.extension.fill
+                    LeanIcon.extension.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 24, height: 24)
                         .foregroundColor(store.adaptiveTheme.secondaryText.opacity(0.7))
@@ -228,13 +228,13 @@ private struct ExtensionsPopoverContent: View {
                 store.openSettings(category: .extensions)
             } label: {
                 HStack(spacing: 8) {
-                    Ph.extension.fill
+                    LeanIcon.extension.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 12, height: 12)
                     Text("Manage Extensions…")
                         .font(store.headingFont(size: 12))
                     Spacer()
-                    Ph.caretRight.fill
+                    LeanIcon.caretRight.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 8, height: 8)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -266,7 +266,7 @@ private struct ExtensionsPopoverContent: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Ph.caretLeft.fill
+                        LeanIcon.caretLeft.fill
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 10, height: 10)
                         Text("Extensions")
@@ -438,7 +438,7 @@ private struct ExtensionsPopoverContent: View {
                 isConfirmingRemove = true
             } label: {
                 HStack(spacing: 6) {
-                    Ph.trash.fill
+                    LeanIcon.trash.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 11, height: 11)
                     Text("Remove Extension…")
@@ -475,7 +475,7 @@ private struct ExtensionsPopoverContent: View {
     }
 
     // MARK: - Helpers
-    private func popoverActionButton(title: String, icon: Ph, action: @escaping () -> Void) -> some View {
+    private func popoverActionButton(title: String, icon: LeanIcon, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 icon.fill
@@ -525,7 +525,7 @@ private struct ExtensionsPopoverContent: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05))
-                Ph.extension.fill
+                LeanIcon.extension.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: size * 0.55, height: size * 0.55)
                     .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -559,7 +559,7 @@ private struct ExtensionPopoverRow: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .fill(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05))
-                    Ph.extension.fill
+                    LeanIcon.extension.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 12, height: 12)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -600,7 +600,7 @@ private struct ExtensionPopoverRow: View {
                                 ? (store.isDarkMode ? Color.white.opacity(0.12) : Color.black.opacity(0.08))
                                 : Color.clear
                         )
-                    Ph.dotsThree.fill
+                    LeanIcon.dotsThree.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 14, height: 14)
                         .foregroundColor(isBreadcrumbHovered ? store.adaptiveTheme.primaryText : store.adaptiveTheme.secondaryText)

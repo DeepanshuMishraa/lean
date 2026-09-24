@@ -354,7 +354,7 @@ private struct SidebarAddressBar: View {
             VStack(spacing: 2) {
                 ForEach(Array(suggestions.prefix(6).enumerated()), id: \.element.id) { index, match in
                     HStack(spacing: 8) {
-                        (match.isSearch ? Ph.magnifyingGlass.fill : (match.isSwitchToTab ? Ph.arrowCircleRight.fill : Ph.browser.fill))
+                        (match.isSearch ? LeanIcon.magnifyingGlass.fill : (match.isSwitchToTab ? LeanIcon.arrowCircleRight.fill : LeanIcon.browser.fill))
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 12, height: 12)
                             .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -403,7 +403,7 @@ private struct SidebarAddressBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Ph.magnifyingGlass.fill
+            LeanIcon.magnifyingGlass.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 12, height: 12)
                 .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -416,7 +416,7 @@ private struct SidebarAddressBar: View {
                 Button {
                     text = ""
                 } label: {
-                    Ph.xCircle.fill
+                    LeanIcon.xCircle.fill
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 11, height: 11)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
@@ -437,7 +437,7 @@ private struct SidebarAddressBar: View {
                         }
                     }
                 } label: {
-                    (didCopyLink ? Ph.check.bold : Ph.copy.fill)
+                    (didCopyLink ? LeanIcon.check.bold : LeanIcon.copy.fill)
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 12, height: 12)
                         .foregroundColor(didCopyLink ? Color.green : store.adaptiveTheme.secondaryText)
@@ -594,7 +594,7 @@ struct SidebarTabItem: View {
         .overlay(alignment: .trailing) {
             if showsClose {
                 Button(action: onClose) {
-                    Ph.x.bold
+                    LeanIcon.x.bold
                         .interpolation(.high)
                         .aspectRatio(contentMode: .fit)
                         .frame(width: store.scaled(8), height: store.scaled(8))
@@ -1041,7 +1041,7 @@ private struct SidebarTrafficLights: View {
 private struct TrafficLightButton: View {
     let color: Color
     let strokeColor: Color
-    let symbol: Ph
+    let symbol: LeanIcon
     let symbolSize: CGFloat
     let isHoveringGroup: Bool
     let isActive: Bool

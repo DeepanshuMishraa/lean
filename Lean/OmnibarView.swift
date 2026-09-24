@@ -100,7 +100,7 @@ struct OmnibarView: View {
     // MARK: - Input Header
     private var inputHeader: some View {
         HStack(spacing: 12) {
-            Ph.magnifyingGlass.fill
+            LeanIcon.magnifyingGlass.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: store.scaled(14), height: store.scaled(14))
                 .foregroundColor(store.isDarkMode ? Color.white.opacity(0.4) : Color.black.opacity(0.4))

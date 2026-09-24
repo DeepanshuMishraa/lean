@@ -90,7 +90,7 @@ struct SuggestionRow: View {
                     )
                     .frame(width: 22, height: 22)
 
-                Ph.arrowRight.fill
+                LeanIcon.arrowRight.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 10, height: 10)
                     .foregroundColor(
@@ -176,7 +176,7 @@ private struct BrandFaviconView: View {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(isDark ? Color.white : Color.black)
                     .frame(width: 20, height: 20)
-                Ph.code.fill
+                LeanIcon.code.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 10, height: 10)
                     .foregroundColor(isDark ? Color.black : Color.white)
@@ -187,7 +187,7 @@ private struct BrandFaviconView: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(Color(red: 255/255, green: 0, blue: 0))
                     .frame(width: 20, height: 14)
-                Ph.play.fill
+                LeanIcon.play.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 7, height: 7)
                     .foregroundColor(.white)
@@ -200,31 +200,31 @@ private struct BrandFaviconView: View {
                 .foregroundColor(isDark ? Color.white : Color.black)
 
         case .cloudflare:
-            Ph.cloud.fill
+            LeanIcon.cloud.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 13, height: 13)
                 .foregroundColor(Color(red: 243/255, green: 128/255, blue: 32/255))
 
         case .discord:
-            Ph.chats.fill
+            LeanIcon.chats.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 13, height: 13)
                 .foregroundColor(Color(red: 88/255, green: 101/255, blue: 242/255))
 
         case .claude:
-            Ph.sparkle.fill
+            LeanIcon.sparkle.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 13, height: 13)
                 .foregroundColor(Color(red: 217/255, green: 119/255, blue: 87/255))
 
         case .slack:
-            Ph.hash.fill
+            LeanIcon.hash.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 14, height: 14)
                 .foregroundColor(Color(red: 224/255, green: 30/255, blue: 90/255))
 
         case .apple:
-            Ph.appleLogo.fill
+            LeanIcon.appleLogo.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 13, height: 13)
                 .foregroundColor(isDark ? Color.white : Color.black)
@@ -233,7 +233,7 @@ private struct BrandFaviconView: View {
             GoogleFaviconView()
 
         case .contact:
-            Ph.chatText.fill
+            LeanIcon.chatText.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 13, height: 13)
                 .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
@@ -242,7 +242,7 @@ private struct BrandFaviconView: View {
             SearchEngineFaviconView(engine: match.searchEngine ?? .google, isDark: isDark)
 
         case .generic:
-            (match.isSwitchToTab ? Ph.appWindow.fill : Ph.browser.fill)
+            (match.isSwitchToTab ? LeanIcon.appWindow.fill : LeanIcon.browser.fill)
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 13, height: 13)
                 .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.black.opacity(0.5))
@@ -262,7 +262,7 @@ private struct SearchEngineFaviconView: View {
                     .resizable()
                     .scaledToFit()
             } else {
-                Ph.browser.fill
+                LeanIcon.browser.fill
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 13, height: 13)
                     .foregroundColor(isDark ? .white.opacity(0.7) : .black.opacity(0.55))
@@ -302,7 +302,7 @@ private struct GoogleFaviconView: View {
                 .interpolation(.high)
                 .frame(width: 16, height: 16)
         } else {
-            Ph.magnifyingGlass.fill
+            LeanIcon.magnifyingGlass.fill
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 13, height: 13)
                 .foregroundColor(Color(red: 66/255, green: 133/255, blue: 244/255))

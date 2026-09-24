@@ -993,7 +993,7 @@ final class LeanStore: ObservableObject {
     }
 
     func openURL(_ url: URL) {
-        if let tab = selectedTab, tab.url == nil {
+        if let tab = selectedTab, tab.url == nil, !tab.isPinned {
             tab.load(url)
         } else {
             newTab(url: url)
@@ -1232,10 +1232,17 @@ final class LeanStore: ObservableObject {
 
     func openTabAsSplit(_ tab: LeanTab) {
         guard !tab.isSplit else { return }
-        let companion = createTab(url: nil)
-        tab.splitTabs = [tab, companion]
-        tab.activeSplitIndex = 1
-        select(tab: tab)
+        if let active = selectedTab, active.id != tab.id, !active.isSplit {
+            tabs.removeAll { $0.id == tab.id }
+            active.splitTabs = [active, tab]
+            active.activeSplitIndex = 1
+            select(tab: active)
+        } else {
+            let companion = createTab(url: nil)
+            tab.splitTabs = [tab, companion]
+            tab.activeSplitIndex = 1
+            select(tab: tab)
+        }
         objectWillChange.send()
     }
 

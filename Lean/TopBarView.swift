@@ -875,6 +875,13 @@ private struct TopBarPinnedTabItem: View {
                     Label("Add to Split", systemImage: "square.split.2x1")
                 }
                 Divider()
+            } else if tab.url != nil {
+                Button {
+                    store.openTabAsSplit(tab)
+                } label: {
+                    Label("Open as Split", systemImage: "square.split.2x1")
+                }
+                Divider()
             }
             Button {
                 store.togglePin(tab: tab)

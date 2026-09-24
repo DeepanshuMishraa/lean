@@ -4,6 +4,8 @@ enum PageScripts {
     static let pageReadyMessageName = "pageReady"
     static let contextMenuMessageName = "leanContextMenu"
     static let passwordFormMessageName = "leanPasswordFormSubmit"
+    static let passwordFieldMessageName = "leanPasswordFieldFocus"
+    static let middleClickMessageName = "leanMiddleClick"
 
     /// Reports the anchor under every right-click (empty string for
     /// non-links) so the native menu can offer "Open Link in New Tab".
@@ -49,6 +51,59 @@ enum PageScripts {
             });
             Object.defineProperty(window, '__leanAudioContexts', { value: contexts, configurable: true });
         } catch (error) {}
+    })();
+    """
+
+    static let passwordFieldFocus = """
+    (function() {
+        if (window.__leanPasswordFieldFocus) {
+            if (window.__leanPasswordFieldFocusReport) window.__leanPasswordFieldFocusReport();
+            return;
+        }
+        window.__leanPasswordFieldFocus = true;
+        function isCredentialField(el) {
+            if (!el || el.tagName !== 'INPUT') return false;
+            var type = (el.type || 'text').toLowerCase();
+            if (type === 'password' || el.autocomplete === 'username' || el.autocomplete === 'current-password') return true;
+            if (type !== 'text' && type !== 'email') return false;
+            var form = el.form || document;
+            return !!form.querySelector('input[type="password"]');
+        }
+        function report() {
+            var el = document.activeElement;
+            var rect = null;
+            if (isCredentialField(el)) {
+                var bounds = el.getBoundingClientRect();
+                if (bounds.width && bounds.height) rect = { x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height };
+            }
+            try {
+                window.webkit.messageHandlers.\(passwordFieldMessageName).postMessage({ rect: rect });
+            } catch (error) {}
+        }
+        var scheduled = false;
+        function scheduleReport() {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(function() { scheduled = false; report(); });
+        }
+        window.__leanPasswordFieldFocusReport = report;
+        document.addEventListener('focusin', report, true);
+        document.addEventListener('focusout', function() { setTimeout(report, 0); }, true);
+        document.addEventListener('scroll', scheduleReport, true);
+        window.addEventListener('resize', scheduleReport);
+        report();
+    })();
+    """
+
+    static let middleClickClosePage = """
+    (function() {
+        document.addEventListener('auxclick', function(event) {
+            if (event.button !== 1 || !event.isTrusted) return;
+            var target = event.target;
+            if (target && target.closest && target.closest('a[href]')) return;
+            event.preventDefault();
+            try { window.webkit.messageHandlers.\(middleClickMessageName).postMessage(true); } catch (error) {}
+        }, true);
     })();
     """
 

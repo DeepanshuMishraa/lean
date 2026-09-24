@@ -2637,9 +2637,13 @@ private struct PasswordManagerSection: View {
     @State private var host = ""
     @State private var username = ""
     @State private var password = ""
+    @State private var isPasswordVisible = false
+    @State private var isSaving = false
     @State private var revealed: [String: String] = [:]
+    @State private var copiedID: String?
     @State private var pendingRemoval: SavedPassword?
     @State private var errorMessage: String?
+    @State private var successMessage: String?
 
     private var filteredLogins: [SavedPassword] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -2649,11 +2653,13 @@ private struct PasswordManagerSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
+            // Password Preferences
             VStack(alignment: .leading, spacing: 8) {
-                SettingsHeaderLabel("Password settings", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                SettingsHeaderLabel("Password settings", subtitle: "Autofill and credential capture", uiFont: store.leanUIFont, isDark: store.isDarkMode)
                 SettingsGroup(isDark: store.isDarkMode) {
                     CustomToggleRow(
                         title: "Offer to save passwords after sign-in",
+                        subtitle: "Prompts you to remember new accounts and updated passwords",
                         isOn: $store.passwordSavePromptsEnabled,
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont
@@ -2661,85 +2667,311 @@ private struct PasswordManagerSection: View {
                     SettingsRowDivider(isDark: store.isDarkMode)
                     CustomToggleRow(
                         title: "Offer matching sign-ins in page menus",
+                        subtitle: "Shows saved credentials in login fields across web pages",
                         isOn: $store.passwordSuggestionsEnabled,
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont
                     )
                 }
-                Text("Lean stores passwords in the macOS Keychain. Filling never submits a form.")
-                    .font(store.leanUIFont.font(size: 11.5))
-                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+
+                HStack(spacing: 6) {
+                    Image(systemName: "lock.shield")
+                        .font(.system(size: 11.5))
+                        .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
+                    Text("Lean stores credentials securely in the macOS Keychain. Filling never submits a form automatically.")
+                        .font(store.leanUIFont.font(size: 11.5))
+                        .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                }
+                .padding(.horizontal, 2)
             }
 
+            // Saved Sign-ins Section
             VStack(alignment: .leading, spacing: 8) {
-                SettingsHeaderLabel("Saved sign-ins (\(logins.count))", uiFont: store.leanUIFont, isDark: store.isDarkMode)
-                SettingsGroup(isDark: store.isDarkMode) {
-                    TextField("Search by site or account", text: $searchText)
-                        .textFieldStyle(.roundedBorder)
-                        .padding(12)
-                    SettingsRowDivider(isDark: store.isDarkMode)
-                    if filteredLogins.isEmpty {
-                        Text(logins.isEmpty ? "No saved sign-ins yet." : "No sign-ins match this search.")
-                            .font(store.leanUIFont.font(size: 11.5))
-                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
-                    } else {
-                        ForEach(filteredLogins) { login in
-                            HStack(spacing: 10) {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(login.origin).font(store.leanUIFont.font(size: 12.5, weight: .medium))
-                                    Text(login.username.isEmpty ? "Unnamed account" : login.username)
-                                        .font(store.leanUIFont.font(size: 11.5))
-                                        .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
-                                    if let secret = revealed[login.id] {
-                                        Text(secret)
-                                            .font(.system(size: 11, design: .monospaced))
-                                            .textSelection(.enabled)
-                                            .lineLimit(1)
-                                    }
-                                }
-                                Spacer(minLength: 8)
-                                SettingsActionButton(revealed[login.id] == nil ? "Reveal" : "Hide", isDark: store.isDarkMode) {
-                                    if revealed[login.id] != nil {
-                                        revealed[login.id] = nil
-                                    } else {
-                                        read(login, reveal: true)
-                                    }
-                                }
-                                SettingsActionButton("Copy", isDark: store.isDarkMode) { read(login, reveal: false) }
-                                SettingsActionButton("Remove", isDark: store.isDarkMode, destructive: true) { pendingRemoval = login }
+                SettingsHeaderLabel("Saved sign-ins (\(logins.count))", subtitle: "Accounts stored in your Keychain", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+
+                if !logins.isEmpty {
+                    // Minimal search bar
+                    HStack(spacing: 8) {
+                        Ph.magnifyingGlass.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 12, height: 12)
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.35))
+
+                        TextField("Search by site or username…", text: $searchText)
+                            .textFieldStyle(.plain)
+                            .font(store.leanUIFont.font(size: 12.5))
+                            .foregroundColor(store.isDarkMode ? Color.white : Color.black)
+
+                        if !searchText.isEmpty {
+                            Button {
+                                searchText = ""
+                            } label: {
+                                Ph.xCircle.fill
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 12, height: 12)
+                                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
                             }
-                            .padding(14)
-                            if login.id != filteredLogins.last?.id { SettingsRowDivider(isDark: store.isDarkMode) }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 11)
+                    .frame(height: 32)
+                    .background(
+                        store.isDarkMode ? Color.white.opacity(0.04) : Color.black.opacity(0.035),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(store.isDarkMode ? Color.white.opacity(0.07) : Color.black.opacity(0.06), lineWidth: 0.75)
+                    )
+                }
+
+                SettingsGroup(isDark: store.isDarkMode) {
+                    if logins.isEmpty {
+                        VStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.035))
+                                    .frame(width: 42, height: 42)
+                                Image(systemName: "key.fill")
+                                    .font(.system(size: 17))
+                                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.35))
+                            }
+                            VStack(spacing: 3) {
+                                Text("No saved sign-ins yet")
+                                    .font(store.leanUIFont.font(size: 13, weight: .medium))
+                                    .foregroundColor(store.isDarkMode ? Color(white: 0.90) : Color(white: 0.15))
+                                Text("Credentials you save while browsing or add below will appear here.")
+                                    .font(store.leanUIFont.font(size: 11.5))
+                                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.45) : Color.black.opacity(0.45))
+                                    .multilineTextAlignment(.center)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                        .padding(.horizontal, 16)
+                    } else if filteredLogins.isEmpty {
+                        VStack(spacing: 6) {
+                            Text("No matching sign-ins")
+                                .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                                .foregroundColor(store.isDarkMode ? Color(white: 0.85) : Color(white: 0.20))
+                            Text("No credentials found matching \"\(searchText)\".")
+                                .font(store.leanUIFont.font(size: 11.5))
+                                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.45) : Color.black.opacity(0.45))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(20)
+                    } else {
+                        ForEach(Array(filteredLogins.enumerated()), id: \.element.id) { index, login in
+                            HStack(spacing: 12) {
+                                SiteFaviconView(url: URL(string: login.origin), isDark: store.isDarkMode, size: 16)
+                                    .frame(width: 28, height: 28)
+                                    .background(store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.03), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .stroke(store.isDarkMode ? Color.white.opacity(0.07) : Color.black.opacity(0.05), lineWidth: 0.5)
+                                    )
+
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(login.host)
+                                        .font(store.leanUIFont.font(size: 13, weight: .medium))
+                                        .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+
+                                    HStack(spacing: 6) {
+                                        Text(login.username.isEmpty ? "No username" : login.username)
+                                            .font(store.leanUIFont.font(size: 11.5))
+                                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+
+                                        Text("·")
+                                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.3) : Color.black.opacity(0.3))
+
+                                        if let secret = revealed[login.id] {
+                                            Text(secret)
+                                                .font(.system(size: 11, design: .monospaced))
+                                                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.85) : Color.black.opacity(0.80))
+                                                .textSelection(.enabled)
+                                        } else {
+                                            Text("••••••••")
+                                                .font(.system(size: 11, weight: .medium))
+                                                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+                                        }
+                                    }
+                                }
+
+                                Spacer(minLength: 8)
+
+                                HStack(spacing: 6) {
+                                    SettingsActionButton(revealed[login.id] == nil ? "Reveal" : "Hide", isDark: store.isDarkMode) {
+                                        if revealed[login.id] != nil {
+                                            revealed[login.id] = nil
+                                        } else {
+                                            read(login, reveal: true)
+                                        }
+                                    }
+                                    SettingsActionButton(copiedID == login.id ? "Copied" : "Copy", isDark: store.isDarkMode) {
+                                        read(login, reveal: false)
+                                    }
+                                    SettingsActionButton("Remove", isDark: store.isDarkMode, destructive: true) {
+                                        pendingRemoval = login
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 11)
+
+                            if index < filteredLogins.count - 1 {
+                                SettingsRowDivider(isDark: store.isDarkMode, inset: 54)
+                            }
                         }
                     }
                 }
             }
 
+            // Add a Sign-in Form
             VStack(alignment: .leading, spacing: 8) {
-                SettingsHeaderLabel("Add a sign-in", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                SettingsHeaderLabel("Add a sign-in", subtitle: "Manually store an account in your Keychain", uiFont: store.leanUIFont, isDark: store.isDarkMode)
                 SettingsGroup(isDark: store.isDarkMode) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        TextField("Website host (example.com)", text: $host)
-                            .textFieldStyle(.roundedBorder)
-                        TextField("Username", text: $username)
-                            .textFieldStyle(.roundedBorder)
-                        SecureField("Password", text: $password)
-                            .textFieldStyle(.roundedBorder)
+                    VStack(alignment: .leading, spacing: 14) {
+                        VStack(spacing: 9) {
+                            // Host Input
+                            HStack(spacing: 10) {
+                                Image(systemName: "globe")
+                                    .font(.system(size: 12.5, weight: .medium))
+                                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.38))
+                                    .frame(width: 16)
+
+                                TextField("Website (e.g. github.com)", text: $host)
+                                    .textFieldStyle(.plain)
+                                    .font(store.leanUIFont.font(size: 12.5))
+                                    .foregroundColor(store.isDarkMode ? Color.white : Color.black)
+
+                                if !host.isEmpty {
+                                    Button { host = "" } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 11)
+                            .frame(height: 34)
+                            .background(
+                                store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.035),
+                                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06), lineWidth: 0.75)
+                            )
+
+                            // Username Input
+                            HStack(spacing: 10) {
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.38))
+                                    .frame(width: 16)
+
+                                TextField("Username or email", text: $username)
+                                    .textFieldStyle(.plain)
+                                    .font(store.leanUIFont.font(size: 12.5))
+                                    .foregroundColor(store.isDarkMode ? Color.white : Color.black)
+
+                                if !username.isEmpty {
+                                    Button { username = "" } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 11)
+                            .frame(height: 34)
+                            .background(
+                                store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.035),
+                                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06), lineWidth: 0.75)
+                            )
+
+                            // Password Input
+                            HStack(spacing: 10) {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.38))
+                                    .frame(width: 16)
+
+                                if isPasswordVisible {
+                                    TextField("Password", text: $password)
+                                        .textFieldStyle(.plain)
+                                        .font(.system(size: 12.5, design: .monospaced))
+                                        .foregroundColor(store.isDarkMode ? Color.white : Color.black)
+                                } else {
+                                    SecureField("Password", text: $password)
+                                        .textFieldStyle(.plain)
+                                        .font(store.leanUIFont.font(size: 12.5))
+                                        .foregroundColor(store.isDarkMode ? Color.white : Color.black)
+                                }
+
+                                if !password.isEmpty {
+                                    Button {
+                                        isPasswordVisible.toggle()
+                                    } label: {
+                                        Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
+                                            .font(.system(size: 11.5))
+                                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 11)
+                            .frame(height: 34)
+                            .background(
+                                store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.035),
+                                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06), lineWidth: 0.75)
+                            )
+                        }
+
                         HStack {
+                            if let successMessage {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.green)
+                                    Text(successMessage)
+                                        .font(store.leanUIFont.font(size: 11.5))
+                                        .foregroundColor(.green)
+                                }
+                            }
                             Spacer()
-                            SettingsActionButton("Save to Keychain", isDark: store.isDarkMode, prominent: true) { saveLogin() }
-                                .disabled(host.isEmpty || password.isEmpty)
+                            SettingsActionButton(isSaving ? "Saving…" : "Save to Keychain", isDark: store.isDarkMode, prominent: true, isLoading: isSaving) {
+                                saveLogin()
+                            }
+                            .disabled(host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.isEmpty || isSaving)
                         }
                     }
                     .padding(14)
                 }
             }
+
             if let errorMessage {
-                Text(errorMessage)
-                    .font(store.leanUIFont.font(size: 11.5))
-                    .foregroundColor(.red)
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.red)
+                    Text(errorMessage)
+                        .font(store.leanUIFont.font(size: 11.5))
+                        .foregroundColor(.red)
+                        .textSelection(.enabled)
+                }
+                .padding(.horizontal, 2)
             }
         }
         .onAppear(perform: reload)
@@ -2747,7 +2979,7 @@ private struct PasswordManagerSection: View {
         .confirmationDialog("Remove this saved sign-in?", isPresented: Binding(
             get: { pendingRemoval != nil },
             set: { if !$0 { pendingRemoval = nil } }
-        )) {
+        ), titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
                 if let pendingRemoval {
                     if case .failure(let error) = PasswordVault.remove(pendingRemoval) {
@@ -2759,6 +2991,10 @@ private struct PasswordManagerSection: View {
                 pendingRemoval = nil
             }
             Button("Cancel", role: .cancel) { pendingRemoval = nil }
+        } message: {
+            if let pendingRemoval {
+                Text("Are you sure you want to remove the credentials for \"\(pendingRemoval.host)\"? This action will remove them from the macOS Keychain.")
+            }
         }
         .onDisappear { revealed.removeAll() }
     }
@@ -2773,21 +3009,36 @@ private struct PasswordManagerSection: View {
     }
 
     private func saveLogin() {
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = host.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let origin = components.url else {
+        var trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedHost.lowercased().hasPrefix("https://") {
+            trimmedHost = String(trimmedHost.dropFirst(8))
+        } else if trimmedHost.lowercased().hasPrefix("http://") {
+            trimmedHost = String(trimmedHost.dropFirst(7))
+        }
+        if let slashIndex = trimmedHost.firstIndex(of: "/") {
+            trimmedHost = String(trimmedHost[..<slashIndex])
+        }
+        guard let normalized = PasswordVault.normalizedHost(trimmedHost),
+              let origin = URL(string: "https://\(normalized)") else {
             errorMessage = PasswordVault.VaultError.invalidOrigin.localizedDescription
             return
         }
-        switch PasswordVault.save(origin: origin, username: username, password: password) {
+        isSaving = true
+        switch PasswordVault.save(origin: origin, username: username.trimmingCharacters(in: .whitespacesAndNewlines), password: password) {
         case .success:
             host = ""
             username = ""
             password = ""
             errorMessage = nil
-        case .failure(let error): errorMessage = error.localizedDescription
+            successMessage = "Saved to Keychain"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                successMessage = nil
+            }
+            reload()
+        case .failure(let error):
+            errorMessage = error.localizedDescription
         }
+        isSaving = false
     }
 
     private func read(_ login: SavedPassword, reveal: Bool) {
@@ -2803,6 +3054,10 @@ private struct PasswordManagerSection: View {
                 } else {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(secret, forType: .string)
+                    copiedID = login.id
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                        if copiedID == login.id { copiedID = nil }
+                    }
                 }
             case .failure(let error): errorMessage = error.localizedDescription
             }
@@ -2815,12 +3070,45 @@ private struct ExtensionsSettingsSection: View {
     @ObservedObject var store: LeanStore
     @StateObject private var manager = BrowserExtensionManager.shared
     @State private var pendingReview: BrowserExtensionManager.InstallationReview?
-    @State private var expandedExtensions = Set<String>()
+    @State private var selectedExtensionID: String? = nil
     @State private var isPreparing = false
     @State private var storeLink = ""
+    @State private var isBackHovered = false
+    @State private var isShowingRemoveConfirm = false
 
     var body: some View {
+        Group {
+            if let selectedID = selectedExtensionID,
+               let item = manager.installed.first(where: { $0.id == selectedID }) {
+                extensionDetailView(for: item)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .trailing)),
+                        removal: .opacity.combined(with: .move(edge: .leading))
+                    ))
+            } else {
+                mainListView
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .leading)),
+                        removal: .opacity.combined(with: .move(edge: .trailing))
+                    ))
+            }
+        }
+        .sheet(item: $pendingReview) { review in
+            ExtensionInstallReviewSheet(review: review, isDark: store.isDarkMode, uiFont: store.leanUIFont) {
+                manager.cancelInstallation(review)
+                pendingReview = nil
+            } install: { permissions, hosts in
+                await manager.install(review, permissions: permissions, hosts: hosts)
+                pendingReview = nil
+            }
+            .interactiveDismissDisabled()
+        }
+    }
+
+    // MARK: - Main List View
+    private var mainListView: some View {
         VStack(alignment: .leading, spacing: 20) {
+            // Add from Chrome Web Store Card
             SettingsGroup(isDark: store.isDarkMode) {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
@@ -2832,7 +3120,7 @@ private struct ExtensionsSettingsSection: View {
                         }
                     }
                     HStack(spacing: 8) {
-                        TextField("Paste an extension link or ID", text: $storeLink)
+                        TextField("Paste a link to an extension, or its id", text: $storeLink)
                             .textFieldStyle(.plain)
                             .font(store.leanUIFont.font(size: 12.5))
                             .padding(.horizontal, 10)
@@ -2856,6 +3144,7 @@ private struct ExtensionsSettingsSection: View {
                 .padding(14)
             }
 
+            // Installed Extensions Group
             VStack(alignment: .leading, spacing: 8) {
                 SettingsHeaderLabel("Installed extensions", uiFont: store.leanUIFont, isDark: store.isDarkMode)
                 SettingsGroup(isDark: store.isDarkMode) {
@@ -2866,67 +3155,45 @@ private struct ExtensionsSettingsSection: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(14)
                     } else {
-                        ForEach(manager.installed) { item in
-                            VStack(alignment: .leading, spacing: 0) {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "puzzlepiece.extension.fill")
-                                        .font(.system(size: 18, weight: .medium))
-                                        .foregroundStyle(store.adaptiveTheme.secondaryText)
-                                        .frame(width: 28, height: 28)
-                                        .accessibilityHidden(true)
+                        ForEach(Array(manager.installed.enumerated()), id: \.element.id) { index, item in
+                            VStack(spacing: 0) {
+                                HStack(spacing: 12) {
+                                    extensionIconView(for: item.id, size: 32)
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(item.name)
                                             .font(store.leanUIFont.font(size: 13, weight: .medium))
-                                        Text("Version \(item.version) · \(item.fromStore == true ? "Chrome Web Store" : "Unpacked extension") · \(manager.loadedIDs.contains(item.id) ? "Running" : "Stopped")")
+                                            .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                                        Text("Version \(item.version) · \(item.fromStore == true ? "Chrome Web Store" : "Unpacked extension")")
                                             .font(store.leanUIFont.font(size: 11))
                                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
                                     }
                                     Spacer(minLength: 8)
-                                    Menu {
-                                        Button("Reload") { manager.reload(item.id) }
-                                        Toggle("Enabled", isOn: Binding(
-                                            get: { item.enabled },
-                                            set: { manager.setEnabled(item.id, to: $0) }
-                                        ))
-                                        Button("Permissions and site access") {
-                                            if expandedExtensions.contains(item.id) {
-                                                expandedExtensions.remove(item.id)
-                                            } else {
-                                                expandedExtensions.insert(item.id)
+                                    HStack(spacing: 10) {
+                                        SettingsActionButton("Options", isDark: store.isDarkMode) {
+                                            withAnimation(.easeInOut(duration: 0.2)) {
+                                                selectedExtensionID = item.id
                                             }
                                         }
-                                    } label: {
-                                        Label("Options", systemImage: "ellipsis.circle")
+                                        TactileSwitch(
+                                            isOn: Binding(
+                                                get: { item.enabled },
+                                                set: { manager.setEnabled(item.id, to: $0) }
+                                            ),
+                                            isDark: store.isDarkMode
+                                        )
                                     }
-                                    .menuStyle(.borderlessButton)
-                                    SettingsActionButton("Remove", isDark: store.isDarkMode, destructive: true) { manager.remove(item.id) }
                                 }
                                 .padding(14)
-                                if expandedExtensions.contains(item.id) {
-                                    SettingsRowDivider(isDark: store.isDarkMode)
-                                    permissionControls(for: item)
-                                }
-                                if let diagnostics = manager.errors[item.id], !diagnostics.isEmpty {
-                                    SettingsRowDivider(isDark: store.isDarkMode)
-                                    VStack(alignment: .leading, spacing: 5) {
-                                        Text("Diagnostics")
-                                            .font(store.leanUIFont.font(size: 11.5, weight: .medium))
-                                        ForEach(Array(diagnostics.enumerated()), id: \.offset) { _, diagnostic in
-                                            Text(diagnostic)
-                                                .font(store.leanUIFont.font(size: 11))
-                                                .foregroundColor(.red)
-                                                .textSelection(.enabled)
-                                        }
-                                    }
-                                    .padding(14)
-                                }
                             }
-                            if item.id != manager.installed.last?.id { SettingsRowDivider(isDark: store.isDarkMode) }
+                            if index < manager.installed.count - 1 {
+                                SettingsRowDivider(isDark: store.isDarkMode, inset: 58)
+                            }
                         }
                     }
                 }
             }
 
+            // Load Unpacked Extension Card
             SettingsGroup(isDark: store.isDarkMode) {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -2958,65 +3225,256 @@ private struct ExtensionsSettingsSection: View {
                 .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .sheet(item: $pendingReview) { review in
-            ExtensionInstallReviewSheet(review: review, isDark: store.isDarkMode, uiFont: store.leanUIFont) {
-                manager.cancelInstallation(review)
-                pendingReview = nil
-            } install: { permissions, hosts in
-                await manager.install(review, permissions: permissions, hosts: hosts)
-                pendingReview = nil
+    }
+
+    // MARK: - Extension Detail Stack Page
+    private func extensionDetailView(for item: BrowserExtensionManager.Installed) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Back Button
+            HStack {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        selectedExtensionID = nil
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Extensions")
+                            .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                    }
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.78) : Color.black.opacity(0.72))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(
+                        isBackHovered ? (store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.055)) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    )
+                }
+                .buttonStyle(.plain)
+                .onHover { isBackHovered = $0 }
+
+                Spacer()
             }
-            .interactiveDismissDisabled()
+            .padding(.bottom, -6)
+
+            // Extension Header Card
+            SettingsGroup(isDark: store.isDarkMode) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 14) {
+                        extensionIconView(for: item.id, size: 40)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.name)
+                                .font(store.leanUIFont.font(size: 15, weight: .semibold))
+                                .foregroundColor(store.isDarkMode ? Color(white: 0.95) : Color(white: 0.10))
+                            HStack(spacing: 6) {
+                                Text("Version \(item.version)")
+                                Text("·")
+                                Text(item.fromStore == true ? "Chrome Web Store" : "Unpacked extension")
+                                Text("·")
+                                Text(manager.loadedIDs.contains(item.id) ? "Running" : (item.enabled ? "Active" : "Stopped"))
+                                    .foregroundColor(manager.loadedIDs.contains(item.id) ? Color.green.opacity(0.85) : (store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48)))
+                            }
+                            .font(store.leanUIFont.font(size: 11))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                        }
+                        Spacer(minLength: 8)
+                        TactileSwitch(
+                            isOn: Binding(
+                                get: { item.enabled },
+                                set: { manager.setEnabled(item.id, to: $0) }
+                            ),
+                            isDark: store.isDarkMode
+                        )
+                    }
+
+                    SettingsRowDivider(isDark: store.isDarkMode, inset: 0)
+
+                    HStack(spacing: 8) {
+                        SettingsActionButton("Reload", isDark: store.isDarkMode) {
+                            manager.reload(item.id)
+                        }
+                        if item.fromStore == true {
+                            SettingsActionButton("Store Page", isDark: store.isDarkMode) {
+                                if let url = URL(string: "https://chromewebstore.google.com/detail/\(item.id)") {
+                                    store.openURL(url)
+                                }
+                            }
+                        } else {
+                            SettingsActionButton("Reveal in Finder", isDark: store.isDarkMode) {
+                                manager.revealInFinder(item.id)
+                            }
+                        }
+                        if let optionsURL = manager.optionsPageURL(for: item.id) {
+                            SettingsActionButton("Extension Options", isDark: store.isDarkMode) {
+                                store.openURL(optionsURL)
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+            }
+
+            // Permissions & Site Access Section
+            let hasPermissions = !item.requiredPermissions.isEmpty || !item.optionalPermissions.isEmpty || !item.requiredHosts.isEmpty || !item.optionalHosts.isEmpty
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Permissions & Site Access", subtitle: "Controls what data and web pages this extension can access", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                SettingsGroup(isDark: store.isDarkMode) {
+                    if hasPermissions {
+                        VStack(alignment: .leading, spacing: 0) {
+                            if !item.requiredPermissions.isEmpty {
+                                permissionSubheader("Requested permissions")
+                                ForEach(item.requiredPermissions, id: \.self) { perm in
+                                    CustomToggleRow(
+                                        title: perm,
+                                        isOn: Binding(
+                                            get: { item.grantedPermissions.contains(perm) },
+                                            set: { manager.setPermission(perm, enabled: $0, for: item.id) }
+                                        ),
+                                        isDark: store.isDarkMode,
+                                        uiFont: store.leanUIFont
+                                    )
+                                }
+                            }
+                            if !item.optionalPermissions.isEmpty {
+                                if !item.requiredPermissions.isEmpty { SettingsRowDivider(isDark: store.isDarkMode) }
+                                permissionSubheader("Optional permissions")
+                                ForEach(item.optionalPermissions, id: \.self) { perm in
+                                    CustomToggleRow(
+                                        title: perm,
+                                        isOn: Binding(
+                                            get: { item.grantedPermissions.contains(perm) },
+                                            set: { manager.setPermission(perm, enabled: $0, for: item.id) }
+                                        ),
+                                        isDark: store.isDarkMode,
+                                        uiFont: store.leanUIFont
+                                    )
+                                }
+                            }
+                            if !item.requiredHosts.isEmpty {
+                                if !item.requiredPermissions.isEmpty || !item.optionalPermissions.isEmpty { SettingsRowDivider(isDark: store.isDarkMode) }
+                                permissionSubheader("Requested site access")
+                                ForEach(item.requiredHosts, id: \.self) { host in
+                                    CustomToggleRow(
+                                        title: host,
+                                        isOn: Binding(
+                                            get: { item.grantedHosts.contains(host) },
+                                            set: { manager.setHost(host, enabled: $0, for: item.id) }
+                                        ),
+                                        isDark: store.isDarkMode,
+                                        uiFont: store.leanUIFont
+                                    )
+                                }
+                            }
+                            if !item.optionalHosts.isEmpty {
+                                if !item.requiredPermissions.isEmpty || !item.optionalPermissions.isEmpty || !item.requiredHosts.isEmpty { SettingsRowDivider(isDark: store.isDarkMode) }
+                                permissionSubheader("Optional site access")
+                                ForEach(item.optionalHosts, id: \.self) { host in
+                                    CustomToggleRow(
+                                        title: host,
+                                        isOn: Binding(
+                                            get: { item.grantedHosts.contains(host) },
+                                            set: { manager.setHost(host, enabled: $0, for: item.id) }
+                                        ),
+                                        isDark: store.isDarkMode,
+                                        uiFont: store.leanUIFont
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Text("This extension does not require any additional permissions or host access.")
+                            .font(store.leanUIFont.font(size: 11.5))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    }
+                }
+            }
+
+            // Diagnostics Section
+            if let diagnostics = manager.errors[item.id], !diagnostics.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    SettingsHeaderLabel("Diagnostics", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                    SettingsGroup(isDark: store.isDarkMode) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(Array(diagnostics.enumerated()), id: \.offset) { _, diagnostic in
+                                Text(diagnostic)
+                                    .font(store.leanUIFont.font(size: 11))
+                                    .foregroundColor(.red)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                        .padding(14)
+                    }
+                }
+            }
+
+            // Danger Zone Section
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Danger Zone", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+                SettingsGroup(isDark: store.isDarkMode) {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Remove Extension")
+                                .font(store.leanUIFont.font(size: 13, weight: .medium))
+                                .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                            Text("Uninstall this extension and delete its files from Lean.")
+                                .font(store.leanUIFont.font(size: 11.5))
+                                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                        }
+                        Spacer(minLength: 8)
+                        SettingsActionButton("Remove…", isDark: store.isDarkMode, destructive: true) {
+                            isShowingRemoveConfirm = true
+                        }
+                    }
+                    .padding(14)
+                }
+            }
+            .confirmationDialog(
+                "Remove \(item.name)?",
+                isPresented: $isShowingRemoveConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Remove Extension", role: .destructive) {
+                    manager.remove(item.id)
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        selectedExtensionID = nil
+                    }
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("This will delete \"\(item.name)\" and remove all of its data from Lean. This action cannot be undone.")
+            }
         }
+    }
+
+    private func permissionSubheader(_ title: String) -> some View {
+        Text(title)
+            .font(store.leanUIFont.font(size: 11, weight: .medium))
+            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
     }
 
     @ViewBuilder
-    private func permissionControls(for item: BrowserExtensionManager.Installed) -> some View {
-        if !item.requiredPermissions.isEmpty {
-            permissionGroup("Requested permissions", values: item.requiredPermissions, granted: item.grantedPermissions) { value, enabled in
-                manager.setPermission(value, enabled: enabled, for: item.id)
+    private func extensionIconView(for id: String, size: CGFloat) -> some View {
+        if let icon = manager.icon(for: id) {
+            Image(nsImage: icon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size > 32 ? 8 : 6, style: .continuous))
+        } else {
+            ZStack {
+                RoundedRectangle(cornerRadius: size > 32 ? 8 : 6, style: .continuous)
+                    .fill(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                Image(systemName: "puzzlepiece.extension.fill")
+                    .font(.system(size: size * 0.5, weight: .medium))
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.4) : Color.black.opacity(0.35))
             }
-        }
-        if !item.optionalPermissions.isEmpty {
-            permissionGroup("Optional permissions", values: item.optionalPermissions, granted: item.grantedPermissions) { value, enabled in
-                manager.setPermission(value, enabled: enabled, for: item.id)
-            }
-        }
-        if !item.requiredHosts.isEmpty {
-            permissionGroup("Requested site access", values: item.requiredHosts, granted: item.grantedHosts) { value, enabled in
-                manager.setHost(value, enabled: enabled, for: item.id)
-            }
-        }
-        if !item.optionalHosts.isEmpty {
-            permissionGroup("Optional site access", values: item.optionalHosts, granted: item.grantedHosts) { value, enabled in
-                manager.setHost(value, enabled: enabled, for: item.id)
-            }
-        }
-    }
-
-    private func permissionGroup(
-        _ title: String,
-        values: [String],
-        granted: [String],
-        setPermission: @escaping (String, Bool) -> Void
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(store.leanUIFont.font(size: 11, weight: .medium))
-                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
-                .padding(.horizontal, 14)
-                .padding(.top, 8)
-            ForEach(values, id: \.self) { value in
-                CustomToggleRow(
-                    title: value,
-                    isOn: Binding(
-                        get: { granted.contains(value) },
-                        set: { setPermission(value, $0) }
-                    ),
-                    isDark: store.isDarkMode,
-                    uiFont: store.leanUIFont
-                )
-            }
+            .frame(width: size, height: size)
         }
     }
 
@@ -3051,12 +3509,21 @@ private struct ExtensionInstallReviewSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Review extension")
-                    .font(uiFont.font(size: 17, weight: .semibold))
-                Text("\(review.name) · version \(review.version)")
-                    .font(uiFont.font(size: 12))
-                    .foregroundColor(isDark ? Color.white.opacity(0.52) : Color.black.opacity(0.50))
+            HStack(spacing: 12) {
+                if let icon = review.icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 36, height: 36)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Review extension")
+                        .font(uiFont.font(size: 17, weight: .semibold))
+                    Text("\(review.name) · version \(review.version)")
+                        .font(uiFont.font(size: 12))
+                        .foregroundColor(isDark ? Color.white.opacity(0.52) : Color.black.opacity(0.50))
+                }
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {

@@ -385,6 +385,9 @@ final class LeanStore: ObservableObject {
     private var sleepWorkItems: [LeanTab.ID: DispatchWorkItem] = [:]
     private var sleepWorkTokens: [LeanTab.ID: UUID] = [:]
     private var memoryPressureSource: DispatchSourceMemoryPressure?
+    private let pictureInPicture = PictureInPicture()
+    private var pictureInPictureTabID: LeanTab.ID?
+    private var isRestoringPictureInPictureTab = false
 
     init(dataStore: WKWebsiteDataStore? = nil, database: AppDatabase? = nil) {
         self.dataStore = dataStore ?? WKWebsiteDataStore.default()
@@ -735,8 +738,87 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    private func showPictureInPicture(for tab: LeanTab) {
+        guard !pictureInPicture.showing, !tab.isSleeping else { return }
+        tab.webView.evaluateJavaScript(Isolate.on) { [weak self, weak tab] result, _ in
+            DispatchQueue.main.async {
+                guard let self, let tab, let dimensions = result as? [String: NSNumber],
+                      let width = dimensions["width"]?.doubleValue, width > 0,
+                      let height = dimensions["height"]?.doubleValue, height > 0 else { return }
+                guard self.selectedID != tab.id else {
+                    tab.webView.evaluateJavaScript(Isolate.off, completionHandler: nil)
+                    return
+                }
+                self.pictureInPictureTabID = tab.id
+                self.pictureInPicture.onClose = { [weak self] in self?.dismissPictureInPicture() }
+                self.pictureInPicture.onReturn = { [weak self] in self?.returnFromPictureInPicture() }
+                self.pictureInPicture.onPlayPause = { [weak tab] completion in
+                    tab?.webView.evaluateJavaScript(Isolate.toggle) { result, _ in
+                        completion((result as? Bool) ?? false)
+                    }
+                }
+                self.pictureInPicture.onSkip = { [weak tab] seconds in
+                    tab?.webView.evaluateJavaScript(Isolate.skip(seconds), completionHandler: nil)
+                }
+                self.pictureInPicture.onSeek = { [weak tab] fraction in
+                    tab?.webView.evaluateJavaScript(Isolate.seek(fraction), completionHandler: nil)
+                }
+                self.pictureInPicture.onProgress = { [weak tab] completion in
+                    tab?.webView.evaluateJavaScript(Isolate.where_) { result, _ in
+                        guard let values = result as? [NSNumber], values.count >= 2 else { return }
+                        let progress = values[0].doubleValue
+                        let isPlaying = values[1].boolValue
+                        let currentTime = values.count >= 4 ? values[2].doubleValue : 0
+                        let duration = values.count >= 4 ? values[3].doubleValue : 0
+                        completion(progress, isPlaying, currentTime, duration)
+                    }
+                }
+                self.pictureInPicture.lift(
+                    tab.webView,
+                    aspectRatio: CGFloat(width / height),
+                    title: tab.title,
+                    url: tab.url,
+                    favicon: tab.favicon
+                )
+            }
+        }
+    }
+
+    private func dismissPictureInPicture() {
+        guard let id = pictureInPictureTabID else { return }
+        pictureInPictureTabID = nil
+        pictureInPicture.drop()
+        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        tab.webView.evaluateJavaScript(Isolate.off, completionHandler: nil)
+        objectWillChange.send()
+    }
+
+    private func returnFromPictureInPicture() {
+        guard let id = pictureInPictureTabID,
+              let tab = tabs.first(where: { $0.id == id }) else { return }
+        tab.webView.evaluateJavaScript(Isolate.off) { [weak self, weak tab] _, _ in
+            DispatchQueue.main.async {
+                guard let self, tab != nil, self.pictureInPictureTabID == id else { return }
+                self.pictureInPictureTabID = nil
+                self.pictureInPicture.drop()
+                self.isRestoringPictureInPictureTab = true
+                self.selectedID = id
+                self.isRestoringPictureInPictureTab = false
+            }
+        }
+    }
+
     private func handleTabSelectionChange(from previous: LeanTab.ID?, to current: LeanTab.ID?) {
         guard previous != current else { return }
+        let isReturningToPictureInPictureTab = current == pictureInPictureTabID
+        if isReturningToPictureInPictureTab {
+            returnFromPictureInPicture()
+        }
+        if !isReturningToPictureInPictureTab, !isRestoringPictureInPictureTab,
+           let previous, previous != pictureInPictureTabID,
+           let tab = tabs.first(where: { $0.id == previous }) {
+            showPictureInPicture(for: tab)
+        }
         if let previous, tabs.contains(where: { $0.id == previous }) {
             inactiveSince[previous] = Date()
         }
@@ -774,6 +856,7 @@ final class LeanStore: ObservableObject {
 
     private func attemptAutoSleep(_ tab: LeanTab) {
         guard autoSleepTabsEnabled, selectedID != tab.id,
+              tab.id != pictureInPictureTabID,
               tabs.contains(where: { $0.id == tab.id }) else { return }
         tab.requestSleep(while: { [weak self, weak tab] in
             guard let self, let tab else { return false }
@@ -1094,6 +1177,7 @@ final class LeanStore: ObservableObject {
 
     func close(_ tab: LeanTab) {
         guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        if pictureInPictureTabID == tab.id { dismissPictureInPicture() }
         if let url = tab.url {
             recentlyClosed.append(url)
             recentlyClosed = Array(recentlyClosed.suffix(10))
@@ -1164,6 +1248,10 @@ final class LeanStore: ObservableObject {
     }
 
     func switchToTab(id: LeanTab.ID) {
+        if pictureInPictureTabID == id {
+            returnFromPictureInPicture()
+            return
+        }
         isFloatingOmnibarVisible = false
         isNewTabOmnibarFloating = false
         isInlineURLEditing = false
@@ -1189,6 +1277,16 @@ final class LeanStore: ObservableObject {
             guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
             tab.webView.window?.makeFirstResponder(tab.webView)
         }
+    }
+
+    func moveTab(id: LeanTab.ID, toIndex destination: Int) {
+        guard let source = tabs.firstIndex(where: { $0.id == id }), tabs.count > 1 else { return }
+        var reordered = tabs
+        let tab = reordered.remove(at: source)
+        reordered.insert(tab, at: min(max(destination, 0), reordered.count))
+        guard reordered.map(\.id) != tabs.map(\.id) else { return }
+        tabs = reordered
+        saveSession()
     }
 
     func selectTab(number: Int) {

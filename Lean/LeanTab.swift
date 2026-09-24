@@ -30,6 +30,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     @Published private(set) var pageZoom = 1.0
     @Published private(set) var isZoomIndicatorVisible = false
     @Published private(set) var isSleeping = false
+    @Published private(set) var savedPasswordSuggestions: [SavedPassword] = []
+    @Published private(set) var passwordSuggestionFrame: CGRect?
     @Published var snapshot: NSImage? = nil
     @Published var favicon: NSImage? = nil
     private(set) var scrollbarStyle: ScrollbarStyle
@@ -69,6 +71,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private var downloadLastSample: [UUID: (bytes: Int64, date: Date, speed: Double)] = [:]
     private var activeDownloadObjects: [UUID: WKDownload] = [:]
     private var zoomIndicatorWorkItem: DispatchWorkItem?
+    private var passwordSuggestionHideWorkItem: DispatchWorkItem?
 
     func cancelActiveDownload(id: UUID) {
         activeDownloadObjects[id]?.cancel()
@@ -177,12 +180,18 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             WKUserScript(source: PageScripts.audioActivity, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         )
         addPasswordCaptureScript(to: configuration.userContentController)
+        addPasswordSuggestionScript(to: configuration.userContentController)
+        configuration.userContentController.addUserScript(
+            WKUserScript(source: PageScripts.middleClickClosePage, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        )
 
         let webView = LeanWebView(frame: .zero, configuration: configuration)
         storedWebView = webView
         webView.configuration.userContentController.add(self, name: PageScripts.pageReadyMessageName)
         webView.configuration.userContentController.add(self, name: PageScripts.contextMenuMessageName)
         webView.configuration.userContentController.add(self, name: PageScripts.passwordFormMessageName)
+        webView.configuration.userContentController.add(self, name: PageScripts.passwordFieldMessageName)
+        webView.configuration.userContentController.add(self, name: PageScripts.middleClickMessageName)
         webView.contextMenuHook = { [weak self] menu in
             self?.appendPageMenuItems(to: menu)
         }
@@ -295,6 +304,13 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         }
     }
 
+    private func addPasswordSuggestionScript(to controller: WKUserContentController) {
+        guard passwordSuggestionsEnabled else { return }
+        controller.addUserScript(
+            WKUserScript(source: PageScripts.passwordFieldFocus, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        )
+    }
+
     private func addPasswordCaptureScript(to controller: WKUserContentController) {
         guard passwordSavePromptsEnabled else { return }
         controller.addUserScript(
@@ -308,11 +324,16 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     func applyPasswordPreferences(savePromptsEnabled: Bool, suggestionsEnabled: Bool) {
         let promptsChanged = passwordSavePromptsEnabled != savePromptsEnabled
+        let suggestionsChanged = passwordSuggestionsEnabled != suggestionsEnabled
         passwordSavePromptsEnabled = savePromptsEnabled
         passwordSuggestionsEnabled = suggestionsEnabled
         if !savePromptsEnabled { pendingLogin = nil }
-        if promptsChanged, storedWebView != nil {
+        if !suggestionsEnabled { hidePasswordSuggestions() }
+        if (promptsChanged || suggestionsChanged), storedWebView != nil {
             rebuildUserScripts()
+        }
+        if suggestionsChanged, suggestionsEnabled {
+            storedWebView?.evaluateJavaScript(PageScripts.passwordFieldFocus, completionHandler: nil)
         }
     }
 
@@ -362,6 +383,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             WKUserScript(source: PageScripts.audioActivity, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         )
         addPasswordCaptureScript(to: webView.configuration.userContentController)
+        addPasswordSuggestionScript(to: webView.configuration.userContentController)
+        webView.configuration.userContentController.addUserScript(
+            WKUserScript(source: PageScripts.middleClickClosePage, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        )
 
         if syncRuleLists { syncContentRuleLists() }
     }
@@ -660,8 +685,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.pageReadyMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.contextMenuMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.passwordFormMessageName)
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.passwordFieldMessageName)
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.middleClickMessageName)
         webView.configuration.userContentController.removeAllUserScripts()
         zoomIndicatorWorkItem?.cancel()
+        hidePasswordSuggestions()
         webView.removeFromSuperview()
     }
 
@@ -920,6 +948,15 @@ extension LeanTab: WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
+        if message.name == PageScripts.middleClickMessageName {
+            guard message.webView === webView else { return }
+            onCloseTab?()
+            return
+        }
+        if message.name == PageScripts.passwordFieldMessageName {
+            updatePasswordSuggestions(message)
+            return
+        }
         if message.name == PageScripts.passwordFormMessageName {
             captureSubmittedLogin(message)
             return
@@ -940,6 +977,58 @@ extension LeanTab: WKScriptMessageHandler {
         }
         isLoading = false
         refreshState()
+    }
+
+    private func updatePasswordSuggestions(_ message: WKScriptMessage) {
+        guard passwordSuggestionsEnabled, message.frameInfo.isMainFrame,
+              message.webView === webView,
+              let origin = webView.url,
+              origin.scheme?.lowercased() == "https",
+              case .success(let logins) = PasswordVault.forOrigin(origin),
+              !logins.isEmpty,
+              let fields = message.body as? [String: Any],
+              let rect = fields["rect"] as? [String: Double],
+              let x = rect["x"], let y = rect["y"],
+              let width = rect["width"], let height = rect["height"] else {
+            schedulePasswordSuggestionsHide()
+            return
+        }
+        passwordSuggestionHideWorkItem?.cancel()
+        savedPasswordSuggestions = logins
+        passwordSuggestionFrame = CGRect(x: x, y: y, width: width, height: height).applying(
+            CGAffineTransform(scaleX: pageZoom, y: pageZoom)
+        )
+    }
+
+    private func schedulePasswordSuggestionsHide() {
+        passwordSuggestionHideWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.hidePasswordSuggestions() }
+        passwordSuggestionHideWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+    }
+
+    private func hidePasswordSuggestions() {
+        passwordSuggestionHideWorkItem?.cancel()
+        passwordSuggestionHideWorkItem = nil
+        passwordSuggestionFrame = nil
+        savedPasswordSuggestions = []
+    }
+
+    func fillSavedPassword(_ login: SavedPassword) {
+        guard passwordSuggestionsEnabled,
+              let origin = url,
+              origin.scheme?.lowercased() == "https",
+              PasswordVault.originString(for: origin) == login.origin,
+              let host = origin.host else { return }
+        hidePasswordSuggestions()
+        PasswordVault.authenticate(reason: "Fill the saved sign-in for \(host)") { [weak self] authenticated in
+            guard let self, authenticated,
+                  self.url.flatMap(PasswordVault.originString(for:)) == login.origin else { return }
+            switch PasswordVault.password(for: login) {
+            case .success(let password): self.fill(login: login, password: password)
+            case .failure(let error): self.showPasswordVaultError(error)
+            }
+        }
     }
 
     private func captureSubmittedLogin(_ message: WKScriptMessage) {
@@ -1112,9 +1201,9 @@ extension LeanTab: WKNavigationDelegate {
           const values = JSON.parse(atob('\(encodedValues)'));
           const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
           const fields = Array.from(document.querySelectorAll('input[type=password]')).filter(visible);
-          if (fields.length !== 1) return false;
+          if (fields.length > 1) return false;
           const password = fields[0];
-          const form = password.form || document;
+          const form = (password || document.activeElement)?.form || document;
           const username = form.querySelector('input[autocomplete=username], input[type=email], input[name*=user i], input[name*=email i], input[name*=login i]');
           const setValue = (field, value) => {
             const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value')?.set;
@@ -1122,6 +1211,12 @@ extension LeanTab: WKNavigationDelegate {
             field.dispatchEvent(new Event('input', { bubbles: true }));
             field.dispatchEvent(new Event('change', { bubbles: true }));
           };
+          if (!password) {
+            if (!username || !values.username) return false;
+            setValue(username, values.username);
+            username.focus();
+            return true;
+          }
           if (username && values.username) setValue(username, values.username);
           setValue(password, values.password);
           return true;
@@ -1129,7 +1224,7 @@ extension LeanTab: WKNavigationDelegate {
         """
         webView.evaluateJavaScript(script) { [weak self] result, error in
             guard error == nil, (result as? Bool) == true else {
-                self?.showPasswordMessage("Lean couldn't find one unambiguous password field. The form was left untouched.")
+                self?.showPasswordMessage("Lean couldn't find the matching sign-in fields. The form was left untouched.")
                 return
             }
         }

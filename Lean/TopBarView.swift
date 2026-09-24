@@ -261,6 +261,8 @@ private struct TopBarTabItem: View {
     @State private var isHovered = false
     @State private var isCloseHovered = false
     @State private var isFieldFocused = false
+    @State private var dragStep: CGFloat = 140
+    @State private var isDragging = false
 
     private var showURLBar: Bool {
         isSelected && (store.isInlineURLEditing || isFieldFocused)
@@ -292,6 +294,7 @@ private struct TopBarTabItem: View {
             .frame(height: store.scaled(store.enableWindowBorder ? 27 : 26))
         }
         .buttonStyle(.plain)
+        .overlay { TabMiddleClick { onClose() } }
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(
@@ -370,6 +373,25 @@ private struct TopBarTabItem: View {
                 Button("Forward") { tab.goForward() }
             }
         }
+        .background(GeometryReader { geometry in
+            Color.clear.onAppear { dragStep = geometry.size.width + 5 }
+                .onChange(of: geometry.size.width) { _, width in dragStep = width + 5 }
+        })
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 8)
+                .onChanged { _ in if !isDragging { isDragging = true } }
+                .onEnded { value in
+                    isDragging = false
+                    guard abs(value.translation.width) >= dragStep * 0.45,
+                          let index = store.tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+                    let steps = Int((value.translation.width / dragStep).rounded())
+                    let destination = min(max(index + steps, 0), store.tabs.count - 1)
+                    withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                        store.moveTab(id: tab.id, toIndex: destination)
+                    }
+                }
+        )
+        .scaleEffect(isDragging ? 1.04 : 1)
     }
 
     private func handleTap() {
@@ -536,6 +558,36 @@ private struct TopBarTabItem: View {
         .onHover { isCloseHovered = $0 }
         .help("Close Tab (⌘W)")
         .transition(.scale(scale: 0.5).combined(with: .opacity))
+    }
+}
+
+struct TabMiddleClick: NSViewRepresentable {
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> NSView { Catcher() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        (view as? Catcher)?.action = action
+    }
+
+    private final class Catcher: NSView {
+        var action: () -> Void = {}
+        private var pressed = false
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard let event = NSApp.currentEvent,
+                  (event.type == .otherMouseDown || event.type == .otherMouseUp),
+                  event.buttonNumber == 2 else { return nil }
+            return super.hitTest(point)
+        }
+
+        override func otherMouseDown(with event: NSEvent) { pressed = true }
+
+        override func otherMouseUp(with event: NSEvent) {
+            guard pressed else { return }
+            pressed = false
+            if bounds.contains(convert(event.locationInWindow, from: nil)) { action() }
+        }
     }
 }
 

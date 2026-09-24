@@ -701,6 +701,49 @@ private struct SegmentButton: View {
 }
 
 // MARK: - Custom Minimal Switch / Toggle
+struct TactileSwitch: View {
+    @Binding var isOn: Bool
+    let isDark: Bool
+
+    var body: some View {
+        Button {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                isOn.toggle()
+            }
+        } label: {
+            ZStack(alignment: isOn ? .trailing : .leading) {
+                Capsule()
+                    .fill(
+                        isOn
+                            ? (isDark ? Color.white : Color(white: 0.10))
+                            : (isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.10))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(
+                                isOn
+                                    ? Color.clear
+                                    : (isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06)),
+                                lineWidth: 0.5
+                            )
+                    )
+                    .frame(width: 34, height: 19)
+
+                Circle()
+                    .fill(
+                        isOn
+                            ? (isDark ? Color(white: 0.08) : Color.white)
+                            : (isDark ? Color.white.opacity(0.85) : Color.white)
+                    )
+                    .frame(width: 13, height: 13)
+                    .padding(3)
+                    .shadow(color: Color.black.opacity(0.16), radius: 1.5, y: 0.5)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct CustomToggleRow: View {
     let title: String
     let subtitle: String?

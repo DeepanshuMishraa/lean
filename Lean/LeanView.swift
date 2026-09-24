@@ -1,6 +1,8 @@
 import SwiftUI
 import WebKit
 
+private let topRowDigitByKeyCode: [UInt16: Int] = [18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9]
+
 struct LeanView: View {
     @ObservedObject var store: LeanStore
     @ObservedObject var updater: AppUpdater
@@ -447,6 +449,9 @@ struct LeanView: View {
                             )
                         }
                     }
+                    .overlay(alignment: .topLeading) {
+                        SavedPasswordSuggestionOverlay(tab: tab, isDark: store.isDarkMode)
+                    }
                     .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
@@ -628,6 +633,18 @@ struct LeanView: View {
 
             let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
+            // Leave Tab and Shift-Tab to WKWebView so websites can move focus through form fields.
+            if event.keyCode == 48,
+               !modifiers.contains(.command), !modifiers.contains(.control), !modifiers.contains(.option) {
+                return event
+            }
+            if modifiers.contains(.command),
+               modifiers.isDisjoint(with: [.shift, .control, .option]),
+               let number = topRowDigitByKeyCode[event.keyCode] {
+                store.selectTab(number: number)
+                return nil
+            }
+
             // Check custom shortcuts
             for action in ShortcutAction.allCases {
                 if action == .dismiss || action == .stopLoading {
@@ -733,6 +750,74 @@ private struct WebView: NSViewRepresentable {
     func updateNSView(_ nsView: WKWebView, context: Context) {
         nsView.wantsLayer = true
         nsView.layer?.drawsAsynchronously = true
+    }
+}
+
+private struct SavedPasswordSuggestionOverlay: View {
+    @ObservedObject var tab: LeanTab
+    let isDark: Bool
+
+    @ViewBuilder
+    var body: some View {
+        if let frame = tab.passwordSuggestionFrame, !tab.savedPasswordSuggestions.isEmpty {
+            SavedPasswordSuggestions(
+                logins: tab.savedPasswordSuggestions,
+                isDark: isDark,
+                select: tab.fillSavedPassword
+            )
+            .offset(x: frame.minX, y: frame.maxY + 6)
+            .zIndex(30)
+        }
+    }
+}
+
+private struct SavedPasswordSuggestions: View {
+    let logins: [SavedPassword]
+    let isDark: Bool
+    let select: (SavedPassword) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(logins) { login in
+                Button { select(login) } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "key.fill")
+                            .font(.system(size: 12, weight: .medium))
+                            .frame(width: 26, height: 26)
+                            .background(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(login.username.isEmpty ? "Saved sign-in" : login.username)
+                                .font(.system(size: 12, weight: .medium))
+                                .lineLimit(1)
+                            Text(login.host)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 4)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            HStack(spacing: 6) {
+                Image(systemName: "lock.fill")
+                Text("From your Keychain")
+            }
+            .font(.system(size: 10))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.top, 5)
+            .padding(.bottom, 8)
+        }
+        .frame(width: 280, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(isDark ? .white.opacity(0.13) : .black.opacity(0.1)))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
+        .padding(1)
     }
 }
 

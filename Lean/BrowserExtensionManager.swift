@@ -28,6 +28,7 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
         let optionalHosts: [String]
         let warnings: [String]
         let fromStore: Bool
+        let icon: NSImage?
     }
 
     private struct PendingInstall {
@@ -42,6 +43,7 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
     @Published private(set) var installed: [Installed] = []
     @Published private(set) var loadedIDs = Set<String>()
     @Published private(set) var errors: [String: [String]] = [:]
+    @Published private(set) var icons: [String: NSImage] = [:]
     @Published var errorMessage: String?
     @Published private(set) var isInstallingFromStore = false
 
@@ -63,12 +65,86 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
                 errorMessage = "Lean couldn't read its installed extensions list: \(error.localizedDescription)"
             }
         }
+        for item in installed {
+            loadIcon(for: item.id)
+        }
         startupLoadTask = Task {
             for item in installed where item.enabled { _ = await load(item.id) }
         }
     }
 
     func waitUntilReady() async { await startupLoadTask?.value }
+
+    func icon(for id: String) -> NSImage? {
+        if let image = icons[id] { return image }
+        loadIcon(for: id)
+        return icons[id]
+    }
+
+    func loadIcon(for id: String) {
+        if let image = Self.extractIcon(from: folder(for: id), extensionModel: contexts[id]?.webExtension) {
+            icons[id] = image
+        }
+    }
+
+    static func extractIcon(from folder: URL, extensionModel: WKWebExtension? = nil) -> NSImage? {
+        if let extensionModel = extensionModel, let icon = extensionModel.icon(for: CGSize(width: 64, height: 64)) {
+            return icon
+        }
+        let manifestURL = folder.appendingPathComponent("manifest.json")
+        guard let data = try? Data(contentsOf: manifestURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        if let iconsDict = json["icons"] as? [String: String] {
+            let sortedSizes = iconsDict.keys.compactMap { Int($0) }.sorted(by: >)
+            for size in sortedSizes {
+                if let relPath = iconsDict[String(size)] {
+                    let iconURL = folder.appendingPathComponent(relPath)
+                    if let image = NSImage(contentsOf: iconURL) {
+                        return image
+                    }
+                }
+            }
+        }
+        if let action = json["action"] as? [String: Any] {
+            if let iconPath = action["default_icon"] as? String {
+                let iconURL = folder.appendingPathComponent(iconPath)
+                if let image = NSImage(contentsOf: iconURL) {
+                    return image
+                }
+            } else if let iconDict = action["default_icon"] as? [String: String] {
+                let sortedSizes = iconDict.keys.compactMap { Int($0) }.sorted(by: >)
+                for size in sortedSizes {
+                    if let relPath = iconDict[String(size)] {
+                        let iconURL = folder.appendingPathComponent(relPath)
+                        if let image = NSImage(contentsOf: iconURL) {
+                            return image
+                        }
+                    }
+                }
+            }
+        }
+        if let action = json["browser_action"] as? [String: Any] {
+            if let iconPath = action["default_icon"] as? String {
+                let iconURL = folder.appendingPathComponent(iconPath)
+                if let image = NSImage(contentsOf: iconURL) {
+                    return image
+                }
+            } else if let iconDict = action["default_icon"] as? [String: String] {
+                let sortedSizes = iconDict.keys.compactMap { Int($0) }.sorted(by: >)
+                for size in sortedSizes {
+                    if let relPath = iconDict[String(size)] {
+                        let iconURL = folder.appendingPathComponent(relPath)
+                        if let image = NSImage(contentsOf: iconURL) {
+                            return image
+                        }
+                    }
+                }
+            }
+        }
+        return nil
+    }
 
     func prepareInstallation(from source: URL, installationID: String? = nil, fromStore: Bool = false) async -> InstallationReview? {
         errorMessage = nil
@@ -88,6 +164,7 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try FileManager.default.copyItem(at: source, to: staged)
             let extensionModel = try await WKWebExtension(resourceBaseURL: staged)
+            let icon = Self.extractIcon(from: staged, extensionModel: extensionModel)
             let review = InstallationReview(
                 id: id,
                 name: extensionModel.displayName ?? source.lastPathComponent,
@@ -97,8 +174,12 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
                 requiredHosts: extensionModel.allRequestedMatchPatterns.map(\.string).sorted(),
                 optionalHosts: extensionModel.optionalPermissionMatchPatterns.map(\.string).sorted(),
                 warnings: extensionModel.errors.map(\.localizedDescription),
-                fromStore: fromStore
+                fromStore: fromStore,
+                icon: icon
             )
+            if let icon {
+                icons[id] = icon
+            }
             pending[id] = PendingInstall(review: review, extensionModel: extensionModel, stagedFolder: staged)
             return review
         } catch {
@@ -131,6 +212,7 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
                 fromStore: review.fromStore
             )
             installed.append(item)
+            loadIcon(for: item.id)
             do { try save() } catch {
                 installed.removeAll { $0.id == item.id }
                 do {
@@ -216,14 +298,28 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
         do {
             try FileManager.default.removeItem(at: folder(for: id))
             errors[id] = nil
+            icons.removeValue(forKey: id)
         } catch let error as CocoaError where error.code == .fileNoSuchFile {
             errors[id] = nil
+            icons.removeValue(forKey: id)
         } catch {
             installed.insert(removed, at: index)
             do { try save() } catch { errorMessage = error.localizedDescription }
             if removed.enabled { Task { await load(id) } }
             errorMessage = "Couldn't remove the extension files: \(error.localizedDescription)"
         }
+    }
+
+    func revealInFinder(_ id: String) {
+        let url = folder(for: id)
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    func optionsPageURL(for id: String) -> URL? {
+        if let context = contexts[id], let optionsURL = context.optionsPageURL {
+            return optionsURL
+        }
+        return nil
     }
 
     func setPermission(_ permission: String, enabled: Bool, for id: String) {

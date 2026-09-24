@@ -492,6 +492,7 @@ struct SidebarTabItem: View {
     let onClose: () -> Void
 
     @State private var isHovered = false
+    @State private var isDragging = false
 
     private var showsClose: Bool {
         isHovered || isSelected
@@ -535,6 +536,7 @@ struct SidebarTabItem: View {
             .frame(height: store.scaled(36))
         }
         .buttonStyle(.plain)
+        .overlay { TabMiddleClick { onClose() } }
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(
@@ -550,6 +552,22 @@ struct SidebarTabItem: View {
                 )
         )
         .contentShape(Rectangle())
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 8)
+                .onChanged { _ in if !isDragging { isDragging = true } }
+                .onEnded { value in
+                    isDragging = false
+                    let step = store.scaled(40)
+                    guard abs(value.translation.height) >= step * 0.45,
+                          let index = store.tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+                    let steps = Int((value.translation.height / step).rounded())
+                    let destination = min(max(index + steps, 0), store.tabs.count - 1)
+                    withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                        store.moveTab(id: tab.id, toIndex: destination)
+                    }
+                }
+        )
+        .scaleEffect(isDragging ? 1.04 : 1)
         .onHover { isHovered = $0 }
         .overlay(alignment: .trailing) {
             if showsClose {

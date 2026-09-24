@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct TabContentWidthKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
@@ -120,5 +121,91 @@ final class HorizontalScrollWheelView: NSView {
             }
         }
         return nil
+    }
+}
+
+// MARK: - Window-drag veto for tab items
+//
+// The window uses a hidden title bar with full-size content, so a press-and-
+// move that starts on a tab is claimed as a window drag (titlebar region and
+// draggable SwiftUI backgrounds) and the whole window moves instead of the
+// tab. This transparent front overlay claims left-mouse presses so AppKit
+// asks IT — and it always answers NO — whether the window may move. The
+// press is then forwarded to the topmost SwiftUI view visually under it, so
+// clicks, text selection, close buttons and native drag-reorder behave
+// exactly as without it. Right/middle clicks and scrolling never touch it
+// and pass through as usual.
+struct WindowDragVeto: NSViewRepresentable {
+    func makeNSView(context: Context) -> VetoView { VetoView() }
+
+    func updateNSView(_ nsView: VetoView, context: Context) {}
+
+    final class VetoView: NSView {
+        override var mouseDownCanMoveWindow: Bool { false }
+
+        private var forwardingEvent = false
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard !forwardingEvent,
+                  NSApp.currentEvent?.type == .leftMouseDown,
+                  bounds.contains(point) else { return nil }
+            return self
+        }
+
+        private func forward(_ event: NSEvent) {
+            forwardingEvent = true
+            NSApp.sendEvent(event)
+            forwardingEvent = false
+        }
+
+        override func mouseDown(with event: NSEvent) { forward(event) }
+        override func mouseDragged(with event: NSEvent) { forward(event) }
+        override func mouseUp(with event: NSEvent) { forward(event) }
+    }
+}
+
+// MARK: - Tab reorder (native drag & drop)
+//
+// The strips used to reorder with a SwiftUI DragGesture. That gesture only
+// claims the pointer after ~8pt of movement, while the window (hidden title
+// bar, full-size content view) treats a press-and-move on a tab background as
+// a window drag — so the whole window moved instead of the tab. A native
+// dragging session captures the pointer for the tab instead, and hovering a
+// neighbour live-moves the dragged tab there, Safari-style.
+//
+// Used by both the horizontal top strip and the vertical sidebar strip.
+final class TabReorderDropDelegate: DropDelegate {
+    private let targetID: LeanTab.ID
+    private let store: LeanStore
+    private let onHighlight: (Bool) -> Void
+
+    init(targetID: LeanTab.ID, store: LeanStore, onHighlight: @escaping (Bool) -> Void) {
+        self.targetID = targetID
+        self.store = store
+        self.onHighlight = onHighlight
+    }
+
+    private var draggedID: LeanTab.ID? {
+        guard let id = store.draggingTabID, id != targetID,
+              store.tabs.contains(where: { $0.id == id }) else { return nil }
+        return id
+    }
+
+    func validateDrop(info: DropInfo) -> Bool { draggedID != nil }
+
+    func dropEntered(info: DropInfo) {
+        guard let dragged = draggedID,
+              let target = store.tabs.firstIndex(where: { $0.id == targetID }) else { return }
+        onHighlight(true)
+        store.moveTab(id: dragged, toIndex: target)
+    }
+
+    func dropExited(info: DropInfo) { onHighlight(false) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        onHighlight(false)
+        store.draggingTabID = nil
+        store.saveSession()
+        return true
     }
 }

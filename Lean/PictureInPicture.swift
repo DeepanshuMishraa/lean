@@ -70,6 +70,8 @@ final class PictureInPicture {
         panel.isOpaque = false
         panel.hasShadow = true
         panel.isReleasedWhenClosed = false
+        // Appear instantly: the default fade makes the widget feel slow.
+        panel.animationBehavior = .none
         panel.aspectRatio = NSSize(width: aspectRatio, height: 1)
         panel.minSize = NSSize(width: 260, height: 146)
         panel.setFrameAutosaveName("LeanPictureInPicture")
@@ -92,10 +94,15 @@ final class PictureInPicture {
         // inside it instead of sizing the window. It comes back on landing.
         (page as? WKWebView)?.allowsMagnification = false
 
+        // Reparenting the live web view forces a full relayout; suppress
+        // implicit animations so the lift doesn't stutter.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         page.removeFromSuperview()
         page.frame = ground.bounds
         page.autoresizingMask = [.width, .height]
         ground.addSubview(page)
+        CATransaction.commit()
 
         let controls = Controls(frame: ground.bounds)
         controls.autoresizingMask = [.width, .height]
@@ -149,7 +156,10 @@ final class PictureInPicture {
         ticker?.invalidate()
         ticker = nil
         (page as? WKWebView)?.allowsMagnification = true
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         page?.removeFromSuperview()
+        CATransaction.commit()
         page = nil
         controls = nil
         panel.orderOut(nil)

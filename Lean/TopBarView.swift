@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct TopBarView: View {
     @ObservedObject var store: LeanStore
@@ -261,8 +262,7 @@ private struct TopBarTabItem: View {
     @State private var isHovered = false
     @State private var isCloseHovered = false
     @State private var isFieldFocused = false
-    @State private var dragStep: CGFloat = 140
-    @State private var isDragging = false
+    @State private var isDropTarget = false
 
     private var showURLBar: Bool {
         isSelected && (store.isInlineURLEditing || isFieldFocused)
@@ -295,6 +295,7 @@ private struct TopBarTabItem: View {
         }
         .buttonStyle(.plain)
         .overlay { TabMiddleClick { onClose() } }
+        .overlay(WindowDragVeto())
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(
@@ -373,25 +374,22 @@ private struct TopBarTabItem: View {
                 Button("Forward") { tab.goForward() }
             }
         }
-        .background(GeometryReader { geometry in
-            Color.clear.onAppear { dragStep = geometry.size.width + 5 }
-                .onChange(of: geometry.size.width) { _, width in dragStep = width + 5 }
-        })
-        .highPriorityGesture(
-            DragGesture(minimumDistance: 8)
-                .onChanged { _ in if !isDragging { isDragging = true } }
-                .onEnded { value in
-                    isDragging = false
-                    guard abs(value.translation.width) >= dragStep * 0.45,
-                          let index = store.tabs.firstIndex(where: { $0.id == tab.id }) else { return }
-                    let steps = Int((value.translation.width / dragStep).rounded())
-                    let destination = min(max(index + steps, 0), store.tabs.count - 1)
-                    withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
-                        store.moveTab(id: tab.id, toIndex: destination)
-                    }
-                }
+        .onDrag {
+            store.draggingTabID = tab.id
+            return NSItemProvider(object: tab.id.uuidString as NSString)
+        }
+        .onDrop(
+            of: [UTType.plainText],
+            delegate: TabReorderDropDelegate(targetID: tab.id, store: store) { isDropTarget = $0 }
         )
-        .scaleEffect(isDragging ? 1.04 : 1)
+        .overlay(alignment: .leading) {
+            if isDropTarget {
+                Capsule()
+                    .fill(store.adaptiveTheme.primaryText)
+                    .frame(width: 2)
+                    .padding(.vertical, 6)
+            }
+        }
     }
 
     private func handleTap() {

@@ -61,18 +61,32 @@ enum PageScripts {
             return;
         }
         window.__leanPasswordFieldFocus = true;
-        function isCredentialField(el) {
+        function isPasswordField(el) {
+            return !!el && el.tagName === 'INPUT' && (el.type || '').toLowerCase() === 'password';
+        }
+        function looksLikeUsername(el) {
             if (!el || el.tagName !== 'INPUT') return false;
             var type = (el.type || 'text').toLowerCase();
-            if (type === 'password' || el.autocomplete === 'username' || el.autocomplete === 'current-password') return true;
-            if (type !== 'text' && type !== 'email') return false;
-            var form = el.form || document;
-            return !!form.querySelector('input[type="password"]');
+            if (type === 'password') return false;
+            if (type !== 'text' && type !== 'email' && type !== 'tel') return false;
+            if (el.autocomplete === 'username' || el.autocomplete === 'email' || el.autocomplete === 'current-password') return true;
+            if (type === 'email') return true;
+            var hay = ((el.name || '') + ' ' + (el.id || '') + ' ' + (el.placeholder || '')).toLowerCase();
+            if (hay.indexOf('user') !== -1 || hay.indexOf('email') !== -1 || hay.indexOf('login') !== -1 || hay.indexOf('account') !== -1) return true;
+            // Multi-step sign-in: the username step has no password input in
+            // the DOM yet, so fall back to the page itself looking like one.
+            if (!document.querySelector('input[type="password"]')) {
+                var pageHay = ((document.title || '') + ' ' + (location.pathname || '')).toLowerCase();
+                if (pageHay.indexOf('sign') !== -1 || pageHay.indexOf('login') !== -1
+                    || pageHay.indexOf('log-in') !== -1 || pageHay.indexOf('password') !== -1
+                    || pageHay.indexOf('account') !== -1) return true;
+            }
+            return false;
         }
         function report() {
             var el = document.activeElement;
             var rect = null;
-            if (isCredentialField(el)) {
+            if (isPasswordField(el) || looksLikeUsername(el)) {
                 var bounds = el.getBoundingClientRect();
                 if (bounds.width && bounds.height) rect = { x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height };
             }

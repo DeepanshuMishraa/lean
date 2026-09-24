@@ -388,6 +388,9 @@ final class LeanStore: ObservableObject {
     private let pictureInPicture = PictureInPicture()
     private var pictureInPictureTabID: LeanTab.ID?
     private var isRestoringPictureInPictureTab = false
+    /// Tab currently being reordered via native drag & drop. Plain (not
+    /// @Published) on purpose: it is only read by drop delegates mid-drag.
+    var draggingTabID: LeanTab.ID?
 
     init(dataStore: WKWebsiteDataStore? = nil, database: AppDatabase? = nil) {
         self.dataStore = dataStore ?? WKWebsiteDataStore.default()
@@ -796,16 +799,17 @@ final class LeanStore: ObservableObject {
     private func returnFromPictureInPicture() {
         guard let id = pictureInPictureTabID,
               let tab = tabs.first(where: { $0.id == id }) else { return }
-        tab.webView.evaluateJavaScript(Isolate.off) { [weak self, weak tab] _, _ in
-            DispatchQueue.main.async {
-                guard let self, tab != nil, self.pictureInPictureTabID == id else { return }
-                self.pictureInPictureTabID = nil
-                self.pictureInPicture.drop()
-                self.isRestoringPictureInPictureTab = true
-                self.selectedID = id
-                self.isRestoringPictureInPictureTab = false
-            }
-        }
+        // Close the panel and restore the tab synchronously so the media tab
+        // reappears instantly. The DOM restore (Isolate.off) then runs
+        // concurrently instead of blocking the return on a JS roundtrip —
+        // waiting for it first is what made going back feel super laggy.
+        pictureInPictureTabID = nil
+        pictureInPicture.drop()
+        isRestoringPictureInPictureTab = true
+        selectedID = id
+        isRestoringPictureInPictureTab = false
+        objectWillChange.send()
+        tab.webView.evaluateJavaScript(Isolate.off, completionHandler: nil)
     }
 
     private func handleTabSelectionChange(from previous: LeanTab.ID?, to current: LeanTab.ID?) {
@@ -1133,6 +1137,13 @@ final class LeanStore: ObservableObject {
         }
         tab.downloadManager = downloadManager
         tab.mediaPermissionStore = mediaPermissionStore
+        // Middle-click on the page background closes the tab. Previously this
+        // was only wired for popup children, so middle-clicking a normal page
+        // did nothing while middle-clicking the tab itself closed it.
+        tab.onCloseTab = { [weak self, weak tab] in
+            guard let self, let tab else { return }
+            self.close(tab)
+        }
         tab.onOpenNewTab = { [weak self, weak tab] _, configuration in
             guard let self, let tab else { return nil }
             // WebKit drives the popup load itself through the returned

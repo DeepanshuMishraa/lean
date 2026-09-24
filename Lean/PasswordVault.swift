@@ -8,6 +8,9 @@ struct SavedPassword: Identifiable, Hashable {
     let port: Int?
     let username: String
     let createdAt: Date?
+    /// When it was last used to fill a sign-in, if known. Rides in the
+    /// Keychain item's comment field. Newest first in suggestion lists.
+    var lastUsed: Date? = nil
 
     var origin: String {
         var components = URLComponents()
@@ -124,12 +127,15 @@ enum PasswordVault {
             }
             let rawPort = item[kSecAttrPort as String] as? Int
             let port = (scheme == "https" && rawPort == 443) || (scheme == "http" && rawPort == 80) ? nil : rawPort
+            let lastUsed = (item[kSecAttrComment as String] as? String)
+                .flatMap(Double.init).map(Date.init(timeIntervalSince1970:))
             return SavedPassword(
                 scheme: scheme,
                 host: host,
                 port: port,
                 username: username,
-                createdAt: item[kSecAttrCreationDate as String] as? Date
+                createdAt: item[kSecAttrCreationDate as String] as? Date,
+                lastUsed: lastUsed
             )
         }
         return .success(logins.sorted { ($0.origin, $0.username) < ($1.origin, $1.username) })
@@ -145,6 +151,53 @@ enum PasswordVault {
         return all().map { $0.filter { matchesOrigin($0, origin) } }
     }
 
+    /// example.com for www.example.com and accounts.example.com; bbc.co.uk
+    /// stays bbc.co.uk. The handful of two-part endings that matter here are
+    /// listed; a full public suffix list would be a library for a corner.
+    static func registrableHost(_ host: String) -> String {
+        let labels = host.lowercased().split(separator: ".").map(String.init)
+        guard labels.count > 2 else { return labels.joined(separator: ".") }
+        let seconds: Set<String> = ["co", "com", "org", "net", "gov", "gouv", "ac", "edu", "asso", "or", "ne"]
+        if seconds.contains(labels[labels.count - 2]), labels[labels.count - 1].count == 2 {
+            return labels.suffix(3).joined(separator: ".")
+        }
+        return labels.suffix(2).joined(separator: ".")
+    }
+
+    /// Logins kept for the site behind an origin: the exact host first, then
+    /// anything sharing its registrable domain. A sign-in rarely lives on the
+    /// page it was saved from — accounts.example.com asks, and the password
+    /// was kept for example.com — so the autofill prompt matches as a site,
+    /// not as an exact scheme/host/port triple. Filling still asks Touch ID
+    /// every time.
+    static func forSite(_ origin: URL) -> Result<[SavedPassword], VaultError> {
+        guard let normalized = normalizedOrigin(origin) else { return .failure(.invalidOrigin) }
+        return all().map { logins in
+            let site = registrableHost(normalized.host)
+            let exact = logins.filter { $0.host == normalized.host }
+            let wider = logins.filter {
+                $0.host != normalized.host && registrableHost($0.host) == site
+            }
+            return (exact + wider).sorted {
+                let exactLHS = $0.host == normalized.host
+                let exactRHS = $1.host == normalized.host
+                if exactLHS != exactRHS { return exactLHS }
+                let usedLHS = $0.lastUsed ?? .distantPast
+                let usedRHS = $1.lastUsed ?? .distantPast
+                if usedLHS != usedRHS { return usedLHS > usedRHS }
+                return ($0.origin, $0.username) < ($1.origin, $1.username)
+            }
+        }
+    }
+
+    /// Marks a login as just used so suggestion lists put it first.
+    static func touch(_ login: SavedPassword) {
+        let update: [String: Any] = [
+            kSecAttrComment as String: String(Date().timeIntervalSince1970),
+        ]
+        SecItemUpdate(identity(login) as CFDictionary, update as CFDictionary)
+    }
+
     static func save(origin: URL, username: String, password: String) -> Result<Void, VaultError> {
         guard let normalized = normalizedOrigin(origin) else { return .failure(.invalidOrigin) }
         let login = SavedPassword(
@@ -154,35 +207,50 @@ enum PasswordVault {
             username: username,
             createdAt: nil
         )
-        let identity = identity(login)
-        var add = identity
-        add[kSecValueData as String] = Data(password.utf8)
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
-        add[kSecAttrComment as String] = label
+        let data = Data(password.utf8)
+        let stamp = String(Date().timeIntervalSince1970)
         let update: [String: Any] = [
-            kSecValueData as String: Data(password.utf8),
-            kSecAttrComment as String: label,
+            kSecValueData as String: data,
+            kSecAttrComment as String: stamp,
+            kSecAttrLabel as String: label,
         ]
-        let status = SecItemUpdate(identity as CFDictionary, update as CFDictionary)
-        let result: OSStatus
-        if status == errSecItemNotFound {
-            if login.scheme == "https", login.port == nil {
-                // Phase 1 imports omitted scheme and port; only default HTTPS can match them safely.
-                let legacyIdentity: [String: Any] = [
-                    kSecClass as String: kSecClassInternetPassword,
-                    kSecAttrServer as String: login.host,
-                    kSecAttrAccount as String: username,
-                    kSecAttrLabel as String: label,
-                ]
-                let legacyStatus = SecItemUpdate(legacyIdentity as CFDictionary, update as CFDictionary)
-                result = legacyStatus == errSecItemNotFound ? SecItemAdd(add as CFDictionary, nil) : legacyStatus
-            } else {
-                result = SecItemAdd(add as CFDictionary, nil)
-            }
-        } else {
-            result = status
+        // 1. Our own item, if present.
+        var status = SecItemUpdate(identity(login) as CFDictionary, update as CFDictionary)
+        if status == errSecSuccess {
+            NotificationCenter.default.post(name: didChange, object: nil)
+            return .success(())
         }
-        guard result == errSecSuccess else { return .failure(.keychain(result)) }
+        // 2. Anything else kept for this server + account: legacy items
+        // without a protocol, or ones Safari/Chrome/Search saved. Adopting in
+        // place is what avoids errSecDuplicateItem (-25299) on Add below —
+        // the update misses them, but the add still collides with them.
+        // (Adopting another app's item is also the moment macOS shows the
+        // keychain access prompt.)
+        let broad: [String: Any] = [
+            kSecClass as String: kSecClassInternetPassword,
+            kSecAttrServer as String: login.host,
+            kSecAttrAccount as String: username,
+        ]
+        status = SecItemUpdate(broad as CFDictionary, update as CFDictionary)
+        if status == errSecSuccess {
+            NotificationCenter.default.post(name: didChange, object: nil)
+            return .success(())
+        }
+        // 3. Brand new.
+        var add = identity(login)
+        add[kSecValueData as String] = data
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
+        add[kSecAttrComment as String] = stamp
+        status = SecItemAdd(add as CFDictionary, nil)
+        if status == errSecSuccess {
+            NotificationCenter.default.post(name: didChange, object: nil)
+            return .success(())
+        }
+        // 4. Twins our queries couldn't see through (port/protocol variants):
+        // converge them into the just-submitted password rather than failing.
+        SecItemDelete(broad as CFDictionary)
+        status = SecItemAdd(add as CFDictionary, nil)
+        guard status == errSecSuccess else { return .failure(.keychain(status)) }
         NotificationCenter.default.post(name: didChange, object: nil)
         return .success(())
     }

@@ -2,7 +2,7 @@ name: Lean
 options:
   bundleIdPrefix: com.dipxsy
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "15.0"
 settings:
   base:
     SWIFT_VERSION: "5.0"

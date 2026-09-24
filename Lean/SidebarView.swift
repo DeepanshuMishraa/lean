@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Sidebar View for Vertical Tabs
 struct SidebarView: View {
@@ -492,7 +493,7 @@ struct SidebarTabItem: View {
     let onClose: () -> Void
 
     @State private var isHovered = false
-    @State private var isDragging = false
+    @State private var isDropTarget = false
 
     private var showsClose: Bool {
         isHovered || isSelected
@@ -537,6 +538,7 @@ struct SidebarTabItem: View {
         }
         .buttonStyle(.plain)
         .overlay { TabMiddleClick { onClose() } }
+        .overlay(WindowDragVeto())
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(
@@ -552,22 +554,23 @@ struct SidebarTabItem: View {
                 )
         )
         .contentShape(Rectangle())
-        .highPriorityGesture(
-            DragGesture(minimumDistance: 8)
-                .onChanged { _ in if !isDragging { isDragging = true } }
-                .onEnded { value in
-                    isDragging = false
-                    let step = store.scaled(40)
-                    guard abs(value.translation.height) >= step * 0.45,
-                          let index = store.tabs.firstIndex(where: { $0.id == tab.id }) else { return }
-                    let steps = Int((value.translation.height / step).rounded())
-                    let destination = min(max(index + steps, 0), store.tabs.count - 1)
-                    withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
-                        store.moveTab(id: tab.id, toIndex: destination)
-                    }
-                }
+        .onDrag {
+            store.draggingTabID = tab.id
+            return NSItemProvider(object: tab.id.uuidString as NSString)
+        }
+        .onDrop(
+            of: [UTType.plainText],
+            delegate: TabReorderDropDelegate(targetID: tab.id, store: store) { isDropTarget = $0 }
         )
-        .scaleEffect(isDragging ? 1.04 : 1)
+        .overlay(alignment: .leading) {
+            if isDropTarget {
+                Capsule()
+                    .fill(store.adaptiveTheme.primaryText)
+                    .frame(width: 2)
+                    .padding(.vertical, 7)
+                    .padding(.leading, 2)
+            }
+        }
         .onHover { isHovered = $0 }
         .overlay(alignment: .trailing) {
             if showsClose {

@@ -541,9 +541,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         }
         if passwordSuggestionsEnabled,
            let currentURL = url,
-           currentURL.scheme?.lowercased() == "https",
+           let menuScheme = currentURL.scheme?.lowercased(),
+           menuScheme == "https" || menuScheme == "http",
            currentURL.host != nil,
-           case .success(let logins) = PasswordVault.forOrigin(currentURL),
+           case .success(let logins) = PasswordVault.forSite(currentURL),
            !logins.isEmpty {
             let fill = NSMenuItem(title: "Fill Saved Sign-In…", action: #selector(pageMenuFillSavedPassword), keyEquivalent: "")
             fill.target = self
@@ -574,8 +575,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     @objc private func pageMenuFillSavedPassword() {
         guard passwordSuggestionsEnabled,
               let origin = url,
-              origin.scheme?.lowercased() == "https",
-              case .success(let logins) = PasswordVault.forOrigin(origin),
+              let fillScheme = origin.scheme?.lowercased(),
+              fillScheme == "https" || fillScheme == "http",
+              case .success(let logins) = PasswordVault.forSite(origin),
               !logins.isEmpty else { return }
         chooseLoginToFill(logins, origin: origin)
     }
@@ -982,9 +984,9 @@ extension LeanTab: WKScriptMessageHandler {
     private func updatePasswordSuggestions(_ message: WKScriptMessage) {
         guard passwordSuggestionsEnabled, message.frameInfo.isMainFrame,
               message.webView === webView,
-              let origin = webView.url,
-              origin.scheme?.lowercased() == "https",
-              case .success(let logins) = PasswordVault.forOrigin(origin),
+              let origin = url ?? webView.url,
+              let scheme = origin.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              case .success(let logins) = PasswordVault.forSite(origin),
               !logins.isEmpty,
               let fields = message.body as? [String: Any],
               let rect = fields["rect"] as? [String: Double],
@@ -1014,16 +1016,26 @@ extension LeanTab: WKScriptMessageHandler {
         savedPasswordSuggestions = []
     }
 
+    /// Whether a page may use a saved login: same registrable domain, so a
+    /// password kept for example.com also fills accounts.example.com.
+    /// Filling still requires Touch ID on every use.
+    private static func isSameSite(_ page: URL, _ login: SavedPassword) -> Bool {
+        guard let host = page.host?.lowercased(),
+              let loginHost = PasswordVault.normalizedHost(login.host) else { return false }
+        return PasswordVault.registrableHost(host) == PasswordVault.registrableHost(loginHost)
+    }
+
     func fillSavedPassword(_ login: SavedPassword) {
         guard passwordSuggestionsEnabled,
               let origin = url,
-              origin.scheme?.lowercased() == "https",
-              PasswordVault.originString(for: origin) == login.origin,
+              let scheme = origin.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              Self.isSameSite(origin, login),
               let host = origin.host else { return }
         hidePasswordSuggestions()
         PasswordVault.authenticate(reason: "Fill the saved sign-in for \(host)") { [weak self] authenticated in
             guard let self, authenticated,
-                  self.url.flatMap(PasswordVault.originString(for:)) == login.origin else { return }
+                  let current = self.url, Self.isSameSite(current, login) else { return }
+            PasswordVault.touch(login)
             switch PasswordVault.password(for: login) {
             case .success(let password): self.fill(login: login, password: password)
             case .failure(let error): self.showPasswordVaultError(error)
@@ -1112,7 +1124,7 @@ extension LeanTab: WKNavigationDelegate {
         webView.evaluateJavaScript("Array.from(document.querySelectorAll('input[type=password]')).some(el => el.getClientRects().length > 0)") { [weak self, weak webView] result, error in
             guard let self, error == nil, (result as? Bool) == false,
                   let window = webView?.window else { return }
-            let existing = PasswordVault.forOrigin(pending.origin)
+            let existing = PasswordVault.forSite(pending.origin)
             let isUpdate: Bool
             if case .success(let logins) = existing {
                 isUpdate = logins.contains { $0.username == pending.username }
@@ -1148,8 +1160,9 @@ extension LeanTab: WKNavigationDelegate {
 
     private func chooseLoginToFill(_ logins: [SavedPassword], origin: URL) {
         guard let window = webView.window,
-              let originKey = PasswordVault.originString(for: origin),
+              let originHost = origin.host?.lowercased(),
               let host = origin.host else { return }
+        let originSite = PasswordVault.registrableHost(originHost)
         let picker = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 26), pullsDown: false)
         for login in logins {
             picker.addItem(withTitle: login.username.isEmpty ? "Unnamed account" : login.username)
@@ -1166,8 +1179,10 @@ extension LeanTab: WKNavigationDelegate {
             guard response == .alertFirstButtonReturn,
                   let self,
                   logins.indices.contains(picker.indexOfSelectedItem),
-                  self.url.flatMap(PasswordVault.originString(for:)) == originKey,
-                  self.url?.scheme?.lowercased() == "https" else { return }
+                  let currentHost = self.url?.host?.lowercased(),
+                  PasswordVault.registrableHost(currentHost) == originSite,
+                  let pickerScheme = self.url?.scheme?.lowercased(),
+                  pickerScheme == "https" || pickerScheme == "http" else { return }
             let login = logins[picker.indexOfSelectedItem]
             PasswordVault.authenticate(reason: "Fill the saved sign-in for \(host)") { [weak self] authenticated in
                 guard let self else { return }
@@ -1175,6 +1190,7 @@ extension LeanTab: WKNavigationDelegate {
                     self.showPasswordMessage("Lean could not authenticate you. No password was filled.")
                     return
                 }
+                PasswordVault.touch(login)
                 switch PasswordVault.password(for: login) {
                 case .success(let password): self.fill(login: login, password: password)
                 case .failure(let error): self.showPasswordVaultError(error)
@@ -1192,8 +1208,9 @@ extension LeanTab: WKNavigationDelegate {
     }
 
     private func fill(login: SavedPassword, password: String) {
-        guard url.flatMap(PasswordVault.originString(for:)) == login.origin,
-              url?.scheme?.lowercased() == "https",
+        guard let page = url, Self.isSameSite(page, login),
+              let fillScheme = url?.scheme?.lowercased(),
+              fillScheme == "https" || fillScheme == "http",
               let data = try? JSONSerialization.data(withJSONObject: ["username": login.username, "password": password]) else { return }
         let encodedValues = data.base64EncodedString()
         let script = """
@@ -1201,13 +1218,19 @@ extension LeanTab: WKNavigationDelegate {
           const values = JSON.parse(atob('\(encodedValues)'));
           const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
           const fields = Array.from(document.querySelectorAll('input[type=password]')).filter(visible);
-          if (fields.length > 1) return false;
           const password = fields[0];
-          const form = (password || document.activeElement)?.form || document;
-          const username = form.querySelector('input[autocomplete=username], input[type=email], input[name*=user i], input[name*=email i], input[name*=login i]');
+          const scope = (password && password.form) || (document.activeElement && document.activeElement.form) || document;
+          const formScope = (password && password.form) || (password && password.closest('form')) || scope;
+          let username = null;
+          if (password) {
+            for (const field of formScope.querySelectorAll('input')) {
+              if (field === password) break;
+              if (/^(text|email|tel)$/i.test(field.type || 'text')) username = field;
+            }
+          }
           const setValue = (field, value) => {
-            const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value')?.set;
-            if (setter) setter.call(field, value); else field.value = value;
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+            if (setter && setter.set) setter.set.call(field, value); else field.value = value;
             field.dispatchEvent(new Event('input', { bubbles: true }));
             field.dispatchEvent(new Event('change', { bubbles: true }));
           };

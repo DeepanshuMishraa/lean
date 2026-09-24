@@ -31,6 +31,20 @@ struct PasswordVaultTests {
         #expect(PasswordVault.originString(for: origin) == "https://[2001:db8::1]:8443")
     }
 
+    @Test("Registrable domains group a site's hosts")
+    func registrableDomains() {
+        #expect(PasswordVault.registrableHost("example.com") == "example.com")
+        #expect(PasswordVault.registrableHost("www.example.com") == "example.com")
+        #expect(PasswordVault.registrableHost("accounts.example.com") == "example.com")
+        #expect(PasswordVault.registrableHost("a.b.example.com") == "example.com")
+        #expect(PasswordVault.registrableHost("example.co.uk") == "example.co.uk")
+        #expect(PasswordVault.registrableHost("www.bbc.co.uk") == "bbc.co.uk")
+        #expect(PasswordVault.registrableHost("localhost") == "localhost")
+        #expect(PasswordVault.registrableHost("EXAMPLE.COM") == "example.com")
+        #expect(PasswordVault.registrableHost("evil-example.com") == "evil-example.com")
+        #expect(PasswordVault.registrableHost("example.com.evil.com") == "evil.com")
+    }
+
     @Test("Password origins reject non-web schemes")
     func rejectsNonWebOrigins() throws {
         #expect(PasswordVault.originString(for: try #require(URL(string: "file:///tmp/passwords"))) == nil)

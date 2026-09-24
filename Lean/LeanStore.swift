@@ -235,6 +235,21 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    /// Whether sites may use passkeys (Touch ID / iCloud / security key).
+    /// Defaults to whether this build carries Apple's browser entitlement;
+    /// without it the switch stays off and sites fall back to passwords.
+    @Published var passkeysEnabled = Passkeys.isEntitled {
+        didSet {
+            persist(passkeysEnabled, forKey: Self.passkeysEnabledKey)
+            Passkeys.isEnabled = passkeysEnabled
+            updateAllTabsPasskeys()
+        }
+    }
+
+    /// Whether this build can actually do passkeys: signed with Apple's
+    /// browser entitlement. Fixed for the life of the process.
+    let passkeysPossible = Passkeys.isEntitled
+
     @Published var autoSleepTabsEnabled = false {
         didSet {
             persist(autoSleepTabsEnabled, forKey: Self.autoSleepTabsEnabledKey)
@@ -466,6 +481,12 @@ final class LeanStore: ObservableObject {
         self.adBlockingExcludedHosts = databaseValue(self.database, Set<String>.self, forKey: Self.adBlockingExcludedHostsKey) ?? []
         self.passwordSavePromptsEnabled = databaseValue(self.database, Bool.self, forKey: Self.passwordSavePromptsKey) ?? true
         self.passwordSuggestionsEnabled = databaseValue(self.database, Bool.self, forKey: Self.passwordSuggestionsKey) ?? true
+        let savedPasskeys = databaseValue(self.database, Bool.self, forKey: Self.passkeysEnabledKey)
+        // A choice made while passkeys couldn't work is not a choice about
+        // them: default to what this build can do.
+        let initialPasskeys = savedPasskeys ?? Passkeys.isEntitled
+        self.passkeysEnabled = initialPasskeys
+        Passkeys.isEnabled = initialPasskeys
         self.autoSleepTabsEnabled = databaseValue(self.database, Bool.self, forKey: Self.autoSleepTabsEnabledKey) ?? false
         let savedSleepMinutes = databaseValue(self.database, Int.self, forKey: Self.autoSleepAfterMinutesKey) ?? 30
         self.autoSleepAfterMinutes = [5, 15, 30, 60].contains(savedSleepMinutes) ? savedSleepMinutes : 30
@@ -850,6 +871,12 @@ final class LeanStore: ObservableObject {
                 savePromptsEnabled: passwordSavePromptsEnabled,
                 suggestionsEnabled: passwordSuggestionsEnabled
             )
+        }
+    }
+
+    func updateAllTabsPasskeys() {
+        for tab in tabs {
+            tab.applyPasskeysPreferences(enabled: passkeysEnabled)
         }
     }
 
@@ -1471,6 +1498,7 @@ final class LeanStore: ObservableObject {
             adBlockingExcludedHosts: adBlockingExcludedHosts,
             passwordSavePromptsEnabled: passwordSavePromptsEnabled,
             passwordSuggestionsEnabled: passwordSuggestionsEnabled,
+            passkeysEnabled: passkeysEnabled,
             configuration: configuration
         )
         wireTab(tab)
@@ -1890,6 +1918,7 @@ final class LeanStore: ObservableObject {
     private static let adBlockingKey = "adBlockingEnabled"
     private static let passwordSavePromptsKey = "passwordSavePromptsEnabled"
     private static let passwordSuggestionsKey = "passwordSuggestionsEnabled"
+    private static let passkeysEnabledKey = "passkeysEnabled"
     private static let autoSleepTabsEnabledKey = "autoSleepTabsEnabled"
     private static let autoSleepAfterMinutesKey = "autoSleepAfterMinutes"
     private static let adBlockingExcludedHostsKey = "adBlockingExcludedHosts_v1"

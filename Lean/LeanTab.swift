@@ -62,6 +62,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private(set) var adBlockingExcludedHosts: Set<String>
     private(set) var passwordSavePromptsEnabled: Bool
     private(set) var passwordSuggestionsEnabled: Bool
+    private(set) var passkeysEnabled: Bool
+    private let passkeyRelay = PasskeyRelay()
     private var pendingLogin: (origin: URL, username: String, password: String, submittedAt: Date)?
     private var restoreScrollPosition: CGPoint?
     private var policyHost: String?
@@ -110,6 +112,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         adBlockingExcludedHosts: Set<String> = [],
         passwordSavePromptsEnabled: Bool = true,
         passwordSuggestionsEnabled: Bool = true,
+        passkeysEnabled: Bool = true,
         configuration: WKWebViewConfiguration? = nil
     ) {
         self.dataStore = dataStore
@@ -130,6 +133,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         self.adBlockingExcludedHosts = adBlockingExcludedHosts
         self.passwordSavePromptsEnabled = passwordSavePromptsEnabled
         self.passwordSuggestionsEnabled = passwordSuggestionsEnabled
+        self.passkeysEnabled = passkeysEnabled
         self.policyHost = initialURL?.host?.lowercased()
         super.init()
         self.url = initialURL
@@ -206,6 +210,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         )
         addPasswordCaptureScript(to: configuration.userContentController)
         addPasswordSuggestionScript(to: configuration.userContentController)
+        addPasskeyScripts(to: configuration.userContentController)
         configuration.userContentController.addUserScript(
             WKUserScript(source: PageScripts.middleClickClosePage, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         )
@@ -218,6 +223,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.add(self, name: PageScripts.passwordFieldMessageName)
         webView.configuration.userContentController.add(self, name: PageScripts.middleClickMessageName)
         webView.configuration.userContentController.add(self, name: PageScripts.mediaStateMessageName)
+        addPasskeyHandler(to: webView.configuration.userContentController)
         webView.contextMenuHook = { [weak self] menu in
             self?.appendPageMenuItems(to: menu)
         }
@@ -348,6 +354,47 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         )
     }
 
+    /// Passkey patch in the page's own world (it replaces the page's
+    /// functions) plus the bridge in Lean's own world that carries requests
+    /// to the reply handler — off or on, so a build without the entitlement
+    /// still steers sites to passwords instead of stranding them.
+    private func addPasskeyScripts(to controller: WKUserContentController) {
+        if passkeysEnabled {
+            controller.addUserScript(
+                WKUserScript(source: PasskeyRelay.page, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page)
+            )
+        } else {
+            controller.addUserScript(
+                WKUserScript(source: PasskeyRelay.withoutPasskeys, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page)
+            )
+        }
+        controller.addUserScript(
+            WKUserScript(source: PasskeyRelay.bridge, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: LeanWeb.world)
+        )
+    }
+
+    private func addPasskeyHandler(to controller: WKUserContentController) {
+        // Registering a name twice is a hard crash, so clear before claiming.
+        removePasskeyHandler(from: controller)
+        controller.addScriptMessageHandler(passkeyRelay, contentWorld: LeanWeb.world, name: PasskeyRelay.name)
+    }
+
+    private func removePasskeyHandler(from controller: WKUserContentController) {
+        // A popup inherits its opener's configuration, handlers included,
+        // and registering a name twice is a hard crash — so clear both
+        // worlds before claiming, and on teardown.
+        controller.removeScriptMessageHandler(forName: PasskeyRelay.name, contentWorld: LeanWeb.world)
+        controller.removeScriptMessageHandler(forName: PasskeyRelay.name, contentWorld: .page)
+    }
+
+    func applyPasskeysPreferences(enabled: Bool) {
+        guard passkeysEnabled != enabled else { return }
+        passkeysEnabled = enabled
+        if storedWebView != nil {
+            rebuildUserScripts()
+        }
+    }
+
     func applyPasswordPreferences(savePromptsEnabled: Bool, suggestionsEnabled: Bool) {
         let promptsChanged = passwordSavePromptsEnabled != savePromptsEnabled
         let suggestionsChanged = passwordSuggestionsEnabled != suggestionsEnabled
@@ -413,6 +460,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         )
         addPasswordCaptureScript(to: webView.configuration.userContentController)
         addPasswordSuggestionScript(to: webView.configuration.userContentController)
+        addPasskeyScripts(to: webView.configuration.userContentController)
         webView.configuration.userContentController.addUserScript(
             WKUserScript(source: PageScripts.middleClickClosePage, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         )
@@ -749,6 +797,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.passwordFieldMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.middleClickMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.mediaStateMessageName)
+        removePasskeyHandler(from: webView.configuration.userContentController)
         webView.configuration.userContentController.removeAllUserScripts()
         zoomIndicatorWorkItem?.cancel()
         hidePasswordSuggestions()
@@ -952,6 +1001,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         controller.removeScriptMessageHandler(forName: PageScripts.pageReadyMessageName)
         controller.removeScriptMessageHandler(forName: PageScripts.contextMenuMessageName)
         controller.removeScriptMessageHandler(forName: PageScripts.passwordFormMessageName)
+        removePasskeyHandler(from: controller)
         controller.removeAllUserScripts()
         controller.removeAllContentRuleLists()
         webView.removeFromSuperview()
@@ -1097,10 +1147,12 @@ extension LeanTab: WKScriptMessageHandler {
     }
 
     /// Whether a page may use a saved login: same registrable domain, so a
-    /// password kept for example.com also fills accounts.example.com.
+    /// password kept for example.com also fills accounts.example.com — and
+    /// the same scheme, so an http page never spends what was kept from https.
     /// Filling still requires Touch ID on every use.
     private static func isSameSite(_ page: URL, _ login: SavedPassword) -> Bool {
-        guard let host = page.host?.lowercased(),
+        guard let scheme = page.scheme?.lowercased(), scheme == login.scheme,
+              let host = page.host?.lowercased(),
               let loginHost = PasswordVault.normalizedHost(login.host) else { return false }
         return PasswordVault.registrableHost(host) == PasswordVault.registrableHost(loginHost)
     }

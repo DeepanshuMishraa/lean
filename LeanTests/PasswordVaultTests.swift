@@ -50,4 +50,20 @@ struct PasswordVaultTests {
         #expect(PasswordVault.originString(for: try #require(URL(string: "file:///tmp/passwords"))) == nil)
         #expect(PasswordVault.normalizedHost("bad/host") == nil)
     }
+
+    @Test("Offering stays on the site and on the scheme it was kept from")
+    func offeringScope() {
+        let kept = SavedPassword(scheme: "https", host: "example.com", port: nil, username: "alice", createdAt: nil)
+        #expect(PasswordVault.isOffered(kept, onHost: "example.com", scheme: "https"))
+        #expect(PasswordVault.isOffered(kept, onHost: "accounts.example.com", scheme: "https"))
+        // An http page is offered only what was kept from http.
+        #expect(!PasswordVault.isOffered(kept, onHost: "example.com", scheme: "http"))
+        #expect(!PasswordVault.isOffered(kept, onHost: "accounts.example.com", scheme: "http"))
+        let httpKept = SavedPassword(scheme: "http", host: "example.com", port: nil, username: "bob", createdAt: nil)
+        #expect(PasswordVault.isOffered(httpKept, onHost: "example.com", scheme: "http"))
+        #expect(!PasswordVault.isOffered(httpKept, onHost: "example.com", scheme: "https"))
+        // Another site never qualifies, whatever the scheme.
+        #expect(!PasswordVault.isOffered(kept, onHost: "evil.com", scheme: "https"))
+        #expect(!PasswordVault.isOffered(kept, onHost: "example.com.evil.com", scheme: "https"))
+    }
 }

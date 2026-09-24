@@ -2759,6 +2759,16 @@ private struct PasswordManagerSection: View {
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont
                     )
+                    SettingsRowDivider(isDark: store.isDarkMode)
+                    CustomToggleRow(
+                        title: "Offer passkeys",
+                        subtitle: store.passkeysPossible
+                            ? "Touch ID or an iCloud passkey, on sites that offer one"
+                            : "Needs an Apple entitlement this build doesn't have — off keeps sites to the password",
+                        isOn: $store.passkeysEnabled,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
                 }
 
                 HStack(spacing: 6) {

@@ -164,6 +164,14 @@ enum PasswordVault {
         return labels.suffix(2).joined(separator: ".")
     }
 
+    /// Whether a kept login may be offered on a page: the same registrable
+    /// site, and the same scheme — an http page is offered only what was
+    /// kept from http, never a password saved over https.
+    static func isOffered(_ login: SavedPassword, onHost host: String, scheme: String) -> Bool {
+        guard login.scheme == scheme else { return false }
+        return login.host == host || registrableHost(login.host) == registrableHost(host)
+    }
+
     /// Logins kept for the site behind an origin: the exact host first, then
     /// anything sharing its registrable domain. A sign-in rarely lives on the
     /// page it was saved from — accounts.example.com asks, and the password
@@ -173,11 +181,9 @@ enum PasswordVault {
     static func forSite(_ origin: URL) -> Result<[SavedPassword], VaultError> {
         guard let normalized = normalizedOrigin(origin) else { return .failure(.invalidOrigin) }
         return all().map { logins in
-            let site = registrableHost(normalized.host)
-            let exact = logins.filter { $0.host == normalized.host }
-            let wider = logins.filter {
-                $0.host != normalized.host && registrableHost($0.host) == site
-            }
+            let offered = logins.filter { isOffered($0, onHost: normalized.host, scheme: normalized.scheme) }
+            let exact = offered.filter { $0.host == normalized.host }
+            let wider = offered.filter { $0.host != normalized.host }
             return (exact + wider).sorted {
                 let exactLHS = $0.host == normalized.host
                 let exactRHS = $1.host == normalized.host

@@ -28,6 +28,27 @@ struct LeanTabTitleTests {
     }
 
     @MainActor
+    @Test("Page source remains outside session navigation state")
+    func sourceTabState() {
+        let tab = LeanTab(dataStore: .default(), initialURL: nil)
+        tab.presentPageSource(title: "Source of x", html: nil)
+        #expect(tab.isPageSource)
+        #expect(tab.url == nil)
+        #expect(tab.title == "Source of x")
+    }
+
+    @MainActor
+    @Test("Page zoom commands update zoom and show feedback")
+    func pageZoomFeedback() {
+        let tab = LeanTab(dataStore: .default(), initialURL: URL(string: "https://example.com"))
+        tab.zoomIn()
+        #expect(tab.pageZoom == 1.1)
+        #expect(tab.isZoomIndicatorVisible)
+        tab.resetZoom()
+        #expect(tab.pageZoom == 1)
+    }
+
+    @MainActor
     @Test("New Tab shows New Tab both when selected and inactive")
     func newTabTitle() {
         let tab = LeanTab(dataStore: .default(), initialURL: nil)

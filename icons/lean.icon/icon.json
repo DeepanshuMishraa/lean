@@ -1,18 +1,24 @@
 {
   "fill" : {
-    "solid" : "srgb:0.90338,0.89789,0.89352,1.00000"
+    "angle" : 90,
+    "linear-gradient" : [
+      "srgb:0.00000,0.88138,0.38648,1.00000",
+      "srgb:0.00772,0.36038,0.76771,1.00000"
+    ]
   },
   "groups" : [
     {
       "layers" : [
         {
-          "image-name" : "ChatGPT Image Sep 20, 2026, 12_33_19 PM.png",
-          "name" : "ChatGPT Image Sep 20, 2026, 12_33_19 PM",
+          "blend-mode" : "lighten",
+          "image-name" : "ChatGPT Image Sep 23, 2026, 10_18_50 AM.png",
+          "name" : "ChatGPT Image Sep 23, 2026, 10_18_50 AM",
+          "opacity" : 1,
           "position" : {
-            "scale" : 0.78,
+            "scale" : 1,
             "translation-in-points" : [
-              4,
-              -37
+              0,
+              0
             ]
           }
         }

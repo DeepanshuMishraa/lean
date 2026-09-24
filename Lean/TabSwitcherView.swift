@@ -53,7 +53,7 @@ struct TabSwitcherView: View {
                     tab: tab,
                     isSelected: index == store.switcherSelectedIndex,
                     isDark: store.isDarkMode,
-                    uiFont: store.leanUIFont,
+                    uiFont: store.tabTitleTypeface,
                     headingWeight: store.uiHeadingWeight
                 )
                 .onTapGesture {
@@ -74,7 +74,7 @@ struct TabSwitcherView: View {
                     tab: tab,
                     isSelected: index == store.switcherSelectedIndex,
                     isDark: store.isDarkMode,
-                    uiFont: store.leanUIFont,
+                    uiFont: store.tabTitleTypeface,
                     headingWeight: store.uiHeadingWeight
                 )
                 .onTapGesture {
@@ -197,7 +197,17 @@ struct TabThumbnailCard: View {
         ZStack {
             isDark ? Color(white: 0.12) : Color(white: 0.92)
 
-            if let snapshot = tab.snapshot {
+            if tab.isSettingsPage {
+                VStack(spacing: 8) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.55))
+                    Text("Settings")
+                        .font(uiFont.font(size: 13, weight: headingWeight.fontWeight))
+                        .foregroundStyle(isDark ? Color.white.opacity(0.75) : Color.black.opacity(0.70))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let snapshot = tab.snapshot {
                 Image(nsImage: snapshot)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -218,9 +228,10 @@ struct TabThumbnailCard: View {
                 }
             } else {
                 // Loading or placeholder
-                Image(systemName: "globe")
-                    .font(.system(size: 24))
-                    .foregroundColor(isDark ? Color.white.opacity(0.35) : Color.black.opacity(0.30))
+                LeanIcon.browser.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 24, height: 24)
+                    .foregroundColor(isDark ? Color.white.opacity(0.5) : Color.black.opacity(0.4))
             }
         }
     }
@@ -238,80 +249,6 @@ struct TabThumbnailCard: View {
             return isDark ? Color.white.opacity(0.40) : Color.black.opacity(0.24)
         } else {
             return Color.clear
-        }
-    }
-}
-
-private struct SiteIconView: View {
-    let url: URL?
-    let title: String
-    let isDark: Bool
-    var faviconOverride: NSImage? = nil
-
-    @State private var loadedFavicon: NSImage?
-
-    var body: some View {
-        Group {
-            if let image = faviconOverride ?? loadedFavicon ?? FaviconService.shared.cachedFavicon(for: url) {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
-                    .frame(width: 16, height: 16)
-                    .clipShape(RoundedRectangle(cornerRadius: 3.5, style: .continuous))
-            } else {
-                brandFallback
-            }
-        }
-        .onAppear {
-            loadRealFavicon()
-        }
-        .onChange(of: url) { _, _ in
-            loadedFavicon = FaviconService.shared.cachedFavicon(for: url)
-            loadRealFavicon()
-        }
-    }
-
-    private func loadRealFavicon() {
-        guard loadedFavicon == nil else { return }
-        if FaviconService.shared.cachedFavicon(for: url) != nil { return }
-        FaviconService.shared.loadFavicon(for: url) { image in
-            if let image {
-                loadedFavicon = image
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var brandFallback: some View {
-        let host = url?.host?.lowercased() ?? ""
-
-        if host.contains("youtube") {
-            Image(systemName: "play.rectangle.fill")
-                .foregroundColor(.red)
-                .font(.system(size: 14))
-        } else if host.contains("twitter") || host.contains("x.com") {
-            Text("𝕏")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(isDark ? .white : .black)
-                .frame(width: 16, height: 16)
-        } else if host.contains("google") {
-            Text("G")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.blue)
-                .frame(width: 16, height: 16)
-        } else if host.contains("slack") {
-            Image(systemName: "number.square.fill")
-                .foregroundColor(Color(red: 0.85, green: 0.25, blue: 0.55))
-                .font(.system(size: 14))
-        } else if host.contains("github") {
-            Image(systemName: "chevron.left.forwardslash.chevron.right")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(isDark ? .white : .black)
-        } else {
-            Image(systemName: url == nil ? "plus.circle.fill" : "globe")
-                .font(.system(size: 13))
-                .foregroundColor(isDark ? Color.white.opacity(0.7) : Color.black.opacity(0.6))
         }
     }
 }

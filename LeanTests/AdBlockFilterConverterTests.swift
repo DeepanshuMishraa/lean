@@ -132,6 +132,22 @@ struct AdBlockFilterConverterTests {
         #expect(result.rules.isEmpty)
     }
 
+    @Test("Curated YouTube filters convert to WebKit network and cosmetic rules")
+    func curatedYouTubeConverts() {
+        let result = AdBlockFilterConverter.convert(ContentBlocker.curatedYouTubeFilters + "\n")
+        #expect(!result.rules.isEmpty)
+        let hasEndpointBlock = result.rules.contains {
+            action($0)["type"] as? String == "block"
+                && (triggers($0)["url-filter"] as? String ?? "").contains("youtube\\.com/api/stats/ads")
+        }
+        #expect(hasEndpointBlock)
+        let hasSlotHiding = result.rules.contains {
+            action($0)["type"] as? String == "css-display-none"
+                && (action($0)["selector"] as? String ?? "").contains("ytp-ad-module")
+        }
+        #expect(hasSlotHiding)
+    }
+
     @Test("Rules chunk under the WebKit per-list limit")
     func chunking() {
         var many: [[String: Any]] = []

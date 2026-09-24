@@ -4,6 +4,17 @@ import Foundation
 import SwiftUI
 import WebKit
 
+private struct BrowserUIScaleEnvironmentKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1
+}
+
+extension EnvironmentValues {
+    var browserUIScale: CGFloat {
+        get { self[BrowserUIScaleEnvironmentKey.self] }
+        set { self[BrowserUIScaleEnvironmentKey.self] = newValue }
+    }
+}
+
 enum FloatingOmnibarMode {
     case newTab
     case navigate
@@ -59,7 +70,9 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
     case forward = "forward"
     case reload = "reload"
     case newTab = "newTab"
+    case extensions = "extensions"
     case downloads = "downloads"
+    case bookmarks = "bookmarks"
     case themeToggle = "themeToggle"
     case settings = "settings"
 
@@ -71,7 +84,9 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         case .forward: return "Forward"
         case .reload: return "Reload"
         case .newTab: return "New Tab"
+        case .extensions: return "Extensions"
         case .downloads: return "Downloads"
+        case .bookmarks: return "Bookmarks"
         case .themeToggle: return "Theme"
         case .settings: return "Settings"
         }
@@ -83,9 +98,25 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         case .forward: return "chevron.right"
         case .reload: return "arrow.clockwise"
         case .newTab: return "plus"
+        case .extensions: return "puzzlepiece.extension"
         case .downloads: return "arrow.down.circle"
+        case .bookmarks: return "bookmark"
         case .themeToggle: return "sun.max.fill"
         case .settings: return "gearshape"
+        }
+    }
+
+    var icon: LeanIcon {
+        switch self {
+        case .back: return .caretLeft
+        case .forward: return .caretRight
+        case .reload: return .arrowClockwise
+        case .newTab: return .plus
+        case .extensions: return .extension
+        case .downloads: return .arrowCircleDown
+        case .bookmarks: return .bookmark
+        case .themeToggle: return .sun
+        case .settings: return .gear
         }
     }
 
@@ -93,7 +124,7 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
         switch self {
         case .back, .forward, .reload:
             return true
-        case .newTab, .downloads, .themeToggle, .settings:
+        case .newTab, .extensions, .downloads, .bookmarks, .themeToggle, .settings:
             return false
         }
     }
@@ -102,9 +133,10 @@ enum ToolbarItemType: String, CaseIterable, Identifiable, Codable, Equatable, Ha
 private struct BrowserSession: Codable {
     var urls: [String]
     var selectedIndex: Int
+    var pinnedIndices: [Int]?
 }
 
-struct HistoryItem: Identifiable, Equatable, Hashable, Codable {
+struct HistoryItem: Identifiable, Equatable, Hashable, Codable, Sendable {
     let id: UUID
     let url: URL
     let title: String
@@ -121,7 +153,15 @@ struct HistoryItem: Identifiable, Equatable, Hashable, Codable {
 @MainActor
 final class LeanStore: ObservableObject {
     @Published private(set) var tabs: [LeanTab] = []
-    @Published var selectedID: LeanTab.ID?
+    var pinnedTabs: [LeanTab] {
+        tabs.filter(\.isPinned)
+    }
+    var unpinnedTabs: [LeanTab] {
+        tabs.filter { !$0.isPinned }
+    }
+    @Published var selectedID: LeanTab.ID? {
+        didSet { handleTabSelectionChange(from: oldValue, to: selectedID) }
+    }
     @Published var showsFindBar = false
     @Published var isFloatingOmnibarVisible = false
     @Published var floatingOmnibarMode: FloatingOmnibarMode = .newTab
@@ -134,6 +174,18 @@ final class LeanStore: ObservableObject {
     @Published var isTabSwitcherVisible = false
     @Published var switcherSelectedIndex = 0
     @Published var historyItems: [HistoryItem] = []
+    @Published private(set) var importedBookmarks: [ImportedBookmark] = []
+    @Published var bookmarks: [BookmarkItem] = []
+    @Published var bookmarkFolders: [String] = [BookmarkFolder.defaultFolder]
+    @Published var selectedBookmarkFolder: String = BookmarkFolder.allFolder
+    @Published var isBookmarksPresented = false
+    @Published var bookmarksButtonFrame: CGRect = .zero
+    @Published var bookmarksPaletteFrame: CGRect = .zero
+    @Published var isBookmarkDialogPresented = false
+    @Published var dialogBookmarkTitle = ""
+    @Published var dialogBookmarkFolder = BookmarkFolder.defaultFolder
+    @Published var dialogBookmarkURL: URL? = nil
+    @Published var dialogBookmarkFrame: CGRect = .zero
     @Published var selectedSettingsCategory: SettingsCategory = .general
     @Published var isQuickSettingsPresented = false
     @Published var quickSettingsPopoverFrame: CGRect = .zero
@@ -142,6 +194,9 @@ final class LeanStore: ObservableObject {
     @Published var isDownloadsPresented = false
     @Published var downloadsButtonFrame: CGRect = .zero
     @Published var downloadsPopoverFrame: CGRect = .zero
+    @Published var isExtensionsPresented = false
+    @Published var extensionsButtonFrame: CGRect = .zero
+    @Published var extensionsPopoverFrame: CGRect = .zero
     @Published var downloadManager: DownloadManager
     @Published var customShortcuts: [String: CustomKeyCombo] = [:] {
         didSet {
@@ -162,6 +217,35 @@ final class LeanStore: ObservableObject {
         didSet {
             persist(adBlockingEnabled, forKey: Self.adBlockingKey)
             updateAllTabsAdBlocking()
+        }
+    }
+    @Published private(set) var adBlockingExcludedHosts: Set<String> = []
+
+    @Published var passwordSavePromptsEnabled = true {
+        didSet {
+            persist(passwordSavePromptsEnabled, forKey: Self.passwordSavePromptsKey)
+            updateAllTabsPasswordPreferences()
+        }
+    }
+
+    @Published var passwordSuggestionsEnabled = true {
+        didSet {
+            persist(passwordSuggestionsEnabled, forKey: Self.passwordSuggestionsKey)
+            updateAllTabsPasswordPreferences()
+        }
+    }
+
+    @Published var autoSleepTabsEnabled = false {
+        didSet {
+            persist(autoSleepTabsEnabled, forKey: Self.autoSleepTabsEnabledKey)
+            scheduleAutoSleep()
+        }
+    }
+
+    @Published var autoSleepAfterMinutes = 30 {
+        didSet {
+            persist(autoSleepAfterMinutes, forKey: Self.autoSleepAfterMinutesKey)
+            scheduleAutoSleep()
         }
     }
 
@@ -222,12 +306,43 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    @Published var browserUIScalePercent: Int {
+        didSet {
+            let clamped = min(120, max(80, browserUIScalePercent))
+            if browserUIScalePercent != clamped {
+                browserUIScalePercent = clamped
+                return
+            }
+            persist(browserUIScalePercent, forKey: Self.browserUIScaleKey)
+        }
+    }
+
+    var browserUIScale: CGFloat { CGFloat(browserUIScalePercent) / 100 }
+
+    func scaled(_ value: CGFloat) -> CGFloat { value * browserUIScale }
+
     func headingFont(size: CGFloat) -> Font {
-        leanUIFont.font(size: size, weight: uiHeadingWeight.fontWeight)
+        leanUIFont.font(size: scaled(size), fontWeight: uiHeadingWeight)
+    }
+
+    func headingFont(size: CGFloat, weight: LeanFontWeight) -> Font {
+        leanUIFont.font(size: scaled(size), fontWeight: weight)
+    }
+
+    var tabTitleTypeface: LeanFont {
+        leanUIFont
+    }
+
+    func tabTitleFont(size: CGFloat) -> Font {
+        leanUIFont.font(size: scaled(size), fontWeight: uiHeadingWeight)
     }
 
     func bodyFont(size: CGFloat) -> Font {
-        leanUIFont.font(size: size, weight: uiBodyWeight.fontWeight)
+        leanUIFont.font(size: scaled(size), fontWeight: uiBodyWeight)
+    }
+
+    func bodyFont(size: CGFloat, weight: LeanFontWeight) -> Font {
+        leanUIFont.font(size: scaled(size), fontWeight: weight)
     }
 
     @Published var webPageFont: LeanFont {
@@ -297,16 +412,47 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    @Published var hasCompletedOnboarding: Bool {
+        didSet {
+            persist(hasCompletedOnboarding, forKey: Self.hasCompletedOnboardingKey)
+        }
+    }
+    @Published var isOnboardingPresented: Bool = false
+
+    func startOnboarding() {
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) {
+            isOnboardingPresented = true
+        }
+    }
+
+    func completeOnboarding() {
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) {
+            hasCompletedOnboarding = true
+            isOnboardingPresented = false
+        }
+    }
+
     private let dataStore: WKWebsiteDataStore
     private let database: AppDatabase?
+    let mediaPermissionStore: MediaPermissionStore
     private var recentlyClosed: [URL] = []
     private var adBlockUpdateObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
+    private var inactiveSince: [LeanTab.ID: Date] = [:]
+    private var sleepWorkItems: [LeanTab.ID: DispatchWorkItem] = [:]
+    private var sleepWorkTokens: [LeanTab.ID: UUID] = [:]
+    private var memoryPressureSource: DispatchSourceMemoryPressure?
+    private let pictureInPicture = PictureInPicture()
+    private var pictureInPictureTabID: LeanTab.ID?
+    /// Tab currently being reordered via native drag & drop. Plain (not
+    /// @Published) on purpose: it is only read by drop delegates mid-drag.
+    var draggingTabID: LeanTab.ID?
 
     init(dataStore: WKWebsiteDataStore? = nil, database: AppDatabase? = nil) {
         self.dataStore = dataStore ?? WKWebsiteDataStore.default()
         self.database = database ?? AppDatabase.openDefault()
         self.downloadManager = DownloadManager(database: self.database)
+        self.mediaPermissionStore = MediaPermissionStore(database: self.database)
 
         let savedSearchEngine = databaseValue(self.database, String.self, forKey: Self.searchEngineKey)
             ?? UserDefaults.standard.string(forKey: Self.searchEngineKey)
@@ -317,6 +463,12 @@ final class LeanStore: ObservableObject {
             ?? UserDefaults.standard.object(forKey: Self.adBlockingKey) as? Bool
             ?? true
         self.adBlockingEnabled = savedAdBlocking
+        self.adBlockingExcludedHosts = databaseValue(self.database, Set<String>.self, forKey: Self.adBlockingExcludedHostsKey) ?? []
+        self.passwordSavePromptsEnabled = databaseValue(self.database, Bool.self, forKey: Self.passwordSavePromptsKey) ?? true
+        self.passwordSuggestionsEnabled = databaseValue(self.database, Bool.self, forKey: Self.passwordSuggestionsKey) ?? true
+        self.autoSleepTabsEnabled = databaseValue(self.database, Bool.self, forKey: Self.autoSleepTabsEnabledKey) ?? false
+        let savedSleepMinutes = databaseValue(self.database, Int.self, forKey: Self.autoSleepAfterMinutesKey) ?? 30
+        self.autoSleepAfterMinutes = [5, 15, 30, 60].contains(savedSleepMinutes) ? savedSleepMinutes : 30
 
         if let savedHistory = databaseValue(self.database, [HistoryItem].self, forKey: Self.historyKey) {
             self.historyItems = savedHistory
@@ -338,6 +490,29 @@ final class LeanStore: ObservableObject {
                 guard let rawURL = item["url"], let url = URL(string: rawURL), let title = item["title"] else { return nil }
                 return HistoryItem(url: url, title: title, timestamp: Date())
             }
+        }
+
+        let loadedImportedBookmarks = databaseValue(self.database, [ImportedBookmark].self, forKey: Self.importedBookmarksKey) ?? []
+        self.importedBookmarks = loadedImportedBookmarks
+
+        // Load bookmark folders
+        let savedFolders = databaseValue(self.database, [String].self, forKey: Self.bookmarkFoldersKey)
+            ?? UserDefaults.standard.stringArray(forKey: Self.bookmarkFoldersKey)
+        var folders = savedFolders ?? [BookmarkFolder.defaultFolder]
+        if !folders.contains(BookmarkFolder.defaultFolder) {
+            folders.insert(BookmarkFolder.defaultFolder, at: 0)
+        }
+        self.bookmarkFolders = folders
+
+        // Load bookmarks (with migration from importedBookmarks on first run)
+        let savedBookmarks = databaseValue(self.database, [BookmarkItem].self, forKey: Self.bookmarksKey)
+        if let savedBookmarks = savedBookmarks {
+            self.bookmarks = savedBookmarks
+        } else {
+            let migrated: [BookmarkItem] = loadedImportedBookmarks.map {
+                BookmarkItem(id: $0.id, title: $0.title, url: $0.url, folder: BookmarkFolder.defaultFolder)
+            }
+            self.bookmarks = migrated
         }
 
         // Load saved theme (default to light or saved preference)
@@ -376,10 +551,27 @@ final class LeanStore: ObservableObject {
             ?? true
         self.showFullTitleOnActiveTab = savedShowFullTitle
 
-        let savedLeanUIFont = databaseValue(self.database, String.self, forKey: Self.leanUIFontKey)
-            ?? UserDefaults.standard.string(forKey: Self.leanUIFontKey)
-            ?? LeanFont.system.rawValue
-        self.leanUIFont = LeanFont(rawValue: savedLeanUIFont) ?? .system
+        let defaultFont = LeanFont.geistSans.rawValue
+        let hasMigratedFontToGeist = databaseValue(self.database, Bool.self, forKey: "hasMigratedFontToGeistV2")
+            ?? UserDefaults.standard.bool(forKey: "hasMigratedFontToGeistV2")
+
+        let savedLeanUIFont: String
+        let savedWebPageFont: String
+        if !hasMigratedFontToGeist {
+            savedLeanUIFont = defaultFont
+            savedWebPageFont = defaultFont
+            UserDefaults.standard.set(defaultFont, forKey: Self.leanUIFontKey)
+            UserDefaults.standard.set(defaultFont, forKey: Self.webPageFontKey)
+            UserDefaults.standard.set(true, forKey: "hasMigratedFontToGeistV2")
+        } else {
+            savedLeanUIFont = databaseValue(self.database, String.self, forKey: Self.leanUIFontKey)
+                ?? UserDefaults.standard.string(forKey: Self.leanUIFontKey)
+                ?? defaultFont
+            savedWebPageFont = databaseValue(self.database, String.self, forKey: Self.webPageFontKey)
+                ?? UserDefaults.standard.string(forKey: Self.webPageFontKey)
+                ?? defaultFont
+        }
+        self.leanUIFont = LeanFont(rawValue: savedLeanUIFont) ?? .geistSans
 
         let savedHeadingWeight = databaseValue(self.database, Int.self, forKey: Self.uiHeadingWeightKey)
             ?? UserDefaults.standard.object(forKey: Self.uiHeadingWeightKey) as? Int
@@ -391,10 +583,12 @@ final class LeanStore: ObservableObject {
             ?? LeanFontWeight.regular.rawValue
         self.uiBodyWeight = LeanFontWeight(rawValue: savedBodyWeight) ?? .regular
 
-        let savedWebPageFont = databaseValue(self.database, String.self, forKey: Self.webPageFontKey)
-            ?? UserDefaults.standard.string(forKey: Self.webPageFontKey)
-            ?? LeanFont.system.rawValue
-        self.webPageFont = LeanFont(rawValue: savedWebPageFont) ?? .system
+        let savedBrowserUIScale = databaseValue(self.database, Int.self, forKey: Self.browserUIScaleKey)
+            ?? UserDefaults.standard.object(forKey: Self.browserUIScaleKey) as? Int
+            ?? 100
+        self.browserUIScalePercent = min(120, max(80, savedBrowserUIScale))
+
+        self.webPageFont = LeanFont(rawValue: savedWebPageFont) ?? .geistSans
 
         let savedZen = databaseValue(self.database, Bool.self, forKey: Self.zenModeKey)
             ?? UserDefaults.standard.object(forKey: Self.zenModeKey) as? Bool
@@ -448,8 +642,20 @@ final class LeanStore: ObservableObject {
             self.hiddenToolbarItems = []
         }
 
+        // Onboarding shows exactly once: only when it was never completed.
+        // (During testing this was forced on every launch; that override
+        // is gone — a completed onboarding stays completed.)
+        let completedOnboarding = databaseValue(self.database, Bool.self, forKey: Self.hasCompletedOnboardingKey)
+            ?? UserDefaults.standard.object(forKey: Self.hasCompletedOnboardingKey) as? Bool
+            ?? false
+        self.hasCompletedOnboarding = completedOnboarding
+        self.isOnboardingPresented = !completedOnboarding
+
         deduplicateHistory()
         saveHistory()
+        if savedBookmarks == nil && !self.bookmarks.isEmpty {
+            persist(self.bookmarks, forKey: Self.bookmarksKey)
+        }
 
         adBlockUpdateObserver = NotificationCenter.default.addObserver(
             forName: ContentBlocker.didUpdateNotification,
@@ -461,6 +667,7 @@ final class LeanStore: ObservableObject {
             }
         }
         ContentBlocker.refreshIfNeeded()
+        configureMemoryPressureHandling()
         loadCustomShortcuts()
         downloadManager.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
@@ -468,7 +675,7 @@ final class LeanStore: ObservableObject {
 
         let savedSession = databaseValue(self.database, BrowserSession.self, forKey: Self.sessionStateKey)
         let legacySessionURLs = databaseValue(self.database, [String].self, forKey: Self.sessionKey)
-            ?? UserDefaults.standard.stringArray(forKey: Self.sessionKey)
+            ?? (self.database == nil ? UserDefaults.standard.stringArray(forKey: Self.sessionKey) : nil)
             ?? []
         let sessionURLs = (savedSession?.urls ?? legacySessionURLs).compactMap(URL.init(string:))
         let selectedIndex = min(savedSession?.selectedIndex ?? sessionURLs.count - 1, sessionURLs.count - 1)
@@ -483,9 +690,18 @@ final class LeanStore: ObservableObject {
         if sessionURLs.isEmpty {
             newTab()
         } else {
+            let pinnedSet = Set(savedSession?.pinnedIndices ?? [])
             for (index, url) in sessionURLs.enumerated() {
-                newTab(url: url, select: index == selectedIndex)
+                let tab = newTab(url: url, select: index == selectedIndex)
+                if pinnedSet.contains(index) {
+                    tab.isPinned = true
+                }
             }
+        }
+        if !hasMigratedFontToGeist {
+            persist(defaultFont, forKey: Self.leanUIFontKey)
+            persist(defaultFont, forKey: Self.webPageFontKey)
+            persist(true, forKey: "hasMigratedFontToGeistV2")
         }
     }
 
@@ -624,16 +840,255 @@ final class LeanStore: ObservableObject {
 
     func updateAllTabsAdBlocking() {
         for tab in tabs {
-            tab.applyAdBlocking(adBlockingEnabled)
+            tab.applyAdBlocking(adBlockingEnabled, excluding: adBlockingExcludedHosts)
         }
+    }
+
+    func updateAllTabsPasswordPreferences() {
+        for tab in tabs {
+            tab.applyPasswordPreferences(
+                savePromptsEnabled: passwordSavePromptsEnabled,
+                suggestionsEnabled: passwordSuggestionsEnabled
+            )
+        }
+    }
+
+    private func showPictureInPicture(for tab: LeanTab) {
+        guard !pictureInPicture.showing, !tab.isSleeping else { return }
+        tab.webView.evaluateJavaScript(Isolate.on) { [weak self, weak tab] result, _ in
+            DispatchQueue.main.async {
+                guard let self, let tab, let dimensions = result as? [String: NSNumber],
+                      let width = dimensions["width"]?.doubleValue, width > 0,
+                      let height = dimensions["height"]?.doubleValue, height > 0 else { return }
+                guard self.selectedID != tab.id else {
+                    tab.webView.evaluateJavaScript(Isolate.off, completionHandler: nil)
+                    return
+                }
+                self.pictureInPictureTabID = tab.id
+                self.pictureInPicture.onClose = { [weak self] in self?.dismissPictureInPicture() }
+                self.pictureInPicture.onReturn = { [weak self] in self?.returnFromPictureInPicture() }
+                self.pictureInPicture.onPlayPause = { [weak tab] completion in
+                    tab?.webView.evaluateJavaScript(Isolate.toggle) { result, _ in
+                        completion((result as? Bool) ?? false)
+                    }
+                }
+                self.pictureInPicture.onSkip = { [weak tab] seconds in
+                    tab?.webView.evaluateJavaScript(Isolate.skip(seconds), completionHandler: nil)
+                }
+                self.pictureInPicture.onSeek = { [weak tab] fraction in
+                    tab?.webView.evaluateJavaScript(Isolate.seek(fraction), completionHandler: nil)
+                }
+                self.pictureInPicture.onProgress = { [weak tab] completion in
+                    tab?.webView.evaluateJavaScript(Isolate.where_) { result, _ in
+                        guard let values = result as? [NSNumber], values.count >= 2 else { return }
+                        let progress = values[0].doubleValue
+                        let isPlaying = values[1].boolValue
+                        let currentTime = values.count >= 4 ? values[2].doubleValue : 0
+                        let duration = values.count >= 4 ? values[3].doubleValue : 0
+                        completion(progress, isPlaying, currentTime, duration)
+                    }
+                }
+                self.pictureInPicture.lift(
+                    tab.webView,
+                    aspectRatio: CGFloat(width / height),
+                    title: tab.title,
+                    url: tab.url,
+                    favicon: tab.favicon
+                )
+            }
+        }
+    }
+
+    private func dismissPictureInPicture() {
+        guard let id = pictureInPictureTabID else { return }
+        pictureInPictureTabID = nil
+        pictureInPicture.drop()
+        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        tab.webView.evaluateJavaScript(Isolate.off, completionHandler: nil)
+        objectWillChange.send()
+    }
+
+    private func returnFromPictureInPicture() {
+        guard let id = pictureInPictureTabID,
+              let tab = tabs.first(where: { $0.id == id }) else { return }
+        // Restore the video while the page is still in the PiP panel. Revealing
+        // the tab only after its DOM layout is back avoids showing the player
+        // resizing in front of the user.
+        tab.webView.evaluateJavaScript(Isolate.off) { [weak self, weak tab] _, _ in
+            DispatchQueue.main.async {
+                guard let self, tab != nil, self.pictureInPictureTabID == id else { return }
+                self.pictureInPictureTabID = nil
+                self.pictureInPicture.drop()
+                self.objectWillChange.send()
+            }
+        }
+    }
+
+    private func handleTabSelectionChange(from previous: LeanTab.ID?, to current: LeanTab.ID?) {
+        guard previous != current else { return }
+        let isReturningToPictureInPictureTab = current == pictureInPictureTabID
+        if isReturningToPictureInPictureTab {
+            returnFromPictureInPicture()
+        }
+        if !isReturningToPictureInPictureTab,
+           let previous, previous != pictureInPictureTabID,
+           let tab = tabs.first(where: { $0.id == previous }) {
+            showPictureInPicture(for: tab)
+        }
+        if let previous, tabs.contains(where: { $0.id == previous }) {
+            inactiveSince[previous] = Date()
+        }
+        if let current {
+            inactiveSince[current] = nil
+            sleepWorkItems[current]?.cancel()
+            sleepWorkItems[current] = nil
+            sleepWorkTokens[current] = nil
+        }
+        scheduleAutoSleep()
+    }
+
+    private func scheduleAutoSleep() {
+        sleepWorkItems.values.forEach { $0.cancel() }
+        sleepWorkItems.removeAll()
+        sleepWorkTokens.removeAll()
+        guard autoSleepTabsEnabled else { return }
+        let timeout = TimeInterval(autoSleepAfterMinutes * 60)
+        for tab in tabs where tab.id != selectedID {
+            let inactiveAt = inactiveSince[tab.id] ?? Date()
+            inactiveSince[tab.id] = inactiveAt
+            let delay = max(0, timeout - Date().timeIntervalSince(inactiveAt))
+            let token = UUID()
+            sleepWorkTokens[tab.id] = token
+            let work = DispatchWorkItem { [weak self, weak tab] in
+                guard let self, let tab, self.sleepWorkTokens[tab.id] == token else { return }
+                self.sleepWorkTokens[tab.id] = nil
+                self.sleepWorkItems[tab.id] = nil
+                self.attemptAutoSleep(tab)
+            }
+            sleepWorkItems[tab.id] = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        }
+    }
+
+    private func attemptAutoSleep(_ tab: LeanTab) {
+        guard autoSleepTabsEnabled, selectedID != tab.id,
+              tab.id != pictureInPictureTabID,
+              tabs.contains(where: { $0.id == tab.id }) else { return }
+        tab.requestSleep(while: { [weak self, weak tab] in
+            guard let self, let tab else { return false }
+            return self.autoSleepTabsEnabled && self.selectedID != tab.id
+                && self.tabs.contains(where: { $0.id == tab.id })
+        }) { [weak self, weak tab] slept in
+            guard let self, let tab, !slept else { return }
+            self.scheduleSleepRetry(for: tab)
+        }
+    }
+
+    private func scheduleSleepRetry(for tab: LeanTab) {
+        guard autoSleepTabsEnabled, selectedID != tab.id else { return }
+        sleepWorkItems[tab.id]?.cancel()
+        let token = UUID()
+        sleepWorkTokens[tab.id] = token
+        let retry = DispatchWorkItem { [weak self, weak tab] in
+            guard let self, let tab, self.sleepWorkTokens[tab.id] == token else { return }
+            self.sleepWorkTokens[tab.id] = nil
+            self.sleepWorkItems[tab.id] = nil
+            self.attemptAutoSleep(tab)
+        }
+        sleepWorkItems[tab.id] = retry
+        DispatchQueue.main.asyncAfter(deadline: .now() + 300, execute: retry)
+    }
+
+    func sleepTab(_ tab: LeanTab, notifyOnFailure: Bool = false) {
+        guard selectedID != tab.id, tabs.contains(where: { $0.id == tab.id }) else { return }
+        sleepWorkItems[tab.id]?.cancel()
+        sleepWorkItems[tab.id] = nil
+        sleepWorkTokens[tab.id] = nil
+        tab.requestSleep(while: { [weak self, weak tab] in
+            guard let self, let tab else { return false }
+            return self.selectedID != tab.id && self.tabs.contains(where: { $0.id == tab.id })
+        }) { [weak self, weak tab] slept in
+            guard !slept, let self, let tab else { return }
+            if notifyOnFailure { NSSound.beep() }
+            self.scheduleSleepRetry(for: tab)
+        }
+    }
+
+    private func configureMemoryPressureHandling() {
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+        source.setEventHandler { [weak self] in
+            Task { @MainActor in
+                guard let self, self.autoSleepTabsEnabled else { return }
+                for tab in self.tabs where tab.id != self.selectedID {
+                    self.attemptAutoSleep(tab)
+                }
+            }
+        }
+        source.resume()
+        memoryPressureSource = source
+    }
+
+    func isAdBlockingEnabled(for host: String?) -> Bool {
+        SiteBlockingPolicy.shouldBlock(globalEnabled: adBlockingEnabled, host: host, excludedHosts: adBlockingExcludedHosts)
+    }
+
+    func setAdBlocking(_ enabled: Bool, for host: String) {
+        let normalized = SiteBlockingPolicy.normalizedHost(host)
+        guard !normalized.isEmpty else { return }
+        if enabled {
+            adBlockingExcludedHosts.remove(normalized)
+        } else {
+            adBlockingExcludedHosts.insert(normalized)
+        }
+        persist(adBlockingExcludedHosts, forKey: Self.adBlockingExcludedHostsKey)
+        updateAllTabsAdBlocking()
+    }
+
+    func clearCookiesAndSiteData(completion: @escaping @Sendable () -> Void) {
+        let cacheTypes: Set<String> = [
+            WKWebsiteDataTypeDiskCache,
+            WKWebsiteDataTypeMemoryCache,
+            WKWebsiteDataTypeOfflineWebApplicationCache,
+            WKWebsiteDataTypeFetchCache,
+        ]
+        dataStore.removeData(
+            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes().subtracting(cacheTypes),
+            modifiedSince: .distantPast,
+            completionHandler: completion
+        )
+    }
+
+    func clearWebCache(completion: @escaping @Sendable () -> Void) {
+        dataStore.removeData(
+            ofTypes: [
+                WKWebsiteDataTypeDiskCache,
+                WKWebsiteDataTypeMemoryCache,
+                WKWebsiteDataTypeOfflineWebApplicationCache,
+                WKWebsiteDataTypeFetchCache,
+            ],
+            modifiedSince: .distantPast,
+            completionHandler: completion
+        )
     }
 
     var selectedTab: LeanTab? {
         tabs.first { $0.id == selectedID }
     }
 
+    func zoomIn() {
+        selectedTab?.zoomIn()
+    }
+
+    func zoomOut() {
+        selectedTab?.zoomOut()
+    }
+
+    func resetZoom() {
+        selectedTab?.resetZoom()
+    }
+
     func openURL(_ url: URL) {
-        if let tab = selectedTab, tab.url == nil {
+        if let tab = selectedTab, tab.url == nil, !tab.isPinned {
             tab.load(url)
         } else {
             newTab(url: url)
@@ -651,6 +1106,221 @@ final class LeanStore: ObservableObject {
             historyItems = Array(historyItems.prefix(200))
         }
         saveHistory()
+    }
+
+    func importBrowserData(_ preview: BrowserImportPreview) -> (bookmarks: Int, history: Int) {
+        var seenURLs = Set(importedBookmarks.map { $0.url.absoluteString })
+        let newBookmarks = preview.bookmarks.filter { seenURLs.insert($0.url.absoluteString).inserted }
+        importedBookmarks.append(contentsOf: newBookmarks)
+        persist(importedBookmarks, forKey: Self.importedBookmarksKey)
+
+        for b in newBookmarks {
+            if !bookmarks.contains(where: { $0.url.absoluteString == b.url.absoluteString }) {
+                bookmarks.append(BookmarkItem(id: b.id, title: b.title, url: b.url, folder: BookmarkFolder.defaultFolder))
+            }
+        }
+        persist(bookmarks, forKey: Self.bookmarksKey)
+
+        let previousHistoryCount = historyItems.count
+        var seenHistory = Set(historyItems.map { $0.url.absoluteString })
+        let newHistory = preview.history
+            .filter { seenHistory.insert($0.url.absoluteString).inserted }
+            .sorted { $0.timestamp > $1.timestamp }
+        let capacity = max(0, 200 - historyItems.count)
+        historyItems.append(contentsOf: newHistory.prefix(capacity))
+        historyItems.sort { $0.timestamp > $1.timestamp }
+        saveHistory()
+        return (newBookmarks.count, historyItems.count - previousHistoryCount)
+    }
+
+    func deleteImportedBookmark(id: ImportedBookmark.ID) {
+        importedBookmarks.removeAll { $0.id == id }
+        bookmarks.removeAll { $0.id == id }
+        persist(importedBookmarks, forKey: Self.importedBookmarksKey)
+        persist(bookmarks, forKey: Self.bookmarksKey)
+    }
+
+    // MARK: - Bookmarks Management
+
+    func toggleBookmarks() {
+        isQuickSettingsPresented = false
+        isDownloadsPresented = false
+        isExtensionsPresented = false
+        isFloatingOmnibarVisible = false
+        isInlineURLEditing = false
+        isBookmarksPresented.toggle()
+    }
+
+    func dismissBookmarks() {
+        isBookmarksPresented = false
+    }
+
+    func isBookmarked(url: URL?) -> Bool {
+        guard let url else { return false }
+        let target = url.absoluteString.lowercased()
+        return bookmarks.contains { $0.url.absoluteString.lowercased() == target }
+    }
+
+    func bookmark(for url: URL?) -> BookmarkItem? {
+        guard let url else { return nil }
+        let target = url.absoluteString.lowercased()
+        return bookmarks.first { $0.url.absoluteString.lowercased() == target }
+    }
+
+    func addBookmark(title: String, url: URL, folder: String = BookmarkFolder.defaultFolder) {
+        let cleanFolder = folder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? BookmarkFolder.defaultFolder : folder
+        if !bookmarkFolders.contains(cleanFolder) && cleanFolder != BookmarkFolder.allFolder {
+            bookmarkFolders.append(cleanFolder)
+            persist(bookmarkFolders, forKey: Self.bookmarkFoldersKey)
+        }
+        if let index = bookmarks.firstIndex(where: { $0.url.absoluteString.lowercased() == url.absoluteString.lowercased() }) {
+            bookmarks[index].title = title
+            bookmarks[index].folder = cleanFolder
+        } else {
+            let item = BookmarkItem(title: title.isEmpty ? (url.host ?? url.absoluteString) : title, url: url, folder: cleanFolder)
+            bookmarks.insert(item, at: 0)
+        }
+        persist(bookmarks, forKey: Self.bookmarksKey)
+    }
+
+    func toggleBookmarkCurrentTab(folder: String? = nil) {
+        if isBookmarkDialogPresented {
+            dismissBookmarkDialog()
+        } else {
+            showBookmarkConfirmationDialogForCurrentTab(folder: folder)
+        }
+    }
+
+    func showBookmarkConfirmationDialogForCurrentTab(folder: String? = nil) {
+        guard let tab = selectedTab, let url = tab.url, !url.absoluteString.hasPrefix("lean://") else { return }
+        isQuickSettingsPresented = false
+        isDownloadsPresented = false
+        isExtensionsPresented = false
+        isFloatingOmnibarVisible = false
+        isInlineURLEditing = false
+        isBookmarksPresented = false
+
+        if let existing = bookmark(for: url) {
+            dialogBookmarkTitle = existing.title
+            dialogBookmarkFolder = existing.folder
+            dialogBookmarkURL = existing.url
+        } else {
+            let title = tab.title.isEmpty ? (url.host ?? url.absoluteString) : tab.title
+            let targetFolder = folder ?? (selectedBookmarkFolder == BookmarkFolder.allFolder ? BookmarkFolder.defaultFolder : selectedBookmarkFolder)
+            addBookmark(title: title, url: url, folder: targetFolder)
+            dialogBookmarkTitle = title
+            dialogBookmarkFolder = targetFolder
+            dialogBookmarkURL = url
+        }
+        withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
+            isBookmarkDialogPresented = true
+        }
+    }
+
+    func saveBookmarkDialog(title: String, folder: String) {
+        guard let url = dialogBookmarkURL else {
+            withAnimation(.easeOut(duration: 0.12)) {
+                isBookmarkDialogPresented = false
+            }
+            return
+        }
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanFolder = folder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? BookmarkFolder.defaultFolder : folder
+        addBookmark(title: cleanTitle.isEmpty ? (url.host ?? url.absoluteString) : cleanTitle, url: url, folder: cleanFolder)
+        withAnimation(.easeOut(duration: 0.12)) {
+            isBookmarkDialogPresented = false
+        }
+    }
+
+    func removeBookmarkFromDialog() {
+        if let url = dialogBookmarkURL, let existing = bookmark(for: url) {
+            deleteBookmark(id: existing.id)
+        }
+        withAnimation(.easeOut(duration: 0.12)) {
+            isBookmarkDialogPresented = false
+        }
+    }
+
+    func dismissBookmarkDialog() {
+        if let url = dialogBookmarkURL {
+            let cleanTitle = dialogBookmarkTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleanFolder = dialogBookmarkFolder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? BookmarkFolder.defaultFolder : dialogBookmarkFolder
+            addBookmark(title: cleanTitle.isEmpty ? (url.host ?? url.absoluteString) : cleanTitle, url: url, folder: cleanFolder)
+        }
+        withAnimation(.easeOut(duration: 0.12)) {
+            isBookmarkDialogPresented = false
+        }
+    }
+
+    func deleteBookmark(id: UUID) {
+        bookmarks.removeAll { $0.id == id }
+        importedBookmarks.removeAll { $0.id == id }
+        persist(bookmarks, forKey: Self.bookmarksKey)
+        persist(importedBookmarks, forKey: Self.importedBookmarksKey)
+    }
+
+    func updateBookmark(id: UUID, title: String, url: URL, folder: String) {
+        guard let index = bookmarks.firstIndex(where: { $0.id == id }) else { return }
+        let cleanFolder = folder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? BookmarkFolder.defaultFolder : folder
+        if !bookmarkFolders.contains(cleanFolder) && cleanFolder != BookmarkFolder.allFolder {
+            bookmarkFolders.append(cleanFolder)
+            persist(bookmarkFolders, forKey: Self.bookmarkFoldersKey)
+        }
+        bookmarks[index].title = title
+        bookmarks[index].url = url
+        bookmarks[index].folder = cleanFolder
+        persist(bookmarks, forKey: Self.bookmarksKey)
+    }
+
+    func moveBookmark(id: UUID, to folder: String) {
+        guard let index = bookmarks.firstIndex(where: { $0.id == id }) else { return }
+        let cleanFolder = folder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? BookmarkFolder.defaultFolder : folder
+        if !bookmarkFolders.contains(cleanFolder) && cleanFolder != BookmarkFolder.allFolder {
+            bookmarkFolders.append(cleanFolder)
+            persist(bookmarkFolders, forKey: Self.bookmarkFoldersKey)
+        }
+        bookmarks[index].folder = cleanFolder
+        persist(bookmarks, forKey: Self.bookmarksKey)
+    }
+
+    func addBookmarkFolder(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != BookmarkFolder.allFolder, !bookmarkFolders.contains(trimmed) else { return }
+        bookmarkFolders.append(trimmed)
+        persist(bookmarkFolders, forKey: Self.bookmarkFoldersKey)
+    }
+
+    func deleteBookmarkFolder(_ name: String) {
+        guard name != BookmarkFolder.defaultFolder && name != BookmarkFolder.allFolder else { return }
+        bookmarkFolders.removeAll { $0 == name }
+        // Re-assign bookmarks in deleted folder to defaultFolder
+        for index in bookmarks.indices {
+            if bookmarks[index].folder == name {
+                bookmarks[index].folder = BookmarkFolder.defaultFolder
+            }
+        }
+        persist(bookmarkFolders, forKey: Self.bookmarkFoldersKey)
+        persist(bookmarks, forKey: Self.bookmarksKey)
+        if selectedBookmarkFolder == name {
+            selectedBookmarkFolder = BookmarkFolder.allFolder
+        }
+    }
+
+    func renameBookmarkFolder(from oldName: String, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != BookmarkFolder.allFolder, oldName != BookmarkFolder.defaultFolder, oldName != BookmarkFolder.allFolder else { return }
+        guard let index = bookmarkFolders.firstIndex(of: oldName) else { return }
+        bookmarkFolders[index] = trimmed
+        for i in bookmarks.indices {
+            if bookmarks[i].folder == oldName {
+                bookmarks[i].folder = trimmed
+            }
+        }
+        persist(bookmarkFolders, forKey: Self.bookmarkFoldersKey)
+        persist(bookmarks, forKey: Self.bookmarksKey)
+        if selectedBookmarkFolder == oldName {
+            selectedBookmarkFolder = trimmed
+        }
     }
 
     func deleteHistoryItem(id: UUID) {
@@ -736,15 +1406,59 @@ final class LeanStore: ObservableObject {
         let persistedTabs = tabs.filter { $0.url != nil }
         let urls = persistedTabs.compactMap { $0.url?.absoluteString }
         let selectedIndex = persistedTabs.firstIndex { $0.id == selectedID } ?? max(0, urls.count - 1)
-        persist(BrowserSession(urls: urls, selectedIndex: selectedIndex), forKey: Self.sessionStateKey)
+        let pinnedIndices = persistedTabs.enumerated().compactMap { $0.element.isPinned ? $0.offset : nil }
+        persist(BrowserSession(urls: urls, selectedIndex: selectedIndex, pinnedIndices: pinnedIndices), forKey: Self.sessionStateKey)
         persist(recentlyClosed.map(\.absoluteString), forKey: Self.recentlyClosedKey)
+    }
+
+    func togglePin(tab: LeanTab) {
+        guard tab.url != nil || tab.isPinned else { return }
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            tab.isPinned.toggle()
+            if let currentIndex = tabs.firstIndex(where: { $0.id == tab.id }) {
+                tabs.remove(at: currentIndex)
+                if tab.isPinned {
+                    let lastPinnedIndex = tabs.lastIndex(where: { $0.isPinned }) ?? -1
+                    tabs.insert(tab, at: lastPinnedIndex + 1)
+                } else {
+                    let firstUnpinnedIndex = tabs.firstIndex(where: { !$0.isPinned }) ?? tabs.count
+                    tabs.insert(tab, at: firstUnpinnedIndex)
+                }
+            }
+            saveSession()
+        }
     }
 
     @discardableResult
     func newTab(
         url: URL? = nil,
         select: Bool = true,
-        configuration: WKWebViewConfiguration? = nil
+        configuration: WKWebViewConfiguration? = nil,
+        focusAddress: Bool = true,
+        popupOpenerID: LeanTab.ID? = nil
+    ) -> LeanTab {
+        let tab = createTab(url: url, configuration: configuration, popupOpenerID: popupOpenerID)
+        tabs.append(tab)
+        if let popupOpenerID, let opener = tabs.first(where: { $0.id == popupOpenerID }) {
+            opener.hasActivePopup = true
+        }
+        if !select { inactiveSince[tab.id] = Date() }
+        if select {
+            selectedID = tab.id
+            isNewTabOmnibarFloating = false
+            if url == nil && focusAddress {
+                NotificationCenter.default.post(name: .focusAddress, object: nil)
+            }
+        }
+        saveSession()
+        scheduleAutoSleep()
+        return tab
+    }
+
+    func createTab(
+        url: URL? = nil,
+        configuration: WKWebViewConfiguration? = nil,
+        popupOpenerID: LeanTab.ID? = nil
     ) -> LeanTab {
         let tab = LeanTab(
             dataStore: dataStore,
@@ -754,10 +1468,19 @@ final class LeanStore: ObservableObject {
             smoothScrolling: smoothScrollingEnabled,
             pageFont: webPageFont,
             adBlockingEnabled: adBlockingEnabled,
+            adBlockingExcludedHosts: adBlockingExcludedHosts,
+            passwordSavePromptsEnabled: passwordSavePromptsEnabled,
+            passwordSuggestionsEnabled: passwordSuggestionsEnabled,
             configuration: configuration
         )
-        tab.onStateChange = { [weak self] in
-            guard let self else { return }
+        wireTab(tab)
+        tab.popupOpenerID = popupOpenerID
+        return tab
+    }
+
+    private func wireTab(_ tab: LeanTab) {
+        tab.onStateChange = { [weak self, weak tab] in
+            guard let self, let tab else { return }
             self.objectWillChange.send()
             if let tabURL = tab.url, !tab.isLoading {
                 self.recordHistory(url: tabURL, title: tab.title)
@@ -765,30 +1488,162 @@ final class LeanStore: ObservableObject {
             self.saveSession()
         }
         tab.downloadManager = downloadManager
-        tab.onOpenNewTab = { [weak self] url, configuration in
-            self?.newTab(url: nil, configuration: configuration).webView
+        tab.mediaPermissionStore = mediaPermissionStore
+        tab.onCloseTab = { [weak self, weak tab] in
+            guard let self, let tab else { return }
+            self.close(tab)
         }
-        tabs.append(tab)
-        if select {
-            selectedID = tab.id
-            isNewTabOmnibarFloating = false
-            if url == nil {
-                NotificationCenter.default.post(name: .focusAddress, object: nil)
+        tab.onOpenNewTab = { [weak self, weak tab] _, configuration in
+            guard let self, let tab else { return nil }
+            let child = self.newTab(url: nil, configuration: configuration, popupOpenerID: tab.id)
+            child.onCloseTab = { [weak self, weak child] in
+                guard let self, let child else { return }
+                self.close(child)
+            }
+            return child.webView
+        }
+        tab.onOpenSourceTab = { [weak self] title, html in
+            self?.openPageSource(title: title, html: html)
+        }
+        tab.onOpenURLInNewTab = { [weak self] url in
+            self?.newTab(url: url)
+        }
+    }
+
+    // MARK: - Split Tab Support
+
+    func select(tab: LeanTab) {
+        selectedID = tab.id
+        saveSession()
+    }
+
+    func openTabAsSplit(_ tab: LeanTab) {
+        guard !tab.isSplit else { return }
+        if let active = selectedTab, active.id != tab.id {
+            if !active.isSplit {
+                openTabsAsSplit(active, tab)
+            } else if active.splitTabs.count < 4 {
+                // Active is already a split: "open as split" on a background
+                // tab means joining the existing split, never spawning a
+                // stray empty tab.
+                addTabToSplit(active, tabToAdd: tab)
+            }
+            // At max capacity (4 panes): no-op rather than a wrong split.
+        } else {
+            // Splitting the current tab itself: pair it with an empty pane.
+            let companion = createTab(url: nil)
+            tab.splitTabs = [tab, companion]
+            tab.splitWidthRatios = []
+            tab.activeSplitIndex = 1
+            select(tab: tab)
+            objectWillChange.send()
+        }
+    }
+
+    /// Combine two existing tabs into a split owned by `active`.
+    /// Never creates an empty tab — the background-tab context-menu path
+    /// must always end up with `active` + `other`, not `active` + New Tab.
+    func openTabsAsSplit(_ active: LeanTab, _ other: LeanTab) {
+        guard active.id != other.id, !active.isSplit, !other.isSplit else { return }
+        guard tabs.contains(where: { $0.id == active.id }),
+              tabs.contains(where: { $0.id == other.id }) else { return }
+        tabs.removeAll { $0.id == other.id }
+        active.splitTabs = [active, other]
+        active.splitWidthRatios = []
+        active.activeSplitIndex = 1
+        select(tab: active)
+        objectWillChange.send()
+    }
+
+    func addTabToActiveSplit(_ tabToAdd: LeanTab) {
+        guard let active = selectedTab else { return }
+        addTabToSplit(active, tabToAdd: tabToAdd)
+    }
+
+    /// Add `tabToAdd` to an explicit split parent. The context menus capture
+    /// the parent when the menu is built so a selection change between
+    /// menu display and tap can't redirect the tab into the wrong split.
+    func addTabToSplit(_ active: LeanTab, tabToAdd: LeanTab) {
+        guard active.id != tabToAdd.id else { return }
+        guard tabs.contains(where: { $0.id == active.id }),
+              tabs.contains(where: { $0.id == tabToAdd.id }) else { return }
+        if active.isSplit {
+            guard active.splitTabs.count < 4 else { return }
+            tabs.removeAll { $0.id == tabToAdd.id }
+            active.splitTabs.append(tabToAdd)
+            active.activeSplitIndex = active.splitTabs.count - 1
+        } else {
+            tabs.removeAll { $0.id == tabToAdd.id }
+            active.splitTabs = [active, tabToAdd]
+            active.splitWidthRatios = []
+            active.activeSplitIndex = 1
+        }
+        select(tab: active)
+        objectWillChange.send()
+    }
+
+    func separateSplitTabs(_ tab: LeanTab) {
+        guard tab.isSplit else { return }
+        let subTabs = tab.splitTabs
+        guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        tab.splitTabs.removeAll()
+        var insertIndex = index + 1
+        for other in subTabs where other.id != tab.id {
+            other.splitTabs.removeAll()
+            tabs.insert(other, at: min(insertIndex, tabs.count))
+            insertIndex += 1
+        }
+        objectWillChange.send()
+    }
+
+    func closeSplitPane(in parentTab: LeanTab, pane: LeanTab) {
+        guard parentTab.isSplit else { return }
+        pane.destroy()
+        parentTab.splitTabs.removeAll { $0.id == pane.id }
+        if parentTab.splitTabs.count <= 1 {
+            if let remaining = parentTab.splitTabs.first {
+                if parentTab.id != remaining.id {
+                    if let idx = tabs.firstIndex(where: { $0.id == parentTab.id }) {
+                        tabs[idx] = remaining
+                        select(tab: remaining)
+                    }
+                }
+                remaining.splitTabs.removeAll()
+            }
+            parentTab.splitTabs.removeAll()
+        } else {
+            if parentTab.activeSplitIndex >= parentTab.splitTabs.count {
+                parentTab.activeSplitIndex = max(0, parentTab.splitTabs.count - 1)
             }
         }
-        saveSession()
+        objectWillChange.send()
+    }
+
+    @discardableResult
+    func openPageSource(title: String, html: String?) -> LeanTab {
+        let tab = newTab(focusAddress: false)
+        tab.presentPageSource(title: title, html: html)
         return tab
     }
 
     func close(_ tab: LeanTab) {
         guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        if pictureInPictureTabID == tab.id { dismissPictureInPicture() }
         if let url = tab.url {
             recentlyClosed.append(url)
             recentlyClosed = Array(recentlyClosed.suffix(10))
         }
 
+        sleepWorkItems[tab.id]?.cancel()
+        sleepWorkItems[tab.id] = nil
+        sleepWorkTokens[tab.id] = nil
+        inactiveSince[tab.id] = nil
         let wasSelected = selectedID == tab.id
         let closedTab = tabs.remove(at: index)
+        if let openerID = closedTab.popupOpenerID,
+           let opener = tabs.first(where: { $0.id == openerID }) {
+            opener.hasActivePopup = tabs.contains { $0.popupOpenerID == openerID }
+        }
         closedTab.destroy()
 
         if tabs.isEmpty {
@@ -801,6 +1656,7 @@ final class LeanStore: ObservableObject {
             inlineSuggestionsFrame = .zero
         }
         saveSession()
+        scheduleAutoSleep()
     }
 
     func closeSelectedTab() {
@@ -817,7 +1673,7 @@ final class LeanStore: ObservableObject {
         isFloatingOmnibarVisible = false
         floatingPaletteFrame = .zero
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
+            guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
             tab.webView.window?.makeFirstResponder(tab.webView)
         }
     }
@@ -836,13 +1692,17 @@ final class LeanStore: ObservableObject {
         inlineURLBarFrame = .zero
         inlineSuggestionsFrame = .zero
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
+            guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
             tab.webView.evaluateJavaScript("window.getSelection()?.removeAllRanges()", completionHandler: nil)
             tab.webView.window?.makeFirstResponder(tab.webView)
         }
     }
 
     func switchToTab(id: LeanTab.ID) {
+        if pictureInPictureTabID == id {
+            returnFromPictureInPicture()
+            return
+        }
         isFloatingOmnibarVisible = false
         isNewTabOmnibarFloating = false
         isInlineURLEditing = false
@@ -852,7 +1712,7 @@ final class LeanStore: ObservableObject {
         selectedID = id
         saveSession()
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
+            guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
             tab.webView.window?.makeFirstResponder(tab.webView)
         }
     }
@@ -865,9 +1725,29 @@ final class LeanStore: ObservableObject {
         self.selectedID = tabs[(index + offset) % tabs.count].id
         saveSession()
         DispatchQueue.main.async { [weak self] in
-            guard let self, let tab = self.selectedTab else { return }
+            guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
             tab.webView.window?.makeFirstResponder(tab.webView)
         }
+    }
+
+    func moveTab(id: LeanTab.ID, toIndex destination: Int) {
+        guard let source = tabs.firstIndex(where: { $0.id == id }), tabs.count > 1 else { return }
+        var reordered = tabs
+        let tab = reordered.remove(at: source)
+
+        let targetIndex: Int
+        if tab.isPinned {
+            let pinnedCount = reordered.filter(\.isPinned).count
+            targetIndex = min(max(destination, 0), pinnedCount)
+        } else {
+            let pinnedCount = reordered.filter(\.isPinned).count
+            targetIndex = min(max(destination, pinnedCount), reordered.count)
+        }
+
+        reordered.insert(tab, at: targetIndex)
+        guard reordered.map(\.id) != tabs.map(\.id) else { return }
+        tabs = reordered
+        saveSession()
     }
 
     func selectTab(number: Int) {
@@ -891,9 +1771,10 @@ final class LeanStore: ObservableObject {
         guard !validTabs.isEmpty else { return }
 
         // If thumbnail previews are enabled, capture snapshot asynchronously in background so switcher opens with 0ms lag
-        if enableThumbnailsInTabSwitcher {
+        if enableThumbnailsInTabSwitcher, selectedTab?.snapshot == nil {
             DispatchQueue.main.async { [weak self] in
-                self?.selectedTab?.captureSnapshot()
+                guard let self, self.selectedTab?.snapshot == nil else { return }
+                self.selectedTab?.captureSnapshot()
             }
         }
 
@@ -976,6 +1857,7 @@ final class LeanStore: ObservableObject {
         persist(leanUIFont.rawValue, forKey: Self.leanUIFontKey)
         persist(uiHeadingWeight.rawValue, forKey: Self.uiHeadingWeightKey)
         persist(uiBodyWeight.rawValue, forKey: Self.uiBodyWeightKey)
+        persist(browserUIScalePercent, forKey: Self.browserUIScaleKey)
         persist(webPageFont.rawValue, forKey: Self.webPageFontKey)
         persist(enableZenMode, forKey: Self.zenModeKey)
         persist(enableWindowBorder, forKey: Self.windowBorderKey)
@@ -1001,8 +1883,16 @@ final class LeanStore: ObservableObject {
     private static let sessionStateKey = "browserSession_v1"
     private static let recentlyClosedKey = "recentlyClosedURLs"
     private static let historyKey = "visitedHistory"
+    private static let importedBookmarksKey = "importedBookmarks_v1"
+    private static let bookmarksKey = "bookmarks_v1"
+    private static let bookmarkFoldersKey = "bookmarkFolders_v1"
     private static let searchEngineKey = "searchEngine"
     private static let adBlockingKey = "adBlockingEnabled"
+    private static let passwordSavePromptsKey = "passwordSavePromptsEnabled"
+    private static let passwordSuggestionsKey = "passwordSuggestionsEnabled"
+    private static let autoSleepTabsEnabledKey = "autoSleepTabsEnabled"
+    private static let autoSleepAfterMinutesKey = "autoSleepAfterMinutes"
+    private static let adBlockingExcludedHostsKey = "adBlockingExcludedHosts_v1"
     private static let themeKey = "appTheme"
     private static let scrollbarKey = "scrollbarStyle"
     private static let tabDisplayModeKey = "tabDisplayMode"
@@ -1014,6 +1904,7 @@ final class LeanStore: ObservableObject {
     private static let leanUIFontKey = "leanUIFont"
     private static let uiHeadingWeightKey = "uiHeadingWeight"
     private static let uiBodyWeightKey = "uiBodyWeight"
+    private static let browserUIScaleKey = "browserUIScalePercent"
     private static let webPageFontKey = "webPageFont"
     private static let zenModeKey = "enableZenMode"
     private static let windowBorderKey = "enableWindowBorder"
@@ -1022,6 +1913,7 @@ final class LeanStore: ObservableObject {
     private static let shownToolbarItemsKey = "shownToolbarItems"
     private static let hiddenToolbarItemsKey = "hiddenToolbarItems"
     private static let customShortcutsKey = "customShortcuts_v1"
+    private static let hasCompletedOnboardingKey = "hasCompletedOnboarding"
 }
 
 private func databaseValue<T: Decodable>(

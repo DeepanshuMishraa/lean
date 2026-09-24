@@ -8,7 +8,22 @@ import {
   ShieldCheck,
   Copy,
   Check,
-} from '@phosphor-icons/react'
+  Bookmark,
+  BookmarkSimple,
+  MagnifyingGlass,
+  Columns,
+  Key,
+  Lock,
+  ArrowRight,
+  Sliders,
+  Sparkle,
+  Tabs as TabsIcon,
+  ArrowSquareOut,
+  Folder,
+  Star,
+  Compass,
+  Cpu,
+} from '../icons'
 
 export const Route = createFileRoute('/')({ component: Home })
 
@@ -49,13 +64,11 @@ async function detectMacArch(): Promise<MacArch> {
     if (architecture === 'x86') return 'x86_64'
     if (architecture === 'arm') return 'arm64'
   } catch {
-    // Fall through to the default below.
+    // Fall through to default
   }
   return 'arm64'
 }
 
-// Resolves the download button to the newest release DMG matching the
-// visitor's chip. Falls back to the releases page until loaded or on error.
 function useLatestDownload() {
   const [arch, setArch] = useState<MacArch>('arm64')
   const [release, setRelease] = useState<GitHubRelease | null>(null)
@@ -73,7 +86,7 @@ function useLatestDownload() {
         if (!cancelled && data) setRelease(data)
       })
       .catch(() => {
-        // Offline, rate-limited, or API error: keep the releases fallback.
+        // Offline or rate-limited fallback
       })
     return () => {
       cancelled = true
@@ -89,8 +102,8 @@ function useLatestDownload() {
       arch === 'arm64' ? 'Apple Silicon' : 'Intel'
     }`,
     sublabel: release
-      ? `${release.tag_name} · ${arch === 'arm64' ? 'Apple Silicon' : 'Intel'} · Free and open source`
-      : 'Free and open source.',
+      ? `${release.tag_name} · ${arch === 'arm64' ? 'Apple Silicon' : 'Intel'} · Free & Open Source`
+      : 'Free & Open Source.',
     otherArchLabel:
       otherArch === 'arm64' ? 'Apple Silicon build' : 'Intel build',
     switchArch: () => setArch(otherArch),
@@ -170,16 +183,30 @@ function Home() {
   return (
     <div className="min-h-screen bg-white text-[#111111] font-mono antialiased selection:bg-[#111111] selection:text-white">
       {/* Header */}
-      <header className="max-w-4xl mx-auto px-6 pt-10 pb-5 flex items-center justify-between">
+      <header className="max-w-5xl mx-auto px-6 pt-10 pb-5 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <span className="w-2.5 h-2.5 rounded-full bg-[#111111]" />
-          <span className="text-sm font-medium text-[#111111]">lean</span>
+          <span className="text-sm font-medium tracking-tight text-[#111111]">
+            lean
+          </span>
           <span className="text-[11px] text-[#777777] px-2 py-0.5 rounded border border-[#e5e5e5] bg-[#fafafa]">
             macOS
           </span>
         </div>
 
-        <div className="flex items-center gap-5 text-xs text-[#666666]">
+        <nav className="flex items-center gap-6 text-xs text-[#666666]">
+          <a
+            href="#features"
+            className="hidden sm:inline hover:text-[#111111] transition-colors"
+          >
+            Features
+          </a>
+          <a
+            href="#shortcuts"
+            className="hidden sm:inline hover:text-[#111111] transition-colors"
+          >
+            Shortcuts
+          </a>
           <a
             href={REPO_URL}
             target="_blank"
@@ -197,20 +224,26 @@ function Home() {
             <AppleLogo className="w-3.5 h-3.5" />
             <span>Download</span>
           </a>
-        </div>
+        </nav>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-6 pt-7 pb-20">
+      <main className="max-w-5xl mx-auto px-6 pt-8 pb-24">
+        {/* Hero Section */}
         <div className="max-w-2xl">
-          <h1 className="font-mono text-2xl sm:text-4xl font-normal text-[#111111] leading-snug">
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-[#e5e5e5] bg-[#fafafa] text-[11px] text-[#666666] mb-5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span>Native macOS browser on WebKit</span>
+          </div>
+
+          <h1 className="font-mono text-3xl sm:text-5xl font-normal text-[#111111] leading-tight tracking-tight">
             A quiet browser for your Mac.
           </h1>
-          <p className="mt-4 text-xs sm:text-sm text-[#555555] leading-relaxed">
-            Lean is a personal experiment, not a daily driver: the WebKit
-            already on your Mac, wrapped in just enough native UI to browse. No
-            bundled engine, no daemons, no accounts — a clean, minimal window
-            onto the web.
+          <p className="mt-5 text-xs sm:text-sm text-[#555555] leading-relaxed">
+            Lean is built directly on the WebKit engine already on your Mac.
+            Zero bundled Chromium bloat, zero background daemons, zero tracking.
+            Wrapped in a quiet, keyboard-first interface designed to get out of
+            your way.
           </p>
 
           {/* Download Action Button */}
@@ -230,132 +263,498 @@ function Home() {
             {download.sublabel}{' '}
             <button
               onClick={download.switchArch}
-              className="underline underline-offset-2 hover:text-[#111111] transition-colors"
+              className="underline underline-offset-2 hover:text-[#111111] transition-colors cursor-pointer"
             >
               Need the {download.otherArchLabel}?
             </button>
           </p>
         </div>
 
-        <img
-          src="/hero-browser.png"
-          alt="Lean displaying the website in a macOS browser window"
-          width={2320}
-          height={1504}
-          fetchPriority="high"
-          className="mt-14 w-full rounded-2xl"
-        />
+        {/* Hero Window Graphic */}
+        <div className="mt-12 rounded-2xl border border-[#eeeeee] p-1.5 bg-[#fafafa] shadow-[0_12px_40px_rgba(0,0,0,0.04)]">
+          <img
+            src="/hero-browser.png"
+            alt="Lean displaying the browser in a minimal macOS window"
+            width={2320}
+            height={1504}
+            fetchPriority="high"
+            className="w-full rounded-xl border border-[#e5e5e5]"
+          />
+        </div>
 
-        {/* Feature Cards Grid */}
-        <div className="mt-24 grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Core Specs Bar */}
+        <div className="mt-14 grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="p-4 rounded-xl bg-[#fafafa] border border-[#eeeeee]">
+            <div className="text-[11px] text-[#888888] uppercase tracking-wider">
+              Bundle Size
+            </div>
+            <div className="text-xl font-medium text-[#111111] mt-1">
+              &lt; 15 MB
+            </div>
+            <div className="text-[11px] text-[#666666] mt-0.5">
+              Zero Chromium bloat
+            </div>
+          </div>
+          <div className="p-4 rounded-xl bg-[#fafafa] border border-[#eeeeee]">
+            <div className="text-[11px] text-[#888888] uppercase tracking-wider">
+              Engine
+            </div>
+            <div className="text-xl font-medium text-[#111111] mt-1">
+              Apple WebKit
+            </div>
+            <div className="text-[11px] text-[#666666] mt-0.5">
+              Native system engine
+            </div>
+          </div>
+          <div className="p-4 rounded-xl bg-[#fafafa] border border-[#eeeeee]">
+            <div className="text-[11px] text-[#888888] uppercase tracking-wider">
+              Telemetry
+            </div>
+            <div className="text-xl font-medium text-[#111111] mt-1">
+              0 Packets
+            </div>
+            <div className="text-[11px] text-[#666666] mt-0.5">
+              No analytics or tracking
+            </div>
+          </div>
+          <div className="p-4 rounded-xl bg-[#fafafa] border border-[#eeeeee]">
+            <div className="text-[11px] text-[#888888] uppercase tracking-wider">
+              Storage
+            </div>
+            <div className="text-xl font-medium text-[#111111] mt-1">
+              Local SQLite
+            </div>
+            <div className="text-[11px] text-[#666666] mt-0.5">
+              Private on your disk
+            </div>
+          </div>
+        </div>
+
+        {/* Featured Showcase: Omnibar & Bookmarks Palette */}
+        <div id="features" className="mt-28">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-[#888888] mb-3">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#111111]" />
+            <span>Command Center</span>
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-normal text-[#111111] tracking-tight">
+            Built for speed and keyboard mastery.
+          </h2>
+
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Omnibar Card */}
+            <div className="p-6 rounded-2xl bg-[#fafafa] border border-[#eeeeee] flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <div className="w-8 h-8 rounded-lg bg-white border border-[#e5e5e5] flex items-center justify-center text-[#111111] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                    <MagnifyingGlass size={16} />
+                  </div>
+                  <kbd className="px-2 py-0.5 text-[11px] rounded bg-white border border-[#e5e5e5] text-[#444444] shadow-xs">
+                    ⌘L
+                  </kbd>
+                </div>
+                <h3 className="text-sm font-medium text-[#111111] uppercase tracking-wider mt-4">
+                  Floating Omnibar
+                </h3>
+                <p className="text-xs text-[#555555] leading-relaxed mt-2">
+                  Unified command palette for URLs, search, open tabs, and
+                  browsing history. Navigate suggestions with arrow keys, and
+                  press{' '}
+                  <kbd className="px-1.5 py-0.2 rounded bg-white border border-[#e5e5e5] text-[#222]">
+                    →
+                  </kbd>{' '}
+                  to fill the input field instantly.
+                </p>
+              </div>
+
+              {/* Omnibar Mockup */}
+              <div className="mt-6 p-3 rounded-xl bg-white border border-[#e5e5e5] shadow-xs space-y-2">
+                <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#fafafa] border border-[#eeeeee] text-xs">
+                  <MagnifyingGlass size={13} className="text-[#888888]" />
+                  <span className="text-[#111111]">github.com/lean</span>
+                  <span className="ml-auto text-[10px] text-[#888888]">
+                    → to fill
+                  </span>
+                </div>
+                <div className="space-y-1 text-[11px]">
+                  <div className="flex items-center justify-between px-2.5 py-1 rounded-md bg-[#f5f5f5] text-[#111111]">
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                      <span className="truncate">DeepanshuMishraa/lean</span>
+                    </div>
+                    <span className="text-[10px] text-[#777777] shrink-0">
+                      Switch Tab
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between px-2.5 py-1 rounded-md text-[#555555]">
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="w-1.5 h-1.5 rounded-full bg-neutral-300" />
+                      <span className="truncate">github.com/releases</span>
+                    </div>
+                    <span className="text-[10px] text-[#888888] shrink-0">
+                      History
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bookmarks Palette Card */}
+            <div className="p-6 rounded-2xl bg-[#fafafa] border border-[#eeeeee] flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <div className="w-8 h-8 rounded-lg bg-white border border-[#e5e5e5] flex items-center justify-center text-[#111111] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                    <BookmarkSimple size={16} />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <kbd className="px-2 py-0.5 text-[11px] rounded bg-white border border-[#e5e5e5] text-[#444444] shadow-xs">
+                      ⌘B
+                    </kbd>
+                    <kbd className="px-2 py-0.5 text-[11px] rounded bg-white border border-[#e5e5e5] text-[#444444] shadow-xs">
+                      ⌘D
+                    </kbd>
+                  </div>
+                </div>
+                <h3 className="text-sm font-medium text-[#111111] uppercase tracking-wider mt-4">
+                  Bookmarks & Folders
+                </h3>
+                <p className="text-xs text-[#555555] leading-relaxed mt-2">
+                  Fast bookmarks palette with custom folder support. Press{' '}
+                  <kbd className="px-1.5 py-0.2 rounded bg-white border border-[#e5e5e5] text-[#222]">
+                    ←
+                  </kbd>{' '}
+                  /{' '}
+                  <kbd className="px-1.5 py-0.2 rounded bg-white border border-[#e5e5e5] text-[#222]">
+                    →
+                  </kbd>{' '}
+                  to cycle folders, fuzzy search items, and bookmark any page
+                  with a sleek confirmation dialog.
+                </p>
+              </div>
+
+              {/* Bookmarks Mockup */}
+              <div className="mt-6 p-3 rounded-xl bg-white border border-[#e5e5e5] shadow-xs space-y-2.5">
+                {/* Folder Strip */}
+                <div className="flex items-center gap-1.5 text-[10px] overflow-hidden">
+                  <span className="px-2 py-0.5 rounded-md bg-[#111111] text-white flex items-center gap-1">
+                    <Star size={10} className="text-amber-400" />
+                    <span>Favorites</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-[#f0f0f0] text-[#555555] flex items-center gap-1">
+                    <Folder size={10} />
+                    <span>Work</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-[#f0f0f0] text-[#555555] flex items-center gap-1">
+                    <Folder size={10} />
+                    <span>Dev</span>
+                  </span>
+                </div>
+                {/* Sample Rows */}
+                <div className="space-y-1 text-[11px]">
+                  <div className="flex items-center justify-between px-2.5 py-1 rounded-md bg-[#f5f5f5] text-[#111111]">
+                    <span className="truncate">Hacker News</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-white border border-[#e5e5e5] text-[#777]">
+                      news.ycombinator.com
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between px-2.5 py-1 rounded-md text-[#555555]">
+                    <span className="truncate">GitHub Dashboard</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-white border border-[#e5e5e5] text-[#777]">
+                      github.com
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Feature Grid: 6 Pillars */}
+        <div className="mt-14 grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Zen Mode */}
           <div className="p-6 rounded-2xl bg-[#fafafa] border border-[#eeeeee] flex flex-col justify-between">
             <div className="space-y-3">
-              <div className="w-8 h-8 rounded-lg bg-white border border-[#e5e5e5] flex items-center justify-center text-[#111111] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                <Lightning size={16} weight="duotone" />
+              <div className="flex items-center justify-between">
+                <div className="w-8 h-8 rounded-lg bg-white border border-[#e5e5e5] flex items-center justify-center text-[#111111] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                  <Sparkle size={16} />
+                </div>
+                <kbd className="px-2 py-0.5 text-[11px] rounded bg-white border border-[#e5e5e5] text-[#444444] shadow-xs">
+                  ⌘⇧Z
+                </kbd>
               </div>
               <div>
                 <h3 className="text-xs font-medium text-[#111111] uppercase tracking-wider">
-                  Swift and WebKit
+                  Zen Mode & Dynamic Frame
                 </h3>
                 <p className="text-xs text-[#555555] leading-relaxed mt-2">
-                  Built natively for macOS on WebKit — no bundled engine, no
-                  background daemons, no accounts. It starts fast and stays out
-                  of the way.
+                  Drop all window chrome for pure web immersion. A hairline
+                  border gently tints to reflect your current page accents.
                 </p>
               </div>
             </div>
             <div className="mt-6 flex items-center gap-2 text-[11px] text-[#888888]">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>No bundled engine</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+              <span>Distraction-free</span>
               <span>·</span>
-              <span>Native UI</span>
+              <span>Adaptive border</span>
             </div>
           </div>
 
+          {/* Split View */}
           <div className="p-6 rounded-2xl bg-[#fafafa] border border-[#eeeeee] flex flex-col justify-between">
             <div className="space-y-3">
-              <div className="w-8 h-8 rounded-lg bg-white border border-[#e5e5e5] flex items-center justify-center text-[#111111] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                <SidebarIcon size={16} weight="duotone" />
+              <div className="flex items-center justify-between">
+                <div className="w-8 h-8 rounded-lg bg-white border border-[#e5e5e5] flex items-center justify-center text-[#111111] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                  <Columns size={16} />
+                </div>
+                <kbd className="px-2 py-0.5 text-[11px] rounded bg-white border border-[#e5e5e5] text-[#444444] shadow-xs">
+                  ⌥↩
+                </kbd>
               </div>
               <div>
                 <h3 className="text-xs font-medium text-[#111111] uppercase tracking-wider">
-                  Zen mode and framing
+                  Split View Browsing
                 </h3>
                 <p className="text-xs text-[#555555] leading-relaxed mt-2">
-                  Hide the whole interface with one keystroke for pure
-                  immersion, toggle the subtle window frame, or collapse the
-                  sidebar tabs when you don't need them.
+                  Open links side-by-side in dual active panes. Compare
+                  references, review documentation, or multitask without window
+                  clutter.
                 </p>
               </div>
             </div>
             <div className="mt-6 flex items-center gap-2 text-[11px] text-[#888888]">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-              <span>Zen mode</span>
+              <span>Dual panes</span>
               <span>·</span>
-              <span>Collapsible sidebar</span>
+              <span>Parallel workflow</span>
             </div>
           </div>
 
+          {/* Password Vault */}
           <div className="p-6 rounded-2xl bg-[#fafafa] border border-[#eeeeee] flex flex-col justify-between">
             <div className="space-y-3">
-              <div className="w-8 h-8 rounded-lg bg-white border border-[#e5e5e5] flex items-center justify-center text-[#111111] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                <ShieldCheck size={16} weight="duotone" />
+              <div className="flex items-center justify-between">
+                <div className="w-8 h-8 rounded-lg bg-white border border-[#e5e5e5] flex items-center justify-center text-[#111111] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                  <Key size={16} />
+                </div>
+                <span className="text-[10px] text-[#777777] px-2 py-0.5 rounded border border-[#e5e5e5] bg-white">
+                  Keychain
+                </span>
               </div>
               <div>
                 <h3 className="text-xs font-medium text-[#111111] uppercase tracking-wider">
-                  Quiet and private
+                  Keychain Password Vault
                 </h3>
                 <p className="text-xs text-[#555555] leading-relaxed mt-2">
-                  No analytics, no accounts, and no tracking. Your history stays
-                  on your machine in a local SQLite database, and WebKit content
-                  blocking keeps ads and trackers out.
+                  Integrated with Apple Keychain. Secure in-page autofill
+                  suggestions with zero cloud sync or external password
+                  extensions required.
                 </p>
               </div>
             </div>
             <div className="mt-6 flex items-center gap-2 text-[11px] text-[#888888]">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-              <span>Local SQLite</span>
+              <span>Apple Keychain</span>
               <span>·</span>
-              <span>Zero telemetry</span>
+              <span>Native autofill</span>
+            </div>
+          </div>
+
+          {/* 1-Click Migration */}
+          <div className="p-6 rounded-2xl bg-[#fafafa] border border-[#eeeeee] flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="w-8 h-8 rounded-lg bg-white border border-[#e5e5e5] flex items-center justify-center text-[#111111] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                <Compass size={16} />
+              </div>
+              <div>
+                <h3 className="text-xs font-medium text-[#111111] uppercase tracking-wider">
+                  1-Click Browser Migration
+                </h3>
+                <p className="text-xs text-[#555555] leading-relaxed mt-2">
+                  Instant data migration from Chrome, Arc, Safari, Brave, and
+                  Edge. Transfer bookmarks, browsing history, and passwords with
+                  one click.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex flex-wrap gap-1.5 text-[10px] text-[#666666]">
+              <span className="px-1.5 py-0.5 rounded bg-white border border-[#e5e5e5]">
+                Chrome
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-white border border-[#e5e5e5]">
+                Arc
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-white border border-[#e5e5e5]">
+                Safari
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-white border border-[#e5e5e5]">
+                Brave
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-white border border-[#e5e5e5]">
+                Edge
+              </span>
+            </div>
+          </div>
+
+          {/* Ad & Tracker Blocking */}
+          <div className="p-6 rounded-2xl bg-[#fafafa] border border-[#eeeeee] flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="w-8 h-8 rounded-lg bg-white border border-[#e5e5e5] flex items-center justify-center text-[#111111] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                <ShieldCheck size={16} />
+              </div>
+              <div>
+                <h3 className="text-xs font-medium text-[#111111] uppercase tracking-wider">
+                  Engine-Level Ad Blocking
+                </h3>
+                <p className="text-xs text-[#555555] leading-relaxed mt-2">
+                  Pre-compiled WebKit content rules block intrusive ads, cookie
+                  banners, and telemetry before network requests fire, saving
+                  CPU cycles.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex items-center gap-2 text-[11px] text-[#888888]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span>Zero overhead</span>
+              <span>·</span>
+              <span>WebKit rules</span>
+            </div>
+          </div>
+
+          {/* Extensions */}
+          <div className="p-6 rounded-2xl bg-[#fafafa] border border-[#eeeeee] flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="w-8 h-8 rounded-lg bg-white border border-[#e5e5e5] flex items-center justify-center text-[#111111] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                  <Lightning size={16} />
+                </div>
+                <span className="text-[10px] text-[#777777] px-2 py-0.5 rounded border border-[#e5e5e5] bg-white">
+                  macOS 15.4+
+                </span>
+              </div>
+              <div>
+                <h3 className="text-xs font-medium text-[#111111] uppercase tracking-wider">
+                  WebExtension Support
+                </h3>
+                <p className="text-xs text-[#555555] leading-relaxed mt-2">
+                  Install Chrome Web Store extensions with per-install security
+                  reviews, sandboxed runtime permissions, and isolated storage.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex items-center gap-2 text-[11px] text-[#888888]">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+              <span>WebExtensions</span>
+              <span>·</span>
+              <span>Permission review</span>
             </div>
           </div>
         </div>
 
         {/* Minimal Keyboard Shortcuts Strip */}
-        <div className="mt-12 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-xs text-[#666666]">
-          <div className="flex items-center gap-2">
-            <kbd className="px-2 py-0.5 text-[11px] rounded bg-[#fafafa] border border-[#e5e5e5] text-[#222222] shadow-[0_1px_0_rgba(0,0,0,0.05)]">
-              ⌘T
-            </kbd>
-            <span>New Tab</span>
+        <div id="shortcuts" className="mt-28">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-[#888888] mb-3">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#111111]" />
+            <span>Keyboard First</span>
           </div>
-          <div className="flex items-center gap-2">
-            <kbd className="px-2 py-0.5 text-[11px] rounded bg-[#fafafa] border border-[#e5e5e5] text-[#222222] shadow-[0_1px_0_rgba(0,0,0,0.05)]">
-              ⌘S
-            </kbd>
-            <span>Toggle Sidebar</span>
+          <h2 className="text-2xl sm:text-3xl font-normal text-[#111111] tracking-tight">
+            Designed for hands on the keyboard.
+          </h2>
+
+          <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="p-4 rounded-xl bg-[#fafafa] border border-[#eeeeee] flex items-center justify-between text-xs">
+              <span className="text-[#555555]">New Tab</span>
+              <kbd className="px-2 py-0.5 text-[11px] rounded bg-white border border-[#e5e5e5] text-[#222222] shadow-xs">
+                ⌘T
+              </kbd>
+            </div>
+            <div className="p-4 rounded-xl bg-[#fafafa] border border-[#eeeeee] flex items-center justify-between text-xs">
+              <span className="text-[#555555]">Address / Omnibar</span>
+              <kbd className="px-2 py-0.5 text-[11px] rounded bg-white border border-[#e5e5e5] text-[#222222] shadow-xs">
+                ⌘L
+              </kbd>
+            </div>
+            <div className="p-4 rounded-xl bg-[#fafafa] border border-[#eeeeee] flex items-center justify-between text-xs">
+              <span className="text-[#555555]">Bookmarks Palette</span>
+              <kbd className="px-2 py-0.5 text-[11px] rounded bg-white border border-[#e5e5e5] text-[#222222] shadow-xs">
+                ⌘B
+              </kbd>
+            </div>
+            <div className="p-4 rounded-xl bg-[#fafafa] border border-[#eeeeee] flex items-center justify-between text-xs">
+              <span className="text-[#555555]">Bookmark Current Page</span>
+              <kbd className="px-2 py-0.5 text-[11px] rounded bg-white border border-[#e5e5e5] text-[#222222] shadow-xs">
+                ⌘D
+              </kbd>
+            </div>
+            <div className="p-4 rounded-xl bg-[#fafafa] border border-[#eeeeee] flex items-center justify-between text-xs">
+              <span className="text-[#555555]">Open in Split View</span>
+              <kbd className="px-2 py-0.5 text-[11px] rounded bg-white border border-[#e5e5e5] text-[#222222] shadow-xs">
+                ⌥↩
+              </kbd>
+            </div>
+            <div className="p-4 rounded-xl bg-[#fafafa] border border-[#eeeeee] flex items-center justify-between text-xs">
+              <span className="text-[#555555]">Fill URL Suggestion</span>
+              <kbd className="px-2 py-0.5 text-[11px] rounded bg-white border border-[#e5e5e5] text-[#222222] shadow-xs">
+                →
+              </kbd>
+            </div>
+            <div className="p-4 rounded-xl bg-[#fafafa] border border-[#eeeeee] flex items-center justify-between text-xs">
+              <span className="text-[#555555]">Toggle Sidebar</span>
+              <kbd className="px-2 py-0.5 text-[11px] rounded bg-white border border-[#e5e5e5] text-[#222222] shadow-xs">
+                ⌘S
+              </kbd>
+            </div>
+            <div className="p-4 rounded-xl bg-[#fafafa] border border-[#eeeeee] flex items-center justify-between text-xs">
+              <span className="text-[#555555]">Toggle Tab Bar</span>
+              <kbd className="px-2 py-0.5 text-[11px] rounded bg-white border border-[#e5e5e5] text-[#222222] shadow-xs">
+                ⌘⇧T
+              </kbd>
+            </div>
+            <div className="p-4 rounded-xl bg-[#fafafa] border border-[#eeeeee] flex items-center justify-between text-xs">
+              <span className="text-[#555555]">Toggle Zen Mode</span>
+              <kbd className="px-2 py-0.5 text-[11px] rounded bg-white border border-[#e5e5e5] text-[#222222] shadow-xs">
+                ⌘⇧Z
+              </kbd>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <kbd className="px-2 py-0.5 text-[11px] rounded bg-[#fafafa] border border-[#e5e5e5] text-[#222222] shadow-[0_1px_0_rgba(0,0,0,0.05)]">
-              ⌘L
-            </kbd>
-            <span>Address Bar</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <kbd className="px-2 py-0.5 text-[11px] rounded bg-[#fafafa] border border-[#e5e5e5] text-[#222222] shadow-[0_1px_0_rgba(0,0,0,0.05)]">
-              ⌘⇧Z
-            </kbd>
-            <span>Zen Mode</span>
+        </div>
+
+        {/* Bottom CTA Card */}
+        <div className="mt-28 p-8 rounded-2xl bg-[#fafafa] border border-[#eeeeee] text-center space-y-4">
+          <h2 className="text-xl sm:text-2xl font-normal text-[#111111] tracking-tight">
+            Ready for a quieter browsing experience?
+          </h2>
+          <p className="text-xs text-[#666666] max-w-lg mx-auto">
+            Lightweight, native, open source, and built specifically for your
+            Mac. Set Lean as your default browser in seconds.
+          </p>
+          <div className="pt-2 flex items-center justify-center gap-3">
+            <a
+              href={download.href}
+              onClick={openDownloadModal}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#111111] text-white hover:bg-[#2b2b2b] text-xs font-medium transition-all shadow-xs cursor-pointer"
+            >
+              <AppleLogo className="w-3.5 h-3.5" />
+              <span>{download.label}</span>
+            </a>
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-[#e5e5e5] text-[#111111] hover:bg-[#f5f5f5] text-xs font-medium transition-all cursor-pointer"
+            >
+              <GithubLogo size={14} />
+              <span>Source</span>
+            </a>
           </div>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="max-w-4xl mx-auto px-6 pt-16 pb-12 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#888888]">
+      <footer className="max-w-5xl mx-auto px-6 pt-12 pb-12 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#888888] border-t border-[#eeeeee]">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-[#111111]" />
           <span className="font-medium text-[#111111]">lean</span>
-          <span>· Made for macOS</span>
+          <span>· Made for macOS · Free & Open Source</span>
         </div>
 
         <div className="flex items-center gap-5">
@@ -365,7 +764,15 @@ function Home() {
             rel="noreferrer"
             className="hover:text-[#111111] transition-colors"
           >
-            Source Code
+            GitHub
+          </a>
+          <a
+            href={RELEASES_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-[#111111] transition-colors"
+          >
+            Releases
           </a>
         </div>
       </footer>

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Sidebar View for Vertical Tabs
 struct SidebarView: View {
@@ -21,10 +22,10 @@ struct SidebarView: View {
                 Spacer().frame(width: 12)
 
                 InteractiveIconButton(
-                    systemImage: "sidebar.left",
+                    icon: .sidebar,
                     helpText: store.isSidebarCollapsed ? "Pin Sidebar (Always Expanded) (⌘S)" : "Enable Auto-hide (⌘S)",
                     size: 24,
-                    iconSize: 13,
+                    iconSize: 12,
                     color: store.isSidebarCollapsed ? store.adaptiveTheme.secondaryText : store.adaptiveTheme.primaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
                     hoverBackground: store.adaptiveTheme.iconHoverBackground,
@@ -39,7 +40,7 @@ struct SidebarView: View {
                 Spacer().frame(width: 4)
 
                 InteractiveIconButton(
-                    systemImage: "arrow.left",
+                    icon: .arrowLeft,
                     helpText: "Back (⌘[)",
                     size: 24,
                     iconSize: 12,
@@ -57,7 +58,7 @@ struct SidebarView: View {
                 Spacer().frame(width: 4)
 
                 InteractiveIconButton(
-                    systemImage: "arrow.right",
+                    icon: .arrowRight,
                     helpText: "Forward (⌘])",
                     size: 24,
                     iconSize: 12,
@@ -76,7 +77,7 @@ struct SidebarView: View {
 
                 if store.selectedTab?.isLoading == true {
                     InteractiveIconButton(
-                        systemImage: "xmark",
+                        icon: .x,
                         helpText: "Stop Loading (Esc)",
                         size: 24,
                         iconSize: 12,
@@ -91,7 +92,7 @@ struct SidebarView: View {
                     }
                 } else {
                     InteractiveIconButton(
-                        systemImage: "arrow.clockwise",
+                        icon: .arrowClockwise,
                         helpText: "Reload (⌘R)",
                         size: 24,
                         iconSize: 12,
@@ -108,20 +109,39 @@ struct SidebarView: View {
                 }
 
                 Spacer(minLength: 0)
+                    .background(WindowDragView())
+                WindowDragView()
+                    .frame(width: 8)
             }
-            .frame(height: 36)
-            .padding(.top, 4)
+            .frame(height: store.scaled(36))
+            .padding(.top, store.scaled(4))
             .padding(.trailing, 8)
-            .background(WindowDragView())
 
             // 2. Full-Width Interactive Omnibar / Address Field
             SidebarAddressBar(store: store)
                 .padding(.horizontal, 10)
                 .padding(.top, 6)
-                .padding(.bottom, 12)
+                .padding(.bottom, store.pinnedTabs.isEmpty ? 10 : 8)
                 .zIndex(10)
 
-            // 3. Section Title Row with + New Tab Icon
+            // 3. Pinned Tabs Grid (Positioned above TABS + row)
+            if !store.pinnedTabs.isEmpty {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                    ForEach(store.pinnedTabs) { tab in
+                        SidebarPinnedTabItem(
+                            tab: tab,
+                            isSelected: tab.id == store.selectedID,
+                            store: store,
+                            onSelect: { handleTabSelection(tab) },
+                            onClose: { store.close(tab) }
+                        )
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 8)
+            }
+
+            // 4. Section Title Row with + New Tab Icon
             HStack(spacing: 6) {
                 Text("Tabs")
                     .font(store.headingFont(size: 11.5))
@@ -132,28 +152,26 @@ struct SidebarView: View {
                 Spacer()
 
                 InteractiveIconButton(
-                    systemImage: "plus",
+                    icon: .plus,
                     helpText: "New Tab (⌘T)",
-                    size: 22,
-                    iconSize: 11,
+                    size: 24,
+                    iconSize: 12,
                     color: store.adaptiveTheme.secondaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
                     hoverBackground: store.adaptiveTheme.iconHoverBackground,
                     pressedBackground: store.adaptiveTheme.iconPressedBackground,
                     isDark: store.adaptiveTheme.effectiveIsDark
                 ) {
-                    withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
-                        _ = store.newTab()
-                    }
+                    _ = store.newTab()
                 }
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 6)
 
-            // 5. Vertical Tab Strip
+            // 5. Vertical Tab Strip (Unpinned tabs)
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 4) {
-                    ForEach(store.tabs) { tab in
+                LazyVStack(spacing: 4) {
+                    ForEach(store.unpinnedTabs) { tab in
                         SidebarTabItem(
                             tab: tab,
                             isSelected: tab.id == store.selectedID,
@@ -171,6 +189,28 @@ struct SidebarView: View {
 
             // 6. Bottom Footer Row: Downloads, Theme toggle, Settings, New Tab
             HStack(spacing: 6) {
+                ExtensionToolbarButton(store: store)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .preference(key: ExtensionsButtonFrameKey.self, value: proxy.frame(in: .global))
+                        }
+                    )
+                    .onPreferenceChange(ExtensionsButtonFrameKey.self) { frame in
+                        store.extensionsButtonFrame = frame
+                    }
+
+                BookmarkToolbarButton(store: store)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .preference(key: BookmarksButtonFrameKey.self, value: proxy.frame(in: .global))
+                        }
+                    )
+                    .onPreferenceChange(BookmarksButtonFrameKey.self) { frame in
+                        store.bookmarksButtonFrame = frame
+                    }
+
                 DownloadToolbarButton(store: store)
                     .background(
                         GeometryReader { proxy in
@@ -185,10 +225,10 @@ struct SidebarView: View {
                 Spacer()
 
                 InteractiveIconButton(
-                    systemImage: store.isDarkMode ? "sun.max.fill" : "moon.fill",
+                    icon: store.isDarkMode ? .sun : .moon,
                     helpText: store.isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
                     size: 24,
-                    iconSize: 11.5,
+                    iconSize: 12,
                     color: store.adaptiveTheme.secondaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
                     hoverBackground: store.adaptiveTheme.iconHoverBackground,
@@ -201,19 +241,17 @@ struct SidebarView: View {
                 }
 
                 InteractiveIconButton(
-                    systemImage: "gearshape",
+                    icon: .gear,
                     helpText: "Settings (⌘,)",
                     size: 24,
-                    iconSize: 11.5,
+                    iconSize: 12,
                     color: store.isQuickSettingsPresented ? store.adaptiveTheme.primaryText : store.adaptiveTheme.secondaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
                     hoverBackground: store.adaptiveTheme.iconHoverBackground,
                     pressedBackground: store.adaptiveTheme.iconPressedBackground,
                     isDark: store.adaptiveTheme.effectiveIsDark
                 ) {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                        store.isQuickSettingsPresented.toggle()
-                    }
+                    store.isQuickSettingsPresented.toggle()
                 }
                 .background(
                     GeometryReader { proxy in
@@ -225,11 +263,11 @@ struct SidebarView: View {
                     store.settingsButtonFrame = frame
                 }
             }
-            .frame(height: 38)
-            .padding(.horizontal, 10)
-            .padding(.bottom, 4)
+            .frame(height: store.scaled(38))
+            .padding(.horizontal, store.scaled(10))
+            .padding(.bottom, store.scaled(4))
         }
-        .frame(width: 256)
+        .frame(width: store.scaled(256))
         .background(sidebarBackground)
     }
 
@@ -316,8 +354,9 @@ private struct SidebarAddressBar: View {
             VStack(spacing: 2) {
                 ForEach(Array(suggestions.prefix(6).enumerated()), id: \.element.id) { index, match in
                     HStack(spacing: 8) {
-                        Image(systemName: match.isSearch ? "magnifyingglass" : (match.isSwitchToTab ? "arrow.right.circle" : "globe"))
-                            .font(.system(size: 10.5))
+                        (match.isSearch ? LeanIcon.magnifyingGlass.fill : (match.isSwitchToTab ? LeanIcon.arrowCircleRight.fill : LeanIcon.browser.fill))
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 12, height: 12)
                             .foregroundColor(store.adaptiveTheme.secondaryText)
                             .frame(width: 14)
 
@@ -364,8 +403,9 @@ private struct SidebarAddressBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11, weight: .medium))
+            LeanIcon.magnifyingGlass.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 12, height: 12)
                 .foregroundColor(store.adaptiveTheme.secondaryText)
 
             addressField
@@ -376,11 +416,15 @@ private struct SidebarAddressBar: View {
                 Button {
                     text = ""
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
+                    LeanIcon.xCircle.fill
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 11, height: 11)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
             } else if store.selectedTab?.url != nil {
                 // Copy link button
                 Button {
@@ -393,17 +437,20 @@ private struct SidebarAddressBar: View {
                         }
                     }
                 } label: {
-                    Image(systemName: didCopyLink ? "checkmark" : "link")
-                        .font(.system(size: 11.5, weight: .medium))
+                    (didCopyLink ? LeanIcon.check.bold : LeanIcon.copy.fill)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
                         .foregroundColor(didCopyLink ? Color.green : store.adaptiveTheme.secondaryText)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
                 .help("Copy Page Link")
             }
         }
-        .padding(.horizontal, 10)
-        .frame(height: 36)
+        .padding(.horizontal, store.scaled(10))
+        .frame(height: store.scaled(36))
         .background(barBackground)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -485,45 +532,32 @@ struct SidebarTabItem: View {
     let onClose: () -> Void
 
     @State private var isHovered = false
+    @State private var isDropTarget = false
+
+    private var showsClose: Bool {
+        isHovered || isSelected
+    }
+
+    private var tabItemForeground: Color {
+        isSelected
+            ? store.adaptiveTheme.activeTabText
+            : (isHovered ? store.adaptiveTheme.primaryText : store.adaptiveTheme.inactiveTabText)
+    }
 
     var body: some View {
-        HStack(spacing: 8) {
-            TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
-
-            Text(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
-                .font(store.headingFont(size: 13))
-                .foregroundColor(
-                    isSelected
-                        ? store.adaptiveTheme.activeTabText
-                        : (isHovered ? store.adaptiveTheme.primaryText : store.adaptiveTheme.inactiveTabText)
-                )
-                .lineLimit(1)
-                .truncationMode(.tail)
-
-            Spacer(minLength: 4)
-
-            if isHovered || isSelected {
-                Button(action: {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
-                        onClose()
-                    }
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8.5, weight: .bold))
-                        .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
-                        .frame(width: 16, height: 16)
-                        .background(
-                            isHovered ? store.adaptiveTheme.tabCloseButtonHoverBackground : Color.clear,
-                            in: Circle()
-                        )
+        Button(action: onSelect) {
+            Group {
+                if tab.isSplit {
+                    splitSidebarContent
+                } else {
+                    defaultSidebarContent
                 }
-                .buttonStyle(.plain)
-                .help("Close Tab (⌘W)")
-                .transition(.scale.combined(with: .opacity))
             }
+            .padding(.horizontal, store.scaled(10))
+            .frame(height: store.scaled(36))
         }
-        .padding(.horizontal, 10)
-        .frame(height: 36)
+        .buttonStyle(.plain)
+        .overlay { TabMiddleClick { onClose() } }
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(
@@ -539,17 +573,107 @@ struct SidebarTabItem: View {
                 )
         )
         .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
-                onSelect()
+        .onDrag {
+            store.draggingTabID = tab.id
+            return NSItemProvider(object: tab.id.uuidString as NSString)
+        }
+        .onDrop(
+            of: [UTType.plainText],
+            delegate: TabReorderDropDelegate(targetID: tab.id, store: store) { isDropTarget = $0 }
+        )
+        .overlay(alignment: .leading) {
+            if isDropTarget {
+                Capsule()
+                    .fill(store.adaptiveTheme.primaryText)
+                    .frame(width: 2)
+                    .padding(.vertical, 7)
+                    .padding(.leading, 2)
             }
         }
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.12)) {
-                isHovered = hovering
+        .onHover { isHovered = $0 }
+        .overlay(alignment: .trailing) {
+            if showsClose {
+                Button(action: onClose) {
+                    LeanIcon.x.bold
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: store.scaled(8), height: store.scaled(8))
+                        .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
+                        .frame(width: store.scaled(20), height: store.scaled(20))
+                        .background(
+                            store.adaptiveTheme.tabCloseButtonHoverBackground,
+                            in: Circle()
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .help("Close Tab (⌘W)")
+                .padding(.trailing, 8)
             }
         }
         .contextMenu {
+            if tab.isPlayingMedia {
+                Button {
+                    tab.toggleMute()
+                } label: {
+                    Label(tab.isMuted ? "Unmute Tab" : "Mute Tab", systemImage: tab.isMuted ? "speaker.wave.2" : "speaker.slash")
+                }
+                Divider()
+            }
+            if tab.isSplit {
+                Button {
+                    store.separateSplitTabs(tab)
+                } label: {
+                    Label("Separate Tabs", systemImage: "rectangle.split.2x1.slash")
+                }
+                Button {
+                    store.close(tab)
+                } label: {
+                    Label("Close Split", systemImage: "xmark")
+                }
+                Divider()
+            } else {
+                if let active = store.selectedTab, active.isSplit, active.splitTabs.count < 4, tab.id != active.id {
+                    let parent = active
+                    Button {
+                        store.addTabToSplit(parent, tabToAdd: tab)
+                    } label: {
+                        Label("Add to Split", systemImage: "square.split.2x1")
+                    }
+                    Divider()
+                } else if tab.url != nil, !(store.selectedTab?.isSplit == true) {
+                    if let active = store.selectedTab, active.id != tab.id, !active.isSplit {
+                        let parent = active
+                        Button {
+                            store.openTabsAsSplit(parent, tab)
+                        } label: {
+                            Label("Open as Split", systemImage: "square.split.2x1")
+                        }
+                    } else {
+                        Button {
+                            store.openTabAsSplit(tab)
+                        } label: {
+                            Label("Open as Split", systemImage: "square.split.2x1")
+                        }
+                    }
+                    Divider()
+                }
+            }
+            if tab.url != nil && !tab.isSplit {
+                Button {
+                    store.togglePin(tab: tab)
+                } label: {
+                    Label(tab.isPinned ? "Unpin" : "Pin", systemImage: tab.isPinned ? "pin.slash" : "pin")
+                }
+                Divider()
+            }
+            if tab.isSleeping {
+                Button("Wake Tab", action: onSelect)
+            } else {
+                Button("Sleep Tab") { store.sleepTab(tab, notifyOnFailure: true) }
+                    .disabled(isSelected)
+            }
             Button("Close Tab", action: onClose)
             Button("Close Other Tabs") {
                 for otherTab in store.tabs where otherTab.id != tab.id {
@@ -574,8 +698,276 @@ struct SidebarTabItem: View {
             }
         }
     }
+
+    @ViewBuilder
+    private var defaultSidebarContent: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                if tab.isLoading {
+                    DotMatrixLoader(
+                        color: tabItemForeground,
+                        size: store.scaled(16)
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                } else {
+                    TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                }
+            }
+            .frame(width: store.scaled(16), height: store.scaled(16))
+            .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
+
+            Text(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
+                .font(store.tabTitleFont(size: 13))
+                .foregroundColor(tabItemForeground)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: 4)
+
+            if tab.isPlayingMedia {
+                TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: false)
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            }
+
+            // Always reserve close-button width so hover doesn't push text.
+            Color.clear.frame(width: 18, height: 18)
+        }
+    }
+
+    @ViewBuilder
+    private var splitSidebarContent: some View {
+        switch store.tabDisplayMode {
+        case .hybrid:
+            HStack(spacing: 0) {
+                ForEach(Array(tab.splitTabs.enumerated()), id: \.element.id) { index, subTab in
+                    let isSubActive = (index == tab.activeSplitIndex)
+                    Button {
+                        tab.activeSplitIndex = index
+                        onSelect()
+                    } label: {
+                        HStack(spacing: 5) {
+                            TabFaviconView(tab: subTab, isDark: store.adaptiveTheme.effectiveIsDark, size: 13)
+                            Text(subTab.displayTitle(isSelected: isSelected && isSubActive, showFullTitle: false))
+                                .font(store.tabTitleFont(size: 12))
+                                .foregroundColor(
+                                    isSubActive && isSelected
+                                        ? store.adaptiveTheme.activeTabText
+                                        : store.adaptiveTheme.inactiveTabText
+                                )
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 3)
+                        .background(
+                            isSubActive && isSelected
+                                ? store.adaptiveTheme.activeTabStroke.opacity(0.14)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    if index < tab.splitTabs.count - 1 {
+                        Rectangle()
+                            .fill(store.adaptiveTheme.activeTabStroke.opacity(0.25))
+                            .frame(width: 1, height: 12)
+                            .padding(.horizontal, 2)
+                    }
+                }
+
+                Spacer(minLength: 4)
+
+                if tab.isPlayingMedia {
+                    TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: false)
+                }
+
+                Color.clear.frame(width: 18, height: 18)
+            }
+
+        case .iconOnly:
+            HStack(spacing: 4) {
+                ForEach(Array(tab.splitTabs.enumerated()), id: \.element.id) { index, subTab in
+                    let isSubActive = (index == tab.activeSplitIndex)
+                    Button {
+                        tab.activeSplitIndex = index
+                        onSelect()
+                    } label: {
+                        TabFaviconView(tab: subTab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
+                            .padding(2)
+                            .background(
+                                isSubActive && isSelected
+                                    ? store.adaptiveTheme.activeTabStroke.opacity(0.18)
+                                    : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer(minLength: 4)
+                Color.clear.frame(width: 18, height: 18)
+            }
+
+        case .textOnly:
+            HStack(spacing: 4) {
+                ForEach(Array(tab.splitTabs.enumerated()), id: \.element.id) { index, subTab in
+                    let isSubActive = (index == tab.activeSplitIndex)
+                    Button {
+                        tab.activeSplitIndex = index
+                        onSelect()
+                    } label: {
+                        Text(subTab.displayTitle(isSelected: isSelected && isSubActive, showFullTitle: false))
+                            .font(store.tabTitleFont(size: 12))
+                            .foregroundColor(
+                                isSubActive && isSelected
+                                    ? store.adaptiveTheme.activeTabText
+                                    : store.adaptiveTheme.inactiveTabText
+                            )
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    .buttonStyle(.plain)
+
+                    if index < tab.splitTabs.count - 1 {
+                        Text("|")
+                            .font(.system(size: 10, weight: .light))
+                            .foregroundColor(store.adaptiveTheme.inactiveTabText.opacity(0.4))
+                    }
+                }
+
+                Spacer(minLength: 4)
+                Color.clear.frame(width: 18, height: 18)
+            }
+        }
+    }
 }
 
+// MARK: - Sidebar Pinned Tab Item (Grid tile with centered favicon)
+private struct SidebarPinnedTabItem: View {
+    @ObservedObject var tab: LeanTab
+    let isSelected: Bool
+    @ObservedObject var store: LeanStore
+    let onSelect: () -> Void
+    let onClose: () -> Void
+
+    @State private var isHovered = false
+    @State private var isDropTarget = false
+
+    private var tabBackground: Color {
+        if isSelected {
+            return store.adaptiveTheme.activeTabBackground
+        }
+        if isHovered {
+            return store.isDarkMode ? Color.white.opacity(0.14) : Color.black.opacity(0.09)
+        }
+        return store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05)
+    }
+
+    private var tabBorder: Color {
+        if isSelected {
+            return store.adaptiveTheme.activeTabStroke
+        }
+        if isHovered {
+            return store.adaptiveTheme.activeTabStroke.opacity(0.35)
+        }
+        return store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04)
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            ZStack {
+                if tab.isLoading {
+                    DotMatrixLoader(
+                        color: isSelected ? store.adaptiveTheme.activeTabText : store.adaptiveTheme.primaryText,
+                        size: store.scaled(14)
+                    )
+                } else {
+                    TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: store.scaled(38))
+            .background(tabBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(tabBorder, lineWidth: 0.75)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .bottomTrailing) {
+            if tab.isPlayingMedia {
+                TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: true)
+                    .background(
+                        RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                            .fill(isSelected ? store.adaptiveTheme.activeTabBackground : (store.isDarkMode ? Color(white: 0.16) : Color(white: 0.94)))
+                            .shadow(color: Color.black.opacity(0.22), radius: 1, x: 0, y: 0.5)
+                    )
+                    .padding(3)
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .help(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
+        .onHover { isHovered = $0 }
+        .onDrag {
+            store.draggingTabID = tab.id
+            return NSItemProvider(object: tab.id.uuidString as NSString)
+        }
+        .onDrop(
+            of: [UTType.plainText],
+            delegate: TabReorderDropDelegate(targetID: tab.id, store: store) { isDropTarget = $0 }
+        )
+        .overlay(alignment: .leading) {
+            if isDropTarget {
+                Capsule()
+                    .fill(store.adaptiveTheme.primaryText)
+                    .frame(width: 2)
+                    .padding(.vertical, 6)
+            }
+        }
+        .contextMenu {
+            if tab.isPlayingMedia {
+                Button {
+                    tab.toggleMute()
+                } label: {
+                    Label(tab.isMuted ? "Unmute Tab" : "Mute Tab", systemImage: tab.isMuted ? "speaker.wave.2" : "speaker.slash")
+                }
+                Divider()
+            }
+            Button {
+                store.togglePin(tab: tab)
+            } label: {
+                Label("Unpin", systemImage: "pin.slash")
+            }
+            Divider()
+            if tab.isSleeping {
+                Button("Wake Tab", action: onSelect)
+            } else {
+                Button("Sleep Tab") { store.sleepTab(tab, notifyOnFailure: true) }
+                    .disabled(isSelected)
+            }
+            Button("Close Tab", action: onClose)
+            Divider()
+            Button("Reload") { tab.reload() }
+            if tab.canGoBack {
+                Button("Back") { tab.goBack() }
+            }
+            if tab.canGoForward {
+                Button("Forward") { tab.goForward() }
+            }
+            Divider()
+            Button("Duplicate Tab") {
+                if let url = tab.url {
+                    _ = store.newTab(url: url)
+                } else {
+                    _ = store.newTab()
+                }
+            }
+        }
+    }
+}
 
 // MARK: - Sidebar Traffic Lights
 private struct SidebarTrafficLights: View {
@@ -589,7 +981,7 @@ private struct SidebarTrafficLights: View {
             TrafficLightButton(
                 color: Color(red: 255/255, green: 95/255, blue: 87/255),
                 strokeColor: Color(red: 224/255, green: 68/255, blue: 62/255, opacity: 0.9),
-                symbol: "xmark",
+                symbol: .x,
                 symbolSize: 6,
                 isHoveringGroup: isHoveringAll,
                 isActive: isWindowActive,
@@ -604,7 +996,7 @@ private struct SidebarTrafficLights: View {
             TrafficLightButton(
                 color: Color(red: 255/255, green: 189/255, blue: 46/255),
                 strokeColor: Color(red: 222/255, green: 161/255, blue: 35/255, opacity: 0.9),
-                symbol: "minus",
+                symbol: .minus,
                 symbolSize: 6.5,
                 isHoveringGroup: isHoveringAll,
                 isActive: isWindowActive,
@@ -619,7 +1011,7 @@ private struct SidebarTrafficLights: View {
             TrafficLightButton(
                 color: Color(red: 39/255, green: 201/255, blue: 63/255),
                 strokeColor: Color(red: 26/255, green: 171/255, blue: 41/255, opacity: 0.9),
-                symbol: "arrow.up.left.and.arrow.down.right",
+                symbol: .arrowsOutSimple,
                 symbolSize: 5.5,
                 isHoveringGroup: isHoveringAll,
                 isActive: isWindowActive,
@@ -649,7 +1041,7 @@ private struct SidebarTrafficLights: View {
 private struct TrafficLightButton: View {
     let color: Color
     let strokeColor: Color
-    let symbol: String
+    let symbol: LeanIcon
     let symbolSize: CGFloat
     let isHoveringGroup: Bool
     let isActive: Bool
@@ -684,8 +1076,9 @@ private struct TrafficLightButton: View {
                     )
 
                 if isHoveringGroup && isActive {
-                    Image(systemName: symbol)
-                        .font(.system(size: symbolSize, weight: .bold))
+                    symbol.bold
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: symbolSize, height: symbolSize)
                         .foregroundColor(Color.black.opacity(0.65))
                 }
             }
@@ -701,15 +1094,51 @@ private struct TrafficLightButton: View {
     }
 }
 
-// MARK: - Window Drag Bridge
-private struct WindowDragView: NSViewRepresentable {
+// MARK: - Window Drag Bridge (shared with TopBarView: empty chrome areas
+// fall through to this view so the window stays draggable without the
+// window-wide isMovableByWindowBackground behavior that steals button clicks)
+struct WindowDragView: NSViewRepresentable {
+    var onHover: ((Bool) -> Void)? = nil
+
     func makeNSView(context: Context) -> DragNSView {
-        DragNSView()
+        DragNSView(onHover: onHover)
     }
 
-    func updateNSView(_ nsView: DragNSView, context: Context) {}
+    func updateNSView(_ nsView: DragNSView, context: Context) {
+        nsView.onHover = onHover
+    }
 
     class DragNSView: NSView {
+        var onHover: ((Bool) -> Void)?
+
+        init(onHover: ((Bool) -> Void)?) {
+            self.onHover = onHover
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) {
+            super.init(coder: coder)
+        }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(
+                rect: .zero,
+                options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                owner: self,
+                userInfo: nil
+            ))
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            onHover?(true)
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            onHover?(false)
+        }
+
         override func mouseDown(with event: NSEvent) {
             if event.clickCount == 2 {
                 window?.zoom(nil)

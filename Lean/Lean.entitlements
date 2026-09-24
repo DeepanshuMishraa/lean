@@ -22,6 +22,12 @@
     <true/>
     <key>com.apple.security.files.downloads.read-write</key>
     <true/>
+    <key>com.apple.security.print</key>
+    <true/>
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
     <!-- Ad-hoc signed (no Team ID): dyld derives each binary's team from its
     cdhash, so the app and embedded Sparkle can never match teams under the
     hardened runtime's library validation. Disable it or every Release build

@@ -163,12 +163,13 @@ struct TabDisplayModeTests {
     func toolbarCustomizerTests() throws {
         let (store, directory) = try makeIsolatedTestStore()
         defer { try? FileManager.default.removeItem(at: directory) }
-        #expect(ToolbarItemType.allCases.count == 7)
+        #expect(ToolbarItemType.allCases.count == 9)
 
         // Reset to default
         store.resetToolbarItems()
-        #expect(store.shownToolbarItems.count == 7)
+        #expect(store.shownToolbarItems.count == 9)
         #expect(store.hiddenToolbarItems.isEmpty)
+        #expect(store.isToolbarItemShown(.bookmarks) == true)
 
         // Hide an item
         store.hideToolbarItem(.reload)
@@ -326,5 +327,191 @@ struct TabDisplayModeTests {
         #expect(store.enableWindowBorder == true)
         ShortcutAction.toggleFrame.performAction(in: store)
         #expect(store.enableWindowBorder == true)
+    }
+
+    @MainActor
+    @Test("Tab pinning, ordering, persistence, and move boundaries")
+    func tabPinningAndReorderingTests() throws {
+        let (database, directory) = try temporaryDatabase()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LeanStore(database: database)
+
+        let tab1 = store.newTab(url: URL(string: "https://example.com")!, select: false)
+        let tab2 = store.newTab(url: URL(string: "https://apple.com")!, select: false)
+        let tab3 = store.newTab(url: URL(string: "https://news.ycombinator.com")!, select: true)
+
+        #expect(store.pinnedTabs.isEmpty)
+        #expect(store.unpinnedTabs.count == 4) // including initial tab
+
+        // Pin tab2
+        store.togglePin(tab: tab2)
+        #expect(tab2.isPinned)
+        #expect(store.pinnedTabs.map(\.id) == [tab2.id])
+        #expect(store.tabs.first?.id == tab2.id)
+
+        // Pin tab3
+        store.togglePin(tab: tab3)
+        #expect(tab3.isPinned)
+        #expect(store.pinnedTabs.map(\.id) == [tab2.id, tab3.id])
+
+        // Verify session persistence of pinned status
+        store.saveSession()
+
+        let restoredStore = LeanStore(database: database)
+        #expect(restoredStore.pinnedTabs.count == 2)
+        #expect(restoredStore.pinnedTabs[0].url?.absoluteString == "https://apple.com")
+        #expect(restoredStore.pinnedTabs[1].url?.absoluteString == "https://news.ycombinator.com")
+        #expect(restoredStore.unpinnedTabs.contains { $0.url?.absoluteString == "https://example.com" })
+
+        // Test unpinning
+        store.togglePin(tab: tab2)
+        #expect(!tab2.isPinned)
+        #expect(store.pinnedTabs.map(\.id) == [tab3.id])
+
+        // Test moveTab boundaries: pinned tab cannot move past pinned section
+        store.togglePin(tab: tab1) // Now tab3 and tab1 are pinned
+        #expect(store.pinnedTabs.count == 2)
+        let pinned1 = store.pinnedTabs[0]
+        let pinned2 = store.pinnedTabs[1]
+
+        // Reordering pinned tabs
+        store.moveTab(id: pinned1.id, toIndex: 1)
+        #expect(store.pinnedTabs.map(\.id) == [pinned2.id, pinned1.id])
+
+        // Moving unpinned tab cannot move into pinned territory
+        let unpinned = store.unpinnedTabs[0]
+        store.moveTab(id: unpinned.id, toIndex: 0)
+        // Destination was clamped to at least pinnedCount (2)
+        #expect(!store.pinnedTabs.map(\.id).contains(unpinned.id))
+    }
+
+    @MainActor
+    @Test("Pin tab shortcut Cmd+P and empty tab rejection")
+    func pinShortcutTests() throws {
+        let (store, directory) = try makeIsolatedTestStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let action = ShortcutAction.togglePinTab
+        #expect(action.group == .tabs)
+        #expect(action.title == "Pin / Unpin Tab")
+        #expect(action.defaultShortcut.key == "p")
+        #expect(action.defaultShortcut.modifiers == ["command"])
+
+        // An empty tab cannot be pinned via shortcut or method
+        let emptyTab = store.newTab(url: nil, select: true)
+        action.performAction(in: store)
+        #expect(!emptyTab.isPinned)
+        #expect(store.pinnedTabs.isEmpty)
+
+        store.togglePin(tab: emptyTab)
+        #expect(!emptyTab.isPinned)
+        #expect(store.pinnedTabs.isEmpty)
+
+        // A tab with a URL can be pinned via shortcut
+        let webTab = store.newTab(url: URL(string: "https://example.com")!, select: true)
+        action.performAction(in: store)
+        #expect(webTab.isPinned)
+        #expect(store.pinnedTabs.map(\.id) == [webTab.id])
+
+        // Toggling via shortcut unpins it
+        action.performAction(in: store)
+        #expect(!webTab.isPinned)
+        #expect(store.pinnedTabs.isEmpty)
+    }
+
+    @MainActor
+    @Test("Split tabs: open, add up to 4, separate, and close pane")
+    func splitTabTests() throws {
+        let (store, directory) = try makeIsolatedTestStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        // Shortcut definitions
+        let openAction = ShortcutAction.openSplitTab
+        #expect(openAction.group == .tabs)
+        #expect(openAction.title == "Open as Split")
+        #expect(openAction.defaultShortcut.key == "s")
+        #expect(openAction.defaultShortcut.modifiers.contains("option"))
+        #expect(openAction.defaultShortcut.modifiers.contains("command"))
+
+        let separateAction = ShortcutAction.separateSplitTabs
+        #expect(separateAction.group == .tabs)
+        #expect(separateAction.title == "Separate Split Tabs")
+
+        // Initial tab
+        let tab1 = store.newTab(url: URL(string: "https://lean.dev")!, select: true)
+        #expect(!tab1.isSplit)
+        #expect(tab1.splitTabs.isEmpty)
+
+        // 1. Open as split
+        store.openTabAsSplit(tab1)
+        #expect(tab1.isSplit)
+        #expect(tab1.splitTabs.count == 2)
+        #expect(tab1.activeSplitIndex == 1)
+        #expect(tab1.splitTabs[0].id == tab1.id)
+
+        // 2. Add 3rd and 4th tab to split
+        let tab2 = store.newTab(url: URL(string: "https://apple.com")!, select: false)
+        let tab3 = store.newTab(url: URL(string: "https://github.com")!, select: false)
+        let tab4 = store.newTab(url: URL(string: "https://news.ycombinator.com")!, select: false)
+
+        store.select(tab: tab1)
+        store.addTabToActiveSplit(tab2)
+        #expect(tab1.splitTabs.count == 3)
+        #expect(!store.tabs.contains(where: { $0.id == tab2.id }))
+
+        store.addTabToActiveSplit(tab3)
+        #expect(tab1.splitTabs.count == 4)
+        #expect(!store.tabs.contains(where: { $0.id == tab3.id }))
+
+        // 3. Max 4 split tabs constraint: cannot add 5th tab
+        store.addTabToActiveSplit(tab4)
+        #expect(tab1.splitTabs.count == 4)
+        #expect(store.tabs.contains(where: { $0.id == tab4.id }))
+
+        // 4. Close a pane in the 4-way split
+        let paneToClose = tab1.splitTabs[2]
+        store.closeSplitPane(in: tab1, pane: paneToClose)
+        #expect(tab1.splitTabs.count == 3)
+        #expect(!tab1.splitTabs.contains(where: { $0.id == paneToClose.id }))
+
+        // 5. Separate remaining split tabs back to top level
+        store.separateSplitTabs(tab1)
+        #expect(!tab1.isSplit)
+        #expect(tab1.splitTabs.isEmpty)
+        #expect(store.tabs.count >= 3)
+    }
+
+    @MainActor
+    @Test("Onboarding: launch, complete, and replay flow")
+    func onboardingTests() throws {
+        let (store, directory) = try makeIsolatedTestStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        // Start onboarding manually
+        store.startOnboarding()
+        #expect(store.isOnboardingPresented == true)
+
+        // Completing onboarding
+        store.completeOnboarding()
+        #expect(store.hasCompletedOnboarding == true)
+        #expect(store.isOnboardingPresented == false)
+
+        // Step definitions
+        #expect(OnboardingStep.allCases.count == 6)
+        #expect(OnboardingStep.story.title == "The Story")
+        #expect(OnboardingStep.features.title == "Features")
+        #expect(OnboardingStep.selectBrowser.title == "Import")
+        #expect(OnboardingStep.checklist.title == "Customize")
+        #expect(OnboardingStep.importing.title == "Migrating")
+        #expect(OnboardingStep.welcome.title == "Ready")
+
+        // Supported browsers include Arc, Dia, Helium, Chrome, Safari, Fresh
+        let browsers = OnboardingBrowser.allBrowsers
+        #expect(browsers.contains { $0.id == "arc" })
+        #expect(browsers.contains { $0.id == "dia" })
+        #expect(browsers.contains { $0.id == "helium" })
+        #expect(browsers.contains { $0.id == "chrome" })
+        #expect(browsers.contains { $0.id == "safari" })
+        #expect(browsers.contains { $0.isFreshStart })
     }
 }

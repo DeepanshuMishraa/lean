@@ -11,6 +11,10 @@ struct LeanCommands: Commands {
                 updater.checkForUpdates()
             }
             .disabled(!updater.canCheckForUpdates)
+
+            Button("Welcome & Onboarding Tour...") {
+                store.startOnboarding()
+            }
         }
 
         CommandGroup(replacing: .appSettings) {
@@ -25,6 +29,13 @@ struct LeanCommands: Commands {
                 store.closeSelectedTab()
             }
             .keyboardShortcut("w", modifiers: .command)
+        }
+
+        CommandGroup(replacing: .printItem) {
+            Button("Print...") {
+                store.selectedTab?.printPage()
+            }
+            .disabled(store.selectedTab.map { $0.isSettingsPage || ($0.url == nil && !$0.isPageSource) || $0.webView.window == nil } ?? true)
         }
 
         CommandGroup(replacing: .newItem) {
@@ -79,17 +90,41 @@ struct LeanCommands: Commands {
             }
 
             Divider()
-            Button("Zoom In") { store.selectedTab?.zoomIn() }
+            Button("Zoom In") { store.zoomIn() }
                 .keyboardShortcut("+", modifiers: .command)
-            Button("Zoom Out") { store.selectedTab?.zoomOut() }
+            Button("Zoom Out") { store.zoomOut() }
                 .keyboardShortcut("-", modifiers: .command)
-            Button("Actual Size") { store.selectedTab?.resetZoom() }
+            Button("Actual Size") { store.resetZoom() }
                 .keyboardShortcut("0", modifiers: .command)
         }
 
         CommandMenu("Tabs") {
+            Button(store.selectedTab?.isPinned == true ? "Unpin Tab" : "Pin Tab") {
+                if let tab = store.selectedTab, tab.url != nil {
+                    store.togglePin(tab: tab)
+                }
+            }
+            .keyboardShortcut("p", modifiers: .command)
+            .disabled(store.selectedTab?.url == nil)
+
             Button("Close Tab") { store.closeSelectedTab() }
                 .keyboardShortcut("w", modifiers: .command)
+
+            if let selectedTab = store.selectedTab, selectedTab.isSplit {
+                Button("Separate Split Tabs") {
+                    store.separateSplitTabs(selectedTab)
+                }
+                .keyboardShortcut("s", modifiers: [.command, .option, .shift])
+            } else {
+                Button("Open as Split") {
+                    if let selected = store.selectedTab {
+                        store.openTabAsSplit(selected)
+                    }
+                }
+                .keyboardShortcut("s", modifiers: [.command, .option])
+                .disabled(store.selectedTab == nil)
+            }
+
             Button("Next Tab") { store.selectNextTab() }
                 .keyboardShortcut(.tab, modifiers: .control)
             Button("Previous Tab") { store.selectNextTab(reverse: true) }
@@ -103,6 +138,19 @@ struct LeanCommands: Commands {
             }
         }
 
+        CommandMenu("Bookmarks") {
+            Button(store.isBookmarked(url: store.selectedTab?.url) ? "Remove Bookmark for This Tab" : "Bookmark This Tab") {
+                store.toggleBookmarkCurrentTab()
+            }
+            .keyboardShortcut("d", modifiers: .command)
+            .disabled(store.selectedTab?.url == nil || (store.selectedTab?.url?.absoluteString.hasPrefix("lean://") ?? false))
+
+            Button(store.isBookmarksPresented ? "Hide Bookmarks" : "Show Bookmarks...") {
+                store.toggleBookmarks()
+            }
+            .keyboardShortcut("b", modifiers: [.option, .command])
+        }
+
         CommandMenu("Navigation") {
             Button("Back") { store.selectedTab?.goBack() }
                 .keyboardShortcut("[", modifiers: .command)
@@ -112,6 +160,12 @@ struct LeanCommands: Commands {
                 .keyboardShortcut("r", modifiers: .command)
             Button("Stop") { store.selectedTab?.stop() }
                 .keyboardShortcut(.escape, modifiers: [])
+        }
+
+        CommandGroup(replacing: .help) {
+            Button("Welcome & Onboarding Tour...") {
+                store.startOnboarding()
+            }
         }
     }
 }

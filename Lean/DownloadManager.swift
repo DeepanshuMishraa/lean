@@ -374,20 +374,59 @@ enum DownloadFormat {
         return formatter.localizedString(for: date, relativeTo: Date())
     }
 
-    static func systemImage(for fileName: String) -> String {
-        let ext = (fileName as NSString).pathExtension.lowercased()
-        switch ext {
-        case "pdf": return "doc.richtext.fill"
-        case "zip", "gz", "tar", "rar", "7z", "dmg": return "archivebox.fill"
-        case "png", "jpg", "jpeg", "gif", "webp", "svg", "heic": return "photo.fill"
-        case "mp4", "mov", "mkv", "webm": return "film.fill"
-        case "mp3", "wav", "flac", "m4a", "ogg": return "music.note"
-        case "doc", "docx", "txt", "md", "rtf": return "doc.text.fill"
-        case "xls", "xlsx", "csv": return "tablecells.fill"
-        case "ppt", "pptx", "key": return "rectangle.on.rectangle.fill"
-        case "app": return "app.fill"
-        case "pkg": return "shippingbox.fill"
-        default: return "doc.fill"
+    private enum FileCategory {
+        case pdf, archive, image, video, audio, text, csv, presentation, app, package, other
+
+        var icon: LeanIcon {
+            switch self {
+            case .pdf: .filePdf
+            case .archive: .fileArchive
+            case .image: .fileImage
+            case .video: .fileVideo
+            case .audio: .fileAudio
+            case .text: .fileText
+            case .csv: .fileCsv
+            case .presentation: .filePpt
+            case .app: .appWindow
+            case .package: .package
+            case .other: .file
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .pdf: "doc.richtext.fill"
+            case .archive: "archivebox.fill"
+            case .image: "photo.fill"
+            case .video: "film.fill"
+            case .audio: "music.note"
+            case .text: "doc.text.fill"
+            case .csv: "tablecells.fill"
+            case .presentation: "rectangle.on.rectangle.fill"
+            case .app: "app.fill"
+            case .package: "shippingbox.fill"
+            case .other: "doc.fill"
+            }
         }
     }
+
+    private static func category(for fileName: String) -> FileCategory {
+        switch (fileName as NSString).pathExtension.lowercased() {
+        case "pdf": .pdf
+        case "zip", "gz", "tar", "rar", "7z", "dmg": .archive
+        case "png", "jpg", "jpeg", "gif", "webp", "svg", "heic": .image
+        case "mp4", "mov", "mkv", "webm": .video
+        case "mp3", "wav", "flac", "m4a", "ogg": .audio
+        case "doc", "docx", "txt", "md", "rtf": .text
+        case "xls", "xlsx", "csv": .csv
+        case "ppt", "pptx", "key": .presentation
+        case "app": .app
+        case "pkg": .package
+        default: .other
+        }
+    }
+
+    static func icon(for fileName: String) -> LeanIcon { category(for: fileName).icon }
+
+    static func systemImage(for fileName: String) -> String { category(for: fileName).systemImage }
 }

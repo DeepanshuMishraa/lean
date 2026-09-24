@@ -59,22 +59,6 @@ struct TopBarView: View {
                         )
                     }
 
-                    if store.isToolbarItemShown(.newTab) {
-                        InteractiveIconButton(
-                            icon: .plus,
-                            helpText: "New Tab (⌘T)",
-                            size: store.enableWindowBorder ? 26 : 24,
-                            iconSize: 12,
-                            color: store.adaptiveTheme.secondaryText,
-                            hoverColor: store.adaptiveTheme.primaryText,
-                            disabledColor: store.adaptiveTheme.disabledIconText,
-                            hoverBackground: store.adaptiveTheme.iconHoverBackground,
-                            pressedBackground: store.adaptiveTheme.iconPressedBackground,
-                            isDark: store.adaptiveTheme.effectiveIsDark
-                        ) {
-                            _ = store.newTab()
-                        }
-                    }
                 }
                 .padding(.vertical, store.enableWindowBorder ? 3 : 5)
                 .background {
@@ -111,6 +95,23 @@ struct TopBarView: View {
                 .allowsHitTesting(false)
             }
             .onHover { isTabStripHovered = $0 }
+
+            if store.isToolbarItemShown(.newTab) {
+                InteractiveIconButton(
+                    icon: .plus,
+                    helpText: "New Tab (⌘T)",
+                    size: store.enableWindowBorder ? 26 : 24,
+                    iconSize: 12,
+                    color: store.adaptiveTheme.secondaryText,
+                    hoverColor: store.adaptiveTheme.primaryText,
+                    disabledColor: store.adaptiveTheme.disabledIconText,
+                    hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                    pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                    isDark: store.adaptiveTheme.effectiveIsDark
+                ) {
+                    _ = store.newTab()
+                }
+            }
 
             Spacer()
                 .background(WindowDragView())
@@ -425,17 +426,27 @@ private struct TopBarTabItem: View {
                 Divider()
             } else {
                 if let active = store.selectedTab, active.isSplit, active.splitTabs.count < 4, tab.id != active.id {
+                    let parent = active
                     Button {
-                        store.addTabToActiveSplit(tab)
+                        store.addTabToSplit(parent, tabToAdd: tab)
                     } label: {
                         Label("Add to Split", systemImage: "square.split.2x1")
                     }
                     Divider()
-                } else if tab.url != nil {
-                    Button {
-                        store.openTabAsSplit(tab)
-                    } label: {
-                        Label("Open as Split", systemImage: "square.split.2x1")
+                } else if tab.url != nil, !(store.selectedTab?.isSplit == true) {
+                    if let active = store.selectedTab, active.id != tab.id, !active.isSplit {
+                        let parent = active
+                        Button {
+                            store.openTabsAsSplit(parent, tab)
+                        } label: {
+                            Label("Open as Split", systemImage: "square.split.2x1")
+                        }
+                    } else {
+                        Button {
+                            store.openTabAsSplit(tab)
+                        } label: {
+                            Label("Open as Split", systemImage: "square.split.2x1")
+                        }
                     }
                     Divider()
                 }
@@ -869,17 +880,27 @@ private struct TopBarPinnedTabItem: View {
                 Divider()
             }
             if let active = store.selectedTab, active.isSplit, active.splitTabs.count < 4, tab.id != active.id {
+                let parent = active
                 Button {
-                    store.addTabToActiveSplit(tab)
+                    store.addTabToSplit(parent, tabToAdd: tab)
                 } label: {
                     Label("Add to Split", systemImage: "square.split.2x1")
                 }
                 Divider()
-            } else if tab.url != nil {
-                Button {
-                    store.openTabAsSplit(tab)
-                } label: {
-                    Label("Open as Split", systemImage: "square.split.2x1")
+            } else if tab.url != nil, !(store.selectedTab?.isSplit == true) {
+                if let active = store.selectedTab, active.id != tab.id, !active.isSplit {
+                    let parent = active
+                    Button {
+                        store.openTabsAsSplit(parent, tab)
+                    } label: {
+                        Label("Open as Split", systemImage: "square.split.2x1")
+                    }
+                } else {
+                    Button {
+                        store.openTabAsSplit(tab)
+                    } label: {
+                        Label("Open as Split", systemImage: "square.split.2x1")
+                    }
                 }
                 Divider()
             }

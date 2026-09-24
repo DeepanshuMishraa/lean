@@ -718,6 +718,39 @@ private struct GeneralSection: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
+
+            SettingsGroup(isDark: store.isDarkMode) {
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Onboarding tour")
+                            .font(store.leanUIFont.font(size: 13, weight: .medium))
+                            .foregroundColor(store.isDarkMode ? .white : .black)
+
+                        Text("Replay the interactive story and onboarding walkthrough.")
+                            .font(store.leanUIFont.font(size: 11.5))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
+                    }
+
+                    Spacer()
+
+                    Button {
+                        store.startOnboarding()
+                    } label: {
+                        Text("Start Tour")
+                            .font(store.leanUIFont.font(size: 12, weight: .medium))
+                            .foregroundColor(store.isDarkMode ? .white : .black)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            }
         }
     }
 }

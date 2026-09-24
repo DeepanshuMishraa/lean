@@ -11,6 +11,10 @@ struct LeanCommands: Commands {
                 updater.checkForUpdates()
             }
             .disabled(!updater.canCheckForUpdates)
+
+            Button("Welcome & Onboarding Tour...") {
+                store.startOnboarding()
+            }
         }
 
         CommandGroup(replacing: .appSettings) {
@@ -143,6 +147,12 @@ struct LeanCommands: Commands {
                 .keyboardShortcut("r", modifiers: .command)
             Button("Stop") { store.selectedTab?.stop() }
                 .keyboardShortcut(.escape, modifiers: [])
+        }
+
+        CommandGroup(replacing: .help) {
+            Button("Welcome & Onboarding Tour...") {
+                store.startOnboarding()
+            }
         }
     }
 }

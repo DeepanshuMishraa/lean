@@ -389,6 +389,26 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    @Published var hasCompletedOnboarding: Bool {
+        didSet {
+            persist(hasCompletedOnboarding, forKey: Self.hasCompletedOnboardingKey)
+        }
+    }
+    @Published var isOnboardingPresented: Bool = false
+
+    func startOnboarding() {
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) {
+            isOnboardingPresented = true
+        }
+    }
+
+    func completeOnboarding() {
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) {
+            hasCompletedOnboarding = true
+            isOnboardingPresented = false
+        }
+    }
+
     private let dataStore: WKWebsiteDataStore
     private let database: AppDatabase?
     let mediaPermissionStore: MediaPermissionStore
@@ -563,6 +583,12 @@ final class LeanStore: ObservableObject {
             self.shownToolbarItems = ToolbarItemType.allCases
             self.hiddenToolbarItems = []
         }
+
+        let savedOnboarding = databaseValue(self.database, Bool.self, forKey: Self.hasCompletedOnboardingKey)
+            ?? UserDefaults.standard.object(forKey: Self.hasCompletedOnboardingKey) as? Bool
+            ?? false
+        self.hasCompletedOnboarding = savedOnboarding
+        self.isOnboardingPresented = !savedOnboarding
 
         deduplicateHistory()
         saveHistory()
@@ -1232,22 +1258,54 @@ final class LeanStore: ObservableObject {
 
     func openTabAsSplit(_ tab: LeanTab) {
         guard !tab.isSplit else { return }
-        if let active = selectedTab, active.id != tab.id, !active.isSplit {
-            tabs.removeAll { $0.id == tab.id }
-            active.splitTabs = [active, tab]
-            active.activeSplitIndex = 1
-            select(tab: active)
+        if let active = selectedTab, active.id != tab.id {
+            if !active.isSplit {
+                openTabsAsSplit(active, tab)
+            } else if active.splitTabs.count < 4 {
+                // Active is already a split: "open as split" on a background
+                // tab means joining the existing split, never spawning a
+                // stray empty tab.
+                addTabToSplit(active, tabToAdd: tab)
+            }
+            // At max capacity (4 panes): no-op rather than a wrong split.
         } else {
+            // Splitting the current tab itself: pair it with an empty pane.
             let companion = createTab(url: nil)
             tab.splitTabs = [tab, companion]
+            tab.splitWidthRatios = []
             tab.activeSplitIndex = 1
             select(tab: tab)
+            objectWillChange.send()
         }
+    }
+
+    /// Combine two existing tabs into a split owned by `active`.
+    /// Never creates an empty tab — the background-tab context-menu path
+    /// must always end up with `active` + `other`, not `active` + New Tab.
+    func openTabsAsSplit(_ active: LeanTab, _ other: LeanTab) {
+        guard active.id != other.id, !active.isSplit, !other.isSplit else { return }
+        guard tabs.contains(where: { $0.id == active.id }),
+              tabs.contains(where: { $0.id == other.id }) else { return }
+        tabs.removeAll { $0.id == other.id }
+        active.splitTabs = [active, other]
+        active.splitWidthRatios = []
+        active.activeSplitIndex = 1
+        select(tab: active)
         objectWillChange.send()
     }
 
     func addTabToActiveSplit(_ tabToAdd: LeanTab) {
-        guard let active = selectedTab, active.id != tabToAdd.id else { return }
+        guard let active = selectedTab else { return }
+        addTabToSplit(active, tabToAdd: tabToAdd)
+    }
+
+    /// Add `tabToAdd` to an explicit split parent. The context menus capture
+    /// the parent when the menu is built so a selection change between
+    /// menu display and tap can't redirect the tab into the wrong split.
+    func addTabToSplit(_ active: LeanTab, tabToAdd: LeanTab) {
+        guard active.id != tabToAdd.id else { return }
+        guard tabs.contains(where: { $0.id == active.id }),
+              tabs.contains(where: { $0.id == tabToAdd.id }) else { return }
         if active.isSplit {
             guard active.splitTabs.count < 4 else { return }
             tabs.removeAll { $0.id == tabToAdd.id }
@@ -1256,6 +1314,7 @@ final class LeanStore: ObservableObject {
         } else {
             tabs.removeAll { $0.id == tabToAdd.id }
             active.splitTabs = [active, tabToAdd]
+            active.splitWidthRatios = []
             active.activeSplitIndex = 1
         }
         select(tab: active)
@@ -1591,6 +1650,7 @@ final class LeanStore: ObservableObject {
     private static let shownToolbarItemsKey = "shownToolbarItems"
     private static let hiddenToolbarItemsKey = "hiddenToolbarItems"
     private static let customShortcutsKey = "customShortcuts_v1"
+    private static let hasCompletedOnboardingKey = "hasCompletedOnboarding"
 }
 
 private func databaseValue<T: Decodable>(

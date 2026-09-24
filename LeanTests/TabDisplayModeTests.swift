@@ -479,4 +479,38 @@ struct TabDisplayModeTests {
         #expect(tab1.splitTabs.isEmpty)
         #expect(store.tabs.count >= 3)
     }
+
+    @MainActor
+    @Test("Onboarding: launch, complete, and replay flow")
+    func onboardingTests() throws {
+        let (store, directory) = try makeIsolatedTestStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        // Start onboarding manually
+        store.startOnboarding()
+        #expect(store.isOnboardingPresented == true)
+
+        // Completing onboarding
+        store.completeOnboarding()
+        #expect(store.hasCompletedOnboarding == true)
+        #expect(store.isOnboardingPresented == false)
+
+        // Step definitions
+        #expect(OnboardingStep.allCases.count == 6)
+        #expect(OnboardingStep.story.title == "The Story")
+        #expect(OnboardingStep.features.title == "Features")
+        #expect(OnboardingStep.selectBrowser.title == "Import")
+        #expect(OnboardingStep.checklist.title == "Customize")
+        #expect(OnboardingStep.importing.title == "Migrating")
+        #expect(OnboardingStep.welcome.title == "Ready")
+
+        // Supported browsers include Arc, Dia, Helium, Chrome, Safari, Fresh
+        let browsers = OnboardingBrowser.allBrowsers
+        #expect(browsers.contains { $0.id == "arc" })
+        #expect(browsers.contains { $0.id == "dia" })
+        #expect(browsers.contains { $0.id == "helium" })
+        #expect(browsers.contains { $0.id == "chrome" })
+        #expect(browsers.contains { $0.id == "safari" })
+        #expect(browsers.contains { $0.isFreshStart })
+    }
 }

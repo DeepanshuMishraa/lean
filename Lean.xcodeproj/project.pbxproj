@@ -26,6 +26,7 @@
 		5A95D7EC207A24098228BBF3 /* LeanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CABED7395D472182B5B8279 /* LeanStore.swift */; };
 		6AAD3D4D75B3A36D77411D65 /* PictureInPicture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8121373BB4CCB65F1193F694 /* PictureInPicture.swift */; };
 		B05000000000000000000001 /* ExtensionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B05000000000000000000002 /* ExtensionsView.swift */; };
+		B06000000000000000000001 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B06000000000000000000002 /* OnboardingView.swift */; };
 		6082FA83A361BE568DBBD304 /* AddressResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 329359943D08761604195E40 /* AddressResolverTests.swift */; };
 		60D4BC2DA22051A477CFB208 /* TopBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55ACE65E20A203180C11BDDD /* TopBarView.swift */; };
 		65AC2B49D4EB3CBEA3ECD0A1 /* YouTubeBlockingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1BB4D2B7A2864920D0A7F89 /* YouTubeBlockingTests.swift */; };
@@ -107,6 +108,7 @@
 		3CABED7395D472182B5B8279 /* LeanStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanStore.swift; sourceTree = "<group>"; };
 		8121373BB4CCB65F1193F694 /* PictureInPicture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PictureInPicture.swift; sourceTree = "<group>"; };
 		B05000000000000000000002 /* ExtensionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionsView.swift; sourceTree = "<group>"; };
+		B06000000000000000000002 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		45114A1E37748C7110643D1C /* TabDisplayModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabDisplayModeTests.swift; sourceTree = "<group>"; };
 		45A30DE20D55EF4F746694EB /* WebEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebEngineTests.swift; sourceTree = "<group>"; };
 		4C7FCB01A3F3CCDE9AA9530E /* OmnibarSuggestionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmnibarSuggestionRow.swift; sourceTree = "<group>"; };
@@ -215,6 +217,7 @@
 				3CABED7395D472182B5B8279 /* LeanStore.swift */,
 				8121373BB4CCB65F1193F694 /* PictureInPicture.swift */,
 				B05000000000000000000002 /* ExtensionsView.swift */,
+				B06000000000000000000002 /* OnboardingView.swift */,
 				CFACE78AD721D215A84F3FCD /* LeanTab.swift */,
 				7D34204B30CD8161D2E590DF /* LeanTheme.swift */,
 				53149805E8E44A5ECCE884F3 /* LeanView.swift */,
@@ -405,6 +408,7 @@
 				5A95D7EC207A24098228BBF3 /* LeanStore.swift in Sources */,
 				6AAD3D4D75B3A36D77411D65 /* PictureInPicture.swift in Sources */,
 				B05000000000000000000001 /* ExtensionsView.swift in Sources */,
+				B06000000000000000000001 /* OnboardingView.swift in Sources */,
 				B01000000000000000000001 /* BrowserDataImporter.swift in Sources */,
 				B02000000000000000000001 /* PasswordVault.swift in Sources */,
 				B03000000000000000000001 /* TabSleepPolicy.swift in Sources */,

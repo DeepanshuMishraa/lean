@@ -624,17 +624,27 @@ struct SidebarTabItem: View {
                 Divider()
             } else {
                 if let active = store.selectedTab, active.isSplit, active.splitTabs.count < 4, tab.id != active.id {
+                    let parent = active
                     Button {
-                        store.addTabToActiveSplit(tab)
+                        store.addTabToSplit(parent, tabToAdd: tab)
                     } label: {
                         Label("Add to Split", systemImage: "square.split.2x1")
                     }
                     Divider()
-                } else if tab.url != nil {
-                    Button {
-                        store.openTabAsSplit(tab)
-                    } label: {
-                        Label("Open as Split", systemImage: "square.split.2x1")
+                } else if tab.url != nil, !(store.selectedTab?.isSplit == true) {
+                    if let active = store.selectedTab, active.id != tab.id, !active.isSplit {
+                        let parent = active
+                        Button {
+                            store.openTabsAsSplit(parent, tab)
+                        } label: {
+                            Label("Open as Split", systemImage: "square.split.2x1")
+                        }
+                    } else {
+                        Button {
+                            store.openTabAsSplit(tab)
+                        } label: {
+                            Label("Open as Split", systemImage: "square.split.2x1")
+                        }
                     }
                     Divider()
                 }

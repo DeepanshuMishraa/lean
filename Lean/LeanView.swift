@@ -270,6 +270,16 @@ struct LeanView: View {
                     .allowsHitTesting(false)
             }
 
+            // Onboarding Overlay (First launch or manual invocation)
+            if store.isOnboardingPresented {
+                OnboardingView(store: store)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                        removal: .opacity.combined(with: .scale(scale: 1.02))
+                    ))
+                    .zIndex(300)
+            }
+
             // Inline URL editing dismiss is owned by the NSEvent mouse monitor
             // below (pass-through, no click swallowing), so no overlay here.
         }

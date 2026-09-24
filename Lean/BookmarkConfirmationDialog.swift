@@ -23,6 +23,28 @@ struct BookmarkConfirmationDialog: View {
         return host.replacingOccurrences(of: "www.", with: "")
     }
 
+    private var nameFieldFill: Color {
+        store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04)
+    }
+
+    private var nameFieldStroke: Color {
+        if isTitleFocused {
+            return store.isDarkMode ? Color.white.opacity(0.28) : Color.black.opacity(0.22)
+        }
+        return store.isDarkMode ? Color.white.opacity(0.10) : Color.black.opacity(0.06)
+    }
+
+    private var nameTextField: some View {
+        TextField("", text: $title)
+            .textFieldStyle(.plain)
+            .font(store.bodyFont(size: 13))
+            .foregroundColor(store.adaptiveTheme.primaryText)
+            .focused($isTitleFocused)
+            .onSubmit {
+                save()
+            }
+    }
+
     var body: some View {
         VStack(spacing: 16) {
             // Header
@@ -38,29 +60,17 @@ struct BookmarkConfirmationDialog: View {
                         .tracking(0.5)
 
                     HStack(spacing: 8) {
-                        TextField("", text: $title)
-                            .textFieldStyle(.plain)
-                            .font(store.bodyFont(size: 13))
-                            .foregroundColor(store.adaptiveTheme.primaryText)
-                            .focused($isTitleFocused)
-                            .onSubmit {
-                                save()
-                            }
+                        nameTextField
                     }
                     .padding(.horizontal, 11)
                     .frame(height: 34)
                     .background(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                            .fill(nameFieldFill)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .stroke(
-                                isTitleFocused
-                                    ? (store.isDarkMode ? Color.white.opacity(0.28) : Color.black.opacity(0.22))
-                                    : (store.isDarkMode ? Color.white.opacity(0.10) : Color.black.opacity(0.06)),
-                                lineWidth: 1
-                            )
+                            .stroke(nameFieldStroke, lineWidth: 1)
                     )
                 }
 
@@ -179,52 +189,68 @@ struct BookmarkConfirmationDialog: View {
     }
 
     // MARK: - Folder Trigger Button
+    private var folderTriggerFill: Color {
+        store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04)
+    }
+
+    private var folderTriggerStroke: Color {
+        if isFolderDropdownOpen {
+            return store.isDarkMode ? Color.white.opacity(0.24) : Color.black.opacity(0.18)
+        }
+        return store.isDarkMode ? Color.white.opacity(0.10) : Color.black.opacity(0.06)
+    }
+
+    private var folderTriggerIcon: some View {
+        Group {
+            if selectedFolder == BookmarkFolder.defaultFolder {
+                LeanIcon.star.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 13, height: 13)
+                    .foregroundColor(Color(red: 0.98, green: 0.72, blue: 0.22))
+            } else {
+                LeanIcon.folder.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 13, height: 13)
+                    .foregroundColor(store.adaptiveTheme.secondaryText)
+            }
+        }
+    }
+
+    private var folderTriggerLabel: some View {
+        HStack(spacing: 8) {
+            folderTriggerIcon
+
+            Text(selectedFolder)
+                .font(store.bodyFont(size: 13, weight: .medium))
+                .foregroundColor(store.adaptiveTheme.primaryText)
+
+            Spacer()
+
+            LeanIcon.caretDown.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 9, height: 9)
+                .foregroundColor(store.adaptiveTheme.secondaryText.opacity(0.7))
+                .rotationEffect(.degrees(isFolderDropdownOpen ? 180 : 0))
+        }
+        .padding(.horizontal, 11)
+        .frame(height: 34)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(folderTriggerFill)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(folderTriggerStroke, lineWidth: 1)
+        )
+    }
+
     private var folderTriggerButton: some View {
         Button {
             withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
                 isFolderDropdownOpen.toggle()
             }
         } label: {
-            HStack(spacing: 8) {
-                if selectedFolder == BookmarkFolder.defaultFolder {
-                    LeanIcon.star.fill
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 13, height: 13)
-                        .foregroundColor(Color(red: 0.98, green: 0.72, blue: 0.22))
-                } else {
-                    LeanIcon.folder.fill
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 13, height: 13)
-                        .foregroundColor(store.adaptiveTheme.secondaryText)
-                }
-
-                Text(selectedFolder)
-                    .font(store.bodyFont(size: 13, weight: .medium))
-                    .foregroundColor(store.adaptiveTheme.primaryText)
-
-                Spacer()
-
-                LeanIcon.caretDown.fill
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 9, height: 9)
-                    .foregroundColor(store.adaptiveTheme.secondaryText.opacity(0.7))
-                    .rotationEffect(.degrees(isFolderDropdownOpen ? 180 : 0))
-            }
-            .padding(.horizontal, 11)
-            .frame(height: 34)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .stroke(
-                        isFolderDropdownOpen
-                            ? (store.isDarkMode ? Color.white.opacity(0.24) : Color.black.opacity(0.18))
-                            : (store.isDarkMode ? Color.white.opacity(0.10) : Color.black.opacity(0.06)),
-                        lineWidth: 1
-                    )
-            )
+            folderTriggerLabel
         }
         .buttonStyle(.plain)
     }

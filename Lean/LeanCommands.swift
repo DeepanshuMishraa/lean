@@ -162,7 +162,7 @@ struct LeanCommands: Commands {
                 .keyboardShortcut(.escape, modifiers: [])
         }
 
-        CommandGroup(replacing: .help) {
+        CommandMenu("Help") {
             Button("Welcome & Onboarding Tour...") {
                 store.startOnboarding()
             }

@@ -42,6 +42,13 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     /// straight from WebKit, which already tracks it. Nil for a page that
     /// hasn't declared one, or hasn't loaded yet.
     @Published private(set) var themeColor: NSColor?
+    /// A failed main-frame navigation, shown as an error page instead of a
+    /// blank tab. Set on failure, cleared when the next navigation starts,
+    /// commits, or finishes.
+    @Published var pageError: PageLoadError?
+    /// The main-frame address the current navigation is headed to. Matches
+    /// failures to the page (not subframes) in didFail/didFailProvisional.
+    private var pendingMainFrameURL: URL?
     /// Last heartbeat per frame. Playing frames report every poll; a frame
     /// that played briefly and then detached (ad iframe, SPA swap) can never
     /// send its goodbye, so frames unheard from past the timeout are evicted
@@ -615,6 +622,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         }
         loadingProgress = 0
         isLoading = true
+        pageError = nil
         onStateChange?()
         updateFavicon(for: url)
         Task { @MainActor [weak self] in
@@ -1305,12 +1313,15 @@ extension LeanTab: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
         loadingProgress = 0
         isLoading = true
+        pageError = nil
         mediaPlayingFrames.removeAll()
         isPlayingMedia = false
         refreshState()
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation?) {
+        pageError = nil
+        pendingMainFrameURL = nil
         refreshState()
         applyScrollbarStyle(scrollbarStyle)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -1326,6 +1337,8 @@ extension LeanTab: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
         loadingProgress = 1.0
         isLoading = false
+        pageError = nil
+        pendingMainFrameURL = nil
         refreshState()
         applyScrollbarStyle(scrollbarStyle)
 
@@ -1493,13 +1506,32 @@ extension LeanTab: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation?, withError error: Error) {
         pendingLogin = nil
         isLoading = false
+        recordPageErrorIfMainFrame(error)
+        // Always refresh: recording the error alone publishes to nobody —
+        // the content card watches the store, not the tab — so without
+        // this the error page waits for the next tab switch to appear.
         refreshState()
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation?, withError error: Error) {
         pendingLogin = nil
         isLoading = false
+        recordPageErrorIfMainFrame(error)
+        // Same as above: the error page must appear at once, not on the
+        // next redraw. refreshState keeps the attempted address for a
+        // fresh tab out of history (nothing committed to record).
         refreshState()
+    }
+
+    /// Show an error page for a failed main-frame navigation; stay silent
+    /// for subframes, cancellations, and loads WebKit interrupted itself.
+    private func recordPageErrorIfMainFrame(_ error: Error) {
+        let failing = (error as NSError).userInfo[NSURLErrorFailingURLErrorKey] as? URL
+        guard let failing,
+              failing == pendingMainFrameURL || (pendingMainFrameURL == nil && failing == url),
+              let pageError = PageLoadError.from(error, for: failing) else { return }
+        pendingMainFrameURL = nil
+        self.pageError = pageError
     }
 
     func webView(
@@ -1513,6 +1545,11 @@ extension LeanTab: WKNavigationDelegate {
         // with `.allow`, WebKit tries to load it as the next page — nowhere
         // for that to go, so nothing happens and nothing says why.
         // `.download` turns it into the `WKDownload` below.
+        if let url = navigationAction.request.url,
+           let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+           navigationAction.targetFrame == nil || navigationAction.targetFrame?.isMainFrame == true {
+            pendingMainFrameURL = url
+        }
         guard !navigationAction.shouldPerformDownload else {
             decisionHandler(.download)
             return

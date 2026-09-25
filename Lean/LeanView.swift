@@ -532,6 +532,25 @@ struct LeanView: View {
                         .padding(.trailing, cardTrailingPadding)
                         .padding(.bottom, cardBottomPadding)
                         .padding(.top, cardTopPadding)
+                } else if let pageError = tab.pageError {
+                    // Failed navigation: an error page, not a blank tab.
+                    PageErrorView(store: store, tab: tab, error: pageError)
+                        .id(tab.id)
+                        .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
+                                .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
+                        )
+                        .shadow(
+                            color: store.adaptiveTheme.webCardShadow,
+                            radius: store.adaptiveTheme.webCardShadowRadius,
+                            x: 0,
+                            y: store.adaptiveTheme.isFrameLight ? 2 : 3
+                        )
+                        .padding(.leading, cardLeadingPadding)
+                        .padding(.trailing, cardTrailingPadding)
+                        .padding(.bottom, cardBottomPadding)
+                        .padding(.top, cardTopPadding)
                 } else if tab.url != nil || tab.isPageSource {
                     // Web Page Loaded
                     ZStack(alignment: .topTrailing) {

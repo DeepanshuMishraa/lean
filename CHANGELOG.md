@@ -14,6 +14,12 @@ update often — releases arrive through the built-in updater.
 
 ### Fixed
 
+- Failed navigations show a proper error page instead of a blank tab:
+  server not found, connection refused (with a dev-server hint on
+  localhost), offline, timeouts, and private-connection errors each get
+  an explanation with Reload and Back — appearing immediately, not on
+  the next tab switch
+
 - Downloads stuck at 100% now finish: when the bytes are fully accounted
   and on disk but WebKit never delivers its finish callback, the download
   finalizes from its own accounting instead of spinning forever

@@ -102,10 +102,16 @@ struct PeekPanel: View {
                     }
                     .frame(height: 2)
 
-                    // Embedded Web View
-                    WebView(tab: tab)
-                        .id(tab.id)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Embedded Content: Error Page or Web View
+                    if let pageError = tab.pageError {
+                        PageErrorView(store: store, tab: tab, error: pageError)
+                            .id(tab.id)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        WebView(tab: tab)
+                            .id(tab.id)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 }
                 .frame(width: cardWidth, height: cardHeight)
                 .background(cardBackground)

@@ -14,6 +14,10 @@ update often — releases arrive through the built-in updater.
 
 ### Fixed
 
+- Links from other apps open as a tab in the existing window instead of
+  spawning a second window next to it (a new window still opens when
+  none exists, so links are never dropped)
+
 - Failed navigations show a proper error page instead of a blank tab:
   server not found, connection refused (with a dev-server hint on
   localhost), offline, timeouts, and private-connection errors each get

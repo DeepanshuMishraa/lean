@@ -4,6 +4,12 @@ import Security
 
 /// Downloads and verifies Chrome Web Store CRX3 packages before unpacking them.
 enum ChromeWebStoreInstaller {
+    /// Apple's iCloud Passwords extension: fills iCloud Keychain passwords
+    /// through native messaging with Apple's helper (paired with Apple's
+    /// code). Offered as a one-tap install in Settings because Apple
+    /// doesn't let anyone redistribute it — every browser fetches it from
+    /// the store.
+    static let iCloudPasswordsID = "pejdijmoenmkgeppbflobdenhhabjlaj"
     enum InstallError: LocalizedError, Equatable {
         case invalidAddress
         case alreadyInstalled

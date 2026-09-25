@@ -35,10 +35,10 @@ What's left, verified by testing:
   mediation) don't yet. `ApplePaySession` is Safari-only, so Apple Pay
   stays out — no app code can fix that inside `WKWebView`.
 - **iCloud Passwords works through Apple's Chrome extension**, paired to
-  its helper with Apple's code, rather than through Safari's built-in
-  autofill, which Apple keeps behind an entitlement no other browser
-  gets. Lean's own Keychain password fill (page menu, Touch ID) works
-  fine alongside it.
+  its helper with Apple's code (one tap in Settings → Extensions),
+  rather than through Safari's built-in autofill, which Apple keeps
+  behind an entitlement no other browser gets. Lean's own Keychain
+  password fill (page menu, Touch ID) works fine alongside it.
 - **No web push notifications.**
 - **Client-certificate pages fail.** There is no certificate picker.
 - **No private windows or profiles.**

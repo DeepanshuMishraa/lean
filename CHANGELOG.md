@@ -6,6 +6,12 @@ update often — releases arrive through the built-in updater.
 
 ## [Unreleased]
 
+### Added
+
+- iCloud Passwords installs in one tap from Settings → Extensions (same
+  review as any extension) instead of hunting the Chrome Web Store —
+  Apple doesn't let anyone bundle it, so every browser fetches it there
+
 ### Fixed
 
 - Downloads stuck at 100% now finish: when the bytes are fully accounted
@@ -29,8 +35,7 @@ update often — releases arrive through the built-in updater.
   guessing — staying inside the browser theme so the row stays legible,
   and follows the active tab. The sidebar layout is unaffected (ported
   from [Search #168](https://github.com/driceroland/Search/pull/168))
-- Peek at a link with a shift-click: Settings → General, off by default.
-  The link opens in a panel over the page, which stays where it was
+- Peek at a link with a shift-click: Settings → General, off by default.  The link opens in a panel over the page, which stays where it was
   underneath. Escape, ⌘W or a click beside it puts it away; keeping it
   makes it a tab beside this one, loaded as it is (ported from Search
   `46112d3`)

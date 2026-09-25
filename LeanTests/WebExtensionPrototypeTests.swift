@@ -17,6 +17,13 @@ struct WebExtensionPrototypeTests {
         }
     }
 
+    @Test("Apple's iCloud Passwords ID is a well-formed store ID")
+    func iCloudPasswordsID() {
+        let id = ChromeWebStoreInstaller.iCloudPasswordsID
+        #expect(ChromeWebStoreInstaller.extensionID(from: id) == id)
+        #expect(ChromeWebStoreInstaller.extensionID(from: "https://chromewebstore.google.com/detail/icloud-passwords/\(id)") == id)
+    }
+
     @available(macOS 15.4, *)
     @MainActor
     @Test("WebKit loads, disables, reloads, and revokes a local extension")

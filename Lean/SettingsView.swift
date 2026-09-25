@@ -3659,7 +3659,23 @@ private struct ExtensionsSettingsSection: View {
                         }
                         .disabled(manager.isInstallingFromStore || ChromeWebStoreInstaller.extensionID(from: storeLink) == nil)
                     }
-                    Text("Paste a Chrome Web Store URL or extension ID. Lean verifies the download before asking you to review its access.")
+                    if !manager.installed.contains(where: { $0.id == ChromeWebStoreInstaller.iCloudPasswordsID }) {
+                        HStack {
+                            Text("iCloud Passwords by Apple")
+                                .font(store.leanUIFont.font(size: 12.5))
+                                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.85) : Color.black.opacity(0.8))
+                            Spacer(minLength: 8)
+                            SettingsActionButton(manager.isInstallingFromStore ? "Downloading…" : "Install", isDark: store.isDarkMode, prominent: true, isLoading: manager.isInstallingFromStore) {
+                                Task {
+                                    if let review = await manager.prepareStoreInstallation(from: ChromeWebStoreInstaller.iCloudPasswordsID) {
+                                        pendingReview = review
+                                    }
+                                }
+                            }
+                            .disabled(manager.isInstallingFromStore)
+                        }
+                    }
+                    Text("Paste a Chrome Web Store URL or extension ID. Lean verifies the download before asking you to review its access. iCloud Passwords installs the same way, in one tap — pair it with Apple's code and it fills your iCloud Keychain.")
                         .font(store.leanUIFont.font(size: 11.5))
                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
                         .fixedSize(horizontal: false, vertical: true)

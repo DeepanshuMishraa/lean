@@ -256,7 +256,9 @@ private struct EqualizerWaveformView: View {
     var compact: Bool = false
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+        // 10fps is plenty for a 3-bar tab indicator; 30fps forced a full
+        // tab-strip relayout 30x/sec while any media played.
+        TimelineView(.animation(minimumInterval: 1.0 / 10.0)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             let barW: CGFloat = compact ? 1.2 : 1.5
             let spacing: CGFloat = compact ? 1.0 : 1.3

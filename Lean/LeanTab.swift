@@ -55,6 +55,16 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     /// instead of holding the music icon on forever.
     private var mediaPlayingFrames: [String: Date] = [:]
     private var mediaPruneTimer: Timer?
+    /// One renderer process pool shared by every non-popup tab. A fresh
+    /// `WKWebViewConfiguration()` gets a fresh pool, so without this N tabs
+    /// means N renderer processes (memory + CPU). Popups keep the opener's
+    /// configuration (and pool) for OAuth/SSO state.
+    private static let sharedProcessPool = WKProcessPool()
+    /// Last published progress + timestamp. `estimatedProgress` KVO fires
+    /// dozens of times per second; publishing every tick re-renders the
+    /// whole tab strip. Only publish meaningful deltas.
+    private var lastPublishedProgress: Double = -1
+    private var lastProgressPublishDate = Date.distantPast
 
     deinit {
         mediaPruneTimer?.invalidate()
@@ -75,7 +85,6 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     private(set) var scrollbarStyle: ScrollbarStyle
-    private(set) var smoothScrollingEnabled: Bool
     private(set) var pageFont: LeanFont
     private(set) var pageHeadingWeight: Int
     private(set) var pageBodyWeight: Int
@@ -159,7 +168,6 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         initialURL: URL?,
         isDark: Bool = false,
         scrollbarStyle: ScrollbarStyle = .normal,
-        smoothScrolling: Bool = true,
         pageFont: LeanFont = .system,
         pageHeadingWeight: Int = 0,
         pageBodyWeight: Int = 0,
@@ -180,7 +188,6 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         }
         self.isDark = isDark
         self.scrollbarStyle = scrollbarStyle
-        self.smoothScrollingEnabled = smoothScrolling
         self.pageFont = pageFont
         self.pageHeadingWeight = pageHeadingWeight
         self.pageBodyWeight = pageBodyWeight
@@ -207,8 +214,14 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private func createWebView() -> LeanWebView {
         // The popup configuration was sanitized in init, but keeping the
         // configuration preserves its process pool for shared OAuth/SSO state.
+        // Non-popup tabs share one process pool: fewer renderer processes,
+        // less memory, less CPU. Sleep/wake reuses the pool instead of
+        // spawning a new process per cycle.
         let effectiveConfiguration = initialConfiguration ?? WKWebViewConfiguration()
         let configuration = effectiveConfiguration
+        if initialConfiguration == nil {
+            configuration.processPool = Self.sharedProcessPool
+        }
         configuration.websiteDataStore = dataStore
         if #available(macOS 15.4, *) {
             configuration.webExtensionController = BrowserExtensionManager.shared.controller
@@ -236,13 +249,6 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         )
         configuration.userContentController.addUserScript(fontScript)
 
-        // Register custom smooth scrolling script at document end
-        let smoothScript = WKUserScript(
-            source: PageScripts.smoothScrolling(enabled: smoothScrollingEnabled),
-            injectionTime: .atDocumentEnd,
-            forMainFrameOnly: false
-        )
-        configuration.userContentController.addUserScript(smoothScript)
         let youtubeAdsScript = WKUserScript(
             source: PageScripts.youtubeAds(enabled: isBlockingEnabledForCurrentHost),
             injectionTime: .atDocumentStart,
@@ -315,6 +321,14 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             let progress = webView.estimatedProgress
             DispatchQueue.main.async {
                 guard let self, self.storedWebView === webView, webView.estimatedProgress == progress else { return }
+                // Throttle: publish at most ~10Hz or on meaningful deltas.
+                // Every publish re-renders every view observing the tab.
+                let now = Date()
+                let delta = abs(progress - self.lastPublishedProgress)
+                let isComplete = progress >= 1.0
+                guard isComplete || delta >= 0.02 || now.timeIntervalSince(self.lastProgressPublishDate) >= 0.1 else { return }
+                self.lastPublishedProgress = progress
+                self.lastProgressPublishDate = now
                 self.loadingProgress = progress
                 if progress >= 0.7, self.isLoading {
                     self.isLoading = false
@@ -340,7 +354,18 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             webView.observe(\.themeColor, options: [.new]) { [weak self] webView, _ in
                 DispatchQueue.main.async {
                     guard let self else { return }
-                    self.themeColor = webView.themeColor
+                    // SPA header repaints fire this often; only publish real
+                    // changes so the strip doesn't re-render underneath tabs.
+                    let newColor = webView.themeColor
+                    let changed: Bool = {
+                        switch (self.themeColor, newColor) {
+                        case (nil, nil): return false
+                        case (nil, _), (_, nil): return true
+                        case (let old?, let new?): return !old.isEqual(new)
+                        }
+                    }()
+                    guard changed else { return }
+                    self.themeColor = newColor
                 }
             }
         ]
@@ -494,12 +519,6 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         )
         webView.configuration.userContentController.addUserScript(fontScript)
 
-        let smoothScript = WKUserScript(
-            source: PageScripts.smoothScrolling(enabled: smoothScrollingEnabled),
-            injectionTime: .atDocumentEnd,
-            forMainFrameOnly: false
-        )
-        webView.configuration.userContentController.addUserScript(smoothScript)
         let youtubeAdsScript = WKUserScript(
             source: PageScripts.youtubeAds(enabled: isBlockingEnabledForCurrentHost),
             injectionTime: .atDocumentStart,
@@ -541,14 +560,6 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         guard let webView = storedWebView else { return }
         rebuildUserScripts()
         let script = PageScripts.scrollbar(style)
-        webView.evaluateJavaScript(script) { _, _ in }
-    }
-
-    func applySmoothScrolling(_ enabled: Bool) {
-        self.smoothScrollingEnabled = enabled
-        guard let webView = storedWebView else { return }
-        rebuildUserScripts()
-        let script = PageScripts.smoothScrolling(enabled: enabled)
         webView.evaluateJavaScript(script) { _, _ in }
     }
 
@@ -881,6 +892,16 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         zoomIndicatorWorkItem?.cancel()
         hidePasswordSuggestions()
         webView.removeFromSuperview()
+        mediaPruneTimer?.invalidate()
+        mediaPruneTimer = nil
+        for (key, observation) in downloadProgressObservers {
+            observation.invalidate()
+            _ = key
+        }
+        downloadProgressObservers.removeAll()
+        retainedDownloads.removeAll()
+        activeDownloadObjects.removeAll()
+        storedWebView = nil
     }
 
     func zoomIn() { setPageZoom(pageZoom + 0.1) }
@@ -1070,6 +1091,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         progressObserver = nil
         navigationObservers.forEach { $0.invalidate() }
         navigationObservers.removeAll()
+        mediaPruneTimer?.invalidate()
+        mediaPruneTimer = nil
         webView.stopLoading()
         webView.pauseAllMediaPlayback()
         webView.setAllMediaPlaybackSuspended(true)
@@ -1077,9 +1100,14 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.uiDelegate = nil
         webView.contextMenuHook = nil
         let controller = webView.configuration.userContentController
+        // Must mirror destroy(): the controller retains handlers strongly,
+        // so any leftover name leaks the whole web view + config + scripts.
         controller.removeScriptMessageHandler(forName: PageScripts.pageReadyMessageName)
         controller.removeScriptMessageHandler(forName: PageScripts.contextMenuMessageName)
         controller.removeScriptMessageHandler(forName: PageScripts.passwordFormMessageName)
+        controller.removeScriptMessageHandler(forName: PageScripts.passwordFieldMessageName)
+        controller.removeScriptMessageHandler(forName: PageScripts.middleClickMessageName)
+        controller.removeScriptMessageHandler(forName: PageScripts.mediaStateMessageName)
         removePasskeyHandler(from: controller)
         controller.removeAllUserScripts()
         controller.removeAllContentRuleLists()
@@ -1311,6 +1339,8 @@ extension LeanTab: WKScriptMessageHandler {
 
 extension LeanTab: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
+        lastPublishedProgress = 0
+        lastProgressPublishDate = Date()
         loadingProgress = 0
         isLoading = true
         pageError = nil
@@ -1323,7 +1353,10 @@ extension LeanTab: WKNavigationDelegate {
         pageError = nil
         pendingMainFrameURL = nil
         refreshState()
-        applyScrollbarStyle(scrollbarStyle)
+        // No script rebuild here: the 12 user scripts registered at
+        // createWebView persist per-configuration and already cover new
+        // navigations. Rebuilding twice per load (commit+finish) was pure
+        // waste (removeAll+re-add x12 + live JS eval, per navigation).
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self else { return }
             if self.isLoading {
@@ -1336,11 +1369,11 @@ extension LeanTab: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
         loadingProgress = 1.0
+        lastPublishedProgress = 1.0
         isLoading = false
         pageError = nil
         pendingMainFrameURL = nil
         refreshState()
-        applyScrollbarStyle(scrollbarStyle)
 
         if let position = restoreScrollPosition {
             restoreScrollPosition = nil
@@ -1585,7 +1618,11 @@ extension LeanTab: WKNavigationDelegate {
             if wasBlocking != isBlockingEnabledForCurrentHost {
                 rebuildUserScripts(syncRuleLists: false)
             }
-            syncContentRuleLists { decisionHandler(.allow) }
+            // Answer immediately: awaiting ContentBlocker.ruleLists() here
+            // stalled every link click/redirect on async work. Rule lists
+            // apply to subsequent loads; sync after the decision.
+            decisionHandler(.allow)
+            syncContentRuleLists()
             return
         }
         decisionHandler(.allow)
@@ -1862,7 +1899,6 @@ extension LeanTab: WKDownloadDelegate {
         let key = ObjectIdentifier(download)
         activeDownloadIDs[key] = itemID
         activeDownloadObjects[itemID] = download
-        downloadLastSample[itemID] = (bytes: 0, date: Date(), speed: 0)
         downloadProgressObservers[key] = download.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
             guard let self else { return }
             Task { @MainActor in
@@ -1874,10 +1910,22 @@ extension LeanTab: WKDownloadDelegate {
 
     @MainActor
     private func handleDownloadProgress(itemID: UUID, progress: Progress) {
+        // Drop KVO stragglers for finished downloads: the observer is
+        // invalidated in didFinish/didFail, but an already-dispatched Task
+        // can land after finalize and must not resurrect the item.
+        guard downloadManager?.downloads.contains(where: { $0.id == itemID && $0.isActive }) == true else { return }
         let received = progress.completedUnitCount
         let total = progress.totalUnitCount
         let now = Date()
         let last = downloadLastSample[itemID]
+        // Throttle UI/DB churn to ~4Hz: KVO can fire per network chunk
+        // (10s/sec). Speed math still samples at 0.15s but @Published
+        // updates are gated below.
+        let dtSinceSample = last.map { now.timeIntervalSince($0.date) } ?? .infinity
+        let isComplete = total > 0 && received >= total
+        if !isComplete, dtSinceSample < 0.25 {
+            return
+        }
         var speed = last?.speed ?? 0
         if let last {
             let dt = now.timeIntervalSince(last.date)
@@ -1913,6 +1961,7 @@ extension LeanTab: WKDownloadDelegate {
     /// callback already handled it.
     private func scheduleDownloadFinalizeWatchdog(itemID: UUID, download: WKDownload, totalBytes: Int64) {
         guard downloadWatchdogs.insert(itemID).inserted else { return }
+        NSLog("[LeanDL] watchdog armed %@", itemID.uuidString)
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
             guard let self else { return }
             self.downloadWatchdogs.remove(itemID)
@@ -1940,7 +1989,6 @@ extension LeanTab: WKDownloadDelegate {
     /// Shared by the real finish callback and the watchdog: mark the
     /// manager item complete with the on-disk byte count.
     private func finalizeDownload(_ download: WKDownload, itemID: UUID) {
-        let key = ObjectIdentifier(download)
         activeDownloadObjects[itemID] = nil
         downloadWatchdogs.remove(itemID)
         // Final byte count from disk beats progress accounting.

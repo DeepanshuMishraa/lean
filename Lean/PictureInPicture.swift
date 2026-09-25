@@ -1252,4 +1252,24 @@ enum Isolate {
       return 'landed';
     })();
     """
+
+    /// Landing repair, run after `off` completes. While isolated the player
+    /// measures a tiny viewport and caches inline sizes; some players
+    /// (notably YouTube) never re-measure on return, leaving the video
+    /// stuck small inside a full-size player. Purging stale inline sizes
+    /// plus a resize event makes the player lay out again — no reload,
+    /// no lost playback position.
+    static let repair = """
+    (function () {
+      try {
+        var vids = document.querySelectorAll('video');
+        for (var i = 0; i < vids.length; i++) {
+          vids[i].style.width = '';
+          vids[i].style.height = '';
+        }
+      } catch (e) {}
+      try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+      return 'repaired';
+    })();
+    """
 }

@@ -62,7 +62,7 @@ struct LeanApp: App {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
-                store.saveSession()
+                store.flushPendingPersist()
             }
         }
     }

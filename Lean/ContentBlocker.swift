@@ -148,18 +148,19 @@ enum ContentBlocker {
     /// Fetch fresh lists when the cache is older than `updateInterval`.
     static func refreshIfNeeded() {
         guard refreshTask == nil else { return }
-        let schemaVersion = UserDefaults.standard.integer(forKey: schemaVersionKey)
-        if schemaVersion >= currentSchemaVersion {
-            let lastUpdated = lastUpdatedDate
-            let cached = loadCachedFilterTexts()
-            if !cached.isEmpty,
-               let lastUpdated,
-               Date().timeIntervalSince(lastUpdated) < updateInterval {
-                return
-            }
-        }
         refreshTask = Task {
             defer { refreshTask = nil }
+            // File reads (MBs of EasyList text) off the main thread.
+            let schemaVersion = UserDefaults.standard.integer(forKey: schemaVersionKey)
+            if schemaVersion >= currentSchemaVersion {
+                let cached = await Task.detached(priority: .utility) { loadCachedFilterTexts() }.value
+                let lastUpdated = lastUpdatedDate
+                if !cached.isEmpty,
+                   let lastUpdated,
+                   Date().timeIntervalSince(lastUpdated) < updateInterval {
+                    return
+                }
+            }
             await refreshNow()
         }
     }
@@ -263,7 +264,7 @@ enum ContentBlocker {
 
     // MARK: - Disk cache
 
-    private static func filtersDirectory() -> URL? {
+    nonisolated private static func filtersDirectory() -> URL? {
         guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return nil
         }
@@ -272,7 +273,7 @@ enum ContentBlocker {
         return directory
     }
 
-    private static func loadCachedFilterTexts() -> [String: String] {
+    nonisolated private static func loadCachedFilterTexts() -> [String: String] {
         guard let directory = filtersDirectory() else { return [:] }
         var texts: [String: String] = [:]
         for source in filterSources {
@@ -284,7 +285,7 @@ enum ContentBlocker {
         return texts
     }
 
-    private static func persistFilterTexts(_ texts: [String: String]) {
+    nonisolated private static func persistFilterTexts(_ texts: [String: String]) {
         guard let directory = filtersDirectory() else { return }
         for (id, text) in texts {
             let file = directory.appendingPathComponent("\(id).txt")

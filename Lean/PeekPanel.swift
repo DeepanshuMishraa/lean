@@ -13,16 +13,119 @@ import SwiftUI
 /// The link preview panel floating over the page with a clean backdrop scrim.
 struct PeekPanel: View {
     @ObservedObject var store: LeanStore
-    @ObservedObject var tab: LeanTab
-
-    @State private var hasCopied = false
-    @State private var copyTask: Task<Void, Never>? = nil
+    /// Plain ref on purpose: only the tiny `PeekProgressBar` / `PeekHeaderBar`
+    /// subviews observe the tab, so progress ticks (10Hz) don't re-evaluate
+    /// this whole card + its hosted WebView + the scrim GeometryReader.
+    let tab: LeanTab
 
     private var cardBackground: Color {
         store.isDarkMode
             ? Color(red: 20/255, green: 20/255, blue: 23/255)
             : Color(white: 0.99)
     }
+
+    var body: some View {
+        GeometryReader { geo in
+            let cardWidth = min(max(660, geo.size.width * 0.80), 1080)
+            let cardHeight = min(max(460, geo.size.height * 0.83), 780)
+
+            ZStack {
+                // Plain dim scrim: the fullscreen blur here composited over
+                // the entire window on every frame while peeking.
+                Color.black.opacity(store.isDarkMode ? 0.45 : 0.26)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        store.closePeek()
+                    }
+                    .transition(.opacity)
+
+                // Centered Preview Card with Physical Spring Transition
+                VStack(spacing: 0) {
+                    PeekHeaderBar(store: store, tab: tab)
+
+                    PeekProgressBar(tab: tab)
+
+                    // Embedded Content: Error Page or Web View
+                    if let pageError = tab.pageError {
+                        PageErrorView(store: store, tab: tab, error: pageError)
+                            .id(tab.id)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        WebView(tab: tab)
+                            .id(tab.id)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+                .frame(width: cardWidth, height: cardHeight)
+                .background(cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(
+                            store.isDarkMode ? Color.white.opacity(0.12) : Color.black.opacity(0.08),
+                            lineWidth: 0.75
+                        )
+                )
+                .shadow(
+                    color: Color.black.opacity(store.isDarkMode ? 0.45 : 0.15),
+                    radius: 24,
+                    x: 0,
+                    y: 12
+                )
+                .transition(
+                    .asymmetric(
+                        insertion: .scale(scale: 0.94)
+                            .combined(with: .offset(y: 16))
+                            .combined(with: .opacity),
+                        removal: .scale(scale: 0.96)
+                            .combined(with: .offset(y: 10))
+                            .combined(with: .opacity)
+                    )
+                )
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+// MARK: - Peek progress (scoped tab observation)
+
+/// Hairline loader that alone observes tab progress. Plain fill, no sweep
+/// gradient or per-tick animation: the old version re-rendered the entire
+/// PeekPanel per progress tick.
+private struct PeekProgressBar: View {
+    @ObservedObject var tab: LeanTab
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            Rectangle()
+                .fill(Color.black.opacity(0.08))
+                .frame(height: 0.75)
+
+            if tab.isLoading {
+                GeometryReader { barGeo in
+                    let progress = max(0.06, CGFloat(tab.loadingProgress))
+                    Rectangle()
+                        .fill(Color.blue)
+                        .frame(width: barGeo.size.width * progress, height: 2)
+                }
+                .frame(height: 2)
+                .transition(.opacity)
+            }
+        }
+        .frame(height: 2)
+    }
+}
+
+// MARK: - Peek header (scoped tab observation)
+
+private struct PeekHeaderBar: View {
+    @ObservedObject var store: LeanStore
+    @ObservedObject var tab: LeanTab
+
+    @State private var hasCopied = false
+    @State private var copyTask: Task<Void, Never>? = nil
 
     private var headerBackground: Color {
         store.isDarkMode
@@ -51,107 +154,6 @@ struct PeekPanel: View {
     }
 
     var body: some View {
-        GeometryReader { geo in
-            let cardWidth = min(max(660, geo.size.width * 0.80), 1080)
-            let cardHeight = min(max(460, geo.size.height * 0.83), 780)
-
-            ZStack {
-                // Dimming Scrim with subtle blur
-                ZStack {
-                    Color.black.opacity(store.isDarkMode ? 0.45 : 0.26)
-                    VisualEffectBlur(material: .fullScreenUI, blendingMode: .withinWindow)
-                        .opacity(store.isDarkMode ? 0.35 : 0.18)
-                }
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    store.closePeek()
-                }
-                .transition(.opacity)
-
-                // Centered Preview Card with Physical Spring Transition
-                VStack(spacing: 0) {
-                    headerBar
-
-                    // Sleek Hairline Loading Indicator
-                    ZStack(alignment: .leading) {
-                        Rectangle()
-                            .fill(headerBorder)
-                            .frame(height: 0.75)
-
-                        if tab.isLoading {
-                            GeometryReader { barGeo in
-                                let progress = max(0.06, CGFloat(tab.loadingProgress))
-                                Rectangle()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [
-                                                Color.blue.opacity(0.75),
-                                                Color.blue
-                                            ],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        )
-                                    )
-                                    .frame(width: barGeo.size.width * progress, height: 2)
-                                    .animation(.easeInOut(duration: 0.18), value: tab.loadingProgress)
-                            }
-                            .frame(height: 2)
-                            .transition(.opacity)
-                        }
-                    }
-                    .frame(height: 2)
-
-                    // Embedded Content: Error Page or Web View
-                    if let pageError = tab.pageError {
-                        PageErrorView(store: store, tab: tab, error: pageError)
-                            .id(tab.id)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        WebView(tab: tab)
-                            .id(tab.id)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                }
-                .frame(width: cardWidth, height: cardHeight)
-                .background(cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(
-                            store.isDarkMode ? Color.white.opacity(0.12) : Color.black.opacity(0.08),
-                            lineWidth: 0.75
-                        )
-                )
-                .shadow(
-                    color: Color.black.opacity(store.isDarkMode ? 0.55 : 0.18),
-                    radius: 38,
-                    x: 0,
-                    y: 16
-                )
-                .shadow(
-                    color: Color.black.opacity(store.isDarkMode ? 0.28 : 0.06),
-                    radius: 10,
-                    x: 0,
-                    y: 4
-                )
-                .transition(
-                    .asymmetric(
-                        insertion: .scale(scale: 0.94)
-                            .combined(with: .offset(y: 16))
-                            .combined(with: .opacity),
-                        removal: .scale(scale: 0.96)
-                            .combined(with: .offset(y: 10))
-                            .combined(with: .opacity)
-                    )
-                )
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    // MARK: - Header Bar
-    private var headerBar: some View {
         HStack(spacing: 10) {
             // Navigation Controls: Back / Forward / Reload
             HStack(spacing: 2) {

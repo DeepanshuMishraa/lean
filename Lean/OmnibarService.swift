@@ -22,6 +22,15 @@ struct OmnibarSuggestion: Identifiable, Equatable {
 final class OmnibarService {
     static let shared = OmnibarService()
 
+    /// Memoized suggestions: the views evaluate `suggestions` 3-5x per
+    /// render (body + showSuggestions + key handlers), and typing re-renders
+    /// per keystroke. Cache hits are a dict lookup; misses do the real work.
+    /// Key includes counts so tab/history changes invalidate; TTL covers
+    /// rapid re-evaluation of the same query.
+    private var memo: [String: (results: [OmnibarSuggestion], at: Date)] = [:]
+    private let memoTTL: TimeInterval = 2
+    private let lock = NSLock()
+
     func suggestions(
         for query: String,
         history: [(url: URL, title: String)] = [],
@@ -29,6 +38,31 @@ final class OmnibarService {
         searchEngine: SearchEngine = .google
     ) -> [OmnibarSuggestion] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cacheKey = "\(trimmed.lowercased())|\(history.count)|\(openTabs.count)|\(searchEngine.rawValue)|\(openTabs.map(\.id.uuidString).joined(separator: ","))"
+        lock.lock()
+        if let hit = memo[cacheKey], Date().timeIntervalSince(hit.at) < memoTTL {
+            let results = hit.results
+            lock.unlock()
+            return results
+        }
+        lock.unlock()
+        let results = computeSuggestions(trimmed: trimmed, history: history, openTabs: openTabs, searchEngine: searchEngine)
+        lock.lock()
+        memo[cacheKey] = (results, Date())
+        if memo.count > 50 {
+            let cutoff = Date().addingTimeInterval(-memoTTL)
+            memo = memo.filter { $0.value.at > cutoff }
+        }
+        lock.unlock()
+        return results
+    }
+
+    private func computeSuggestions(
+        trimmed: String,
+        history: [(url: URL, title: String)],
+        openTabs: [(id: UUID, title: String, url: URL)],
+        searchEngine: SearchEngine
+    ) -> [OmnibarSuggestion] {
         let lower = trimmed.lowercased()
 
         var results: [OmnibarSuggestion] = []
@@ -112,6 +146,12 @@ final class OmnibarService {
         }
 
         // 3. Add matching history entries
+        // Precompute normalized open-tab hosts once: was O(H*T) with
+        // per-item lowercased()+replacingOccurrences inside the filter.
+        let openHosts: Set<String> = Set(openTabs.compactMap {
+            $0.url.host?.lowercased().replacingOccurrences(of: "www.", with: "")
+        })
+        let openURLStrings = Set(openTabs.map(\.url))
         let historyMatches = history.filter { item in
             let title = item.title.lowercased()
             let host = item.url.host?.lowercased() ?? ""
@@ -120,13 +160,12 @@ final class OmnibarService {
                 : (host.contains(lower) || title.contains(lower))
             guard matchesQuery else { return false }
 
-            guard let openTab = openTabs.first(where: {
-                $0.url.host?.lowercased().replacingOccurrences(of: "www.", with: "") == item.url.host?.lowercased().replacingOccurrences(of: "www.", with: "")
-            }) else {
-                return true
-            }
+            let itemHost = item.url.host?.lowercased().replacingOccurrences(of: "www.", with: "") ?? ""
+            guard openHosts.contains(itemHost) else { return true }
+            // Same host is open: hide exact dupes and homepages, keep rest.
+            if openURLStrings.contains(item.url) { return false }
             let isHomePage = item.url.path.isEmpty || item.url.path == "/"
-            return item.url != openTab.url && !isHomePage
+            return !isHomePage
         }
         for item in historyMatches.prefix(5) {
             results.append(OmnibarSuggestion(

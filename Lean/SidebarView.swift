@@ -139,7 +139,6 @@ struct SidebarView: View {
                         )
                     }
                 }
-                .animation(.spring(response: 0.28, dampingFraction: 0.78), value: store.selectedID)
                 .padding(.horizontal, 10)
                 .padding(.bottom, 8)
             }
@@ -185,7 +184,6 @@ struct SidebarView: View {
                         )
                     }
                 }
-                .animation(.spring(response: 0.28, dampingFraction: 0.78), value: store.selectedID)
                 .padding(.horizontal, 8)
                 .padding(.bottom, 8)
             }
@@ -578,7 +576,6 @@ struct SidebarTabItem: View {
                             RoundedRectangle(cornerRadius: 9, style: .continuous)
                                 .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
                         )
-                        .matchedGeometryEffect(id: "activeSidebarTabPill", in: namespace)
                 }
             }
         }
@@ -728,14 +725,14 @@ struct SidebarTabItem: View {
                 }
                 .frame(width: store.scaled(16), height: store.scaled(16))
                 .scaleEffect(isSelected ? 1.05 : 0.96)
-                .animation(.spring(response: 0.26, dampingFraction: 0.72), value: isSelected)
+
                 .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
 
                 Text(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
                     .font(store.tabTitleFont(size: 13))
                     .foregroundColor(tabItemForeground)
                     .scaleEffect(isSelected ? 1.0 : 0.985)
-                    .animation(.spring(response: 0.26, dampingFraction: 0.76), value: isSelected)
+    
                     .lineLimit(1)
                     .truncationMode(.tail)
 
@@ -766,7 +763,7 @@ struct SidebarTabItem: View {
                 }
                 .frame(width: store.scaled(16), height: store.scaled(16))
                 .scaleEffect(isSelected ? 1.08 : 0.95)
-                .animation(.spring(response: 0.26, dampingFraction: 0.72), value: isSelected)
+
                 .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
 
                 Spacer(minLength: 0)
@@ -785,7 +782,7 @@ struct SidebarTabItem: View {
                     .font(store.tabTitleFont(size: 13))
                     .foregroundColor(tabItemForeground)
                     .scaleEffect(isSelected ? 1.0 : 0.985)
-                    .animation(.spring(response: 0.26, dampingFraction: 0.76), value: isSelected)
+    
                     .lineLimit(1)
                     .truncationMode(.tail)
 
@@ -935,7 +932,6 @@ private struct SidebarPinnedTabItem: View {
                 }
             }
             .scaleEffect(isSelected ? 1.06 : 0.95)
-            .animation(.spring(response: 0.26, dampingFraction: 0.72), value: isSelected)
             .frame(maxWidth: .infinity)
             .frame(height: store.scaled(38))
             .background {
@@ -951,7 +947,6 @@ private struct SidebarPinnedTabItem: View {
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                                     .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 0.75)
                             )
-                            .matchedGeometryEffect(id: "activeSidebarPinnedTabPill", in: namespace)
                     }
                 }
             }

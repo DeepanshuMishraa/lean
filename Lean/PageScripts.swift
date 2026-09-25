@@ -350,26 +350,6 @@ enum PageScripts {
         """
     }
 
-    static func smoothScrolling(enabled: Bool) -> String {
-        let css = enabled ? "html { scroll-behavior: smooth !important; }" : ""
-        return """
-        (function() {
-            function apply() {
-                var style = document.getElementById('lean-native-smooth-scroll-style');
-                if (!style) {
-                    style = document.createElement('style');
-                    style.id = 'lean-native-smooth-scroll-style';
-                    (document.head || document.documentElement).appendChild(style);
-                }
-                style.textContent = "\(css)";
-            }
-            apply();
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', apply, { once: true });
-            }
-        })();
-        """
-    }
     static func youtubeAds(enabled: Bool) -> String {
         if !enabled {
             return "void 0;"

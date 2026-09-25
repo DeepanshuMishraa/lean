@@ -46,8 +46,8 @@ final class Passkeys: NSObject {
     private static let log = Logger(subsystem: "com.dipxsy.lean", category: "Passkeys")
 
     /// Whether sites are currently offered passkeys (Settings › Passwords).
-    /// Wired to `LeanStore.passkeysEnabled`; defaults to whether this build
-    /// is entitled (see `isEntitled`).
+    /// Wired to `LeanStore.passkeysEnabled`, which defaults on: explicit
+    /// requests reach the Mac's sheet with or without the entitlement.
     static var isEnabled = isEntitled
 
     /// Set in unit tests so no system sheet can ever appear: ceremonies are

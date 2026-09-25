@@ -130,16 +130,6 @@ struct LeanView: View {
         )
         .background(WindowConfigurator(store: store, isTopBarVisible: isTopBarVisible, isSidebarVisible: isSidebarEffectivelyVisible))
         .preferredColorScheme(store.colorScheme)
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: store.isOnboardingPresented)
-        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: isTopBarVisible)
-        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: isSidebarEffectivelyVisible)
-        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: store.isSidebarCollapsed)
-        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: cardLeadingPadding)
-        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.tabLayout)
-        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.enableZenMode)
-        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.enableWindowBorder)
-        .animation(.easeInOut(duration: 0.2), value: store.effectiveZenColor)
-        .animation(.spring(response: 0.24, dampingFraction: 0.8), value: store.windowBorderWidth)
         .onAppear {
             setupKeyMonitor()
         }
@@ -995,6 +985,14 @@ final class LeanStageView: NSView {
         // WebKit puts it back itself on the way out.
         if let web = wanted as? WKWebView, web.fullscreenState != .notInFullscreen { return }
 
+        // Fast path: the page is already home and alone. This runs on every
+        // SwiftUI update of the stage (progress ticks included), so it must
+        // be pointer compares only — no _inspector round-trip, no re-add.
+        if let wanted, wanted.superview === self, subviews.count == 1 {
+            if wanted.frame != bounds { wanted.frame = bounds }
+            return
+        }
+
         // Anything here that isn't wanted, out. Only ever what is actually
         // ours: except the Web Inspector docked beside the page. WebKit puts
         // it here, next to the web view, and shrinks the page to make room.
@@ -1313,8 +1311,6 @@ private struct PageLoadingBar: View {
 
     @State private var isVisible = false
     @State private var displayProgress: Double = 0
-    @State private var shimmerPhase: CGFloat = -0.4
-    @State private var isShimmering = false
     @State private var showDelayElapsed = false
     @State private var showWorkItem: DispatchWorkItem?
     @State private var dismissWorkItem: DispatchWorkItem?
@@ -1336,44 +1332,19 @@ private struct PageLoadingBar: View {
             let totalWidth = geo.size.width
 
             if isVisible {
-                ZStack(alignment: .leading) {
-                    Color.clear.frame(height: barHeight)
-
-                    // Progress fill
-                    progressColor
-                        .frame(width: totalWidth * max(displayProgress, 0.02), height: barHeight)
-
-                    // Luminous shimmer sweep
-                    if isShimmering {
-                        LinearGradient(
-                            stops: [
-                                .init(color: .clear, location: 0),
-                                .init(color: progressColor.opacity(0.6), location: 0.4),
-                                .init(color: .white.opacity(isDark ? 0.5 : 0.7), location: 0.5),
-                                .init(color: progressColor.opacity(0.6), location: 0.6),
-                                .init(color: .clear, location: 1)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
+                // Plain fill, no shimmer sweep / mask / shadow: the sweep
+                // ran a 1.1s repeatForever + per-tick mask recompute + shadow
+                // for the whole duration of every load.
+                progressColor
+                    .frame(width: totalWidth * max(displayProgress, 0.02), height: barHeight)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .allowsHitTesting(false)
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.animation(.easeOut(duration: 0.15)),
+                            removal: .opacity.animation(.easeInOut(duration: 0.30))
                         )
-                        .frame(width: totalWidth * 0.35, height: barHeight)
-                        .offset(x: shimmerPhase * totalWidth)
-                        .mask(
-                            Rectangle()
-                                .frame(width: totalWidth * max(displayProgress, 0.02), height: barHeight)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        )
-                    }
-                }
-                .frame(height: barHeight)
-                .shadow(color: glowColor, radius: 4, x: 0, y: 2)
-                .allowsHitTesting(false)
-                .transition(
-                    .asymmetric(
-                        insertion: .opacity.animation(.easeOut(duration: 0.15)),
-                        removal: .opacity.animation(.easeInOut(duration: 0.30))
                     )
-                )
             }
         }
         .frame(height: isVisible ? barHeight : 0)
@@ -1389,9 +1360,11 @@ private struct PageLoadingBar: View {
             }
         }
         .onChange(of: progress) { _, newProgress in
-            // Only follow real progress while actively loading
+            // Only follow real progress while actively loading.
+            // Linear ease, no spring: a spring per progress tick never
+            // settled during loads and re-animated the whole window.
             guard isLoading else { return }
-            withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
+            withAnimation(.easeOut(duration: 0.12)) {
                 displayProgress = min(newProgress, 0.95)
             }
         }
@@ -1409,7 +1382,6 @@ private struct PageLoadingBar: View {
             withAnimation(.easeOut(duration: 0.12)) {
                 isVisible = true
             }
-            startShimmer()
         }
         showWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.10, execute: workItem)
@@ -1426,15 +1398,11 @@ private struct PageLoadingBar: View {
             return
         }
 
-        // Step 1: Snap the bar to 100% with a fast spring
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.80)) {
+        // Snap the bar to 100%, then fade out after the fill completes.
+        withAnimation(.easeOut(duration: 0.15)) {
             displayProgress = 1.0
         }
 
-        // Step 2: Stop shimmer
-        stopShimmer()
-
-        // Step 3: Fade out after the fill animation visually completes
         dismissWorkItem?.cancel()
         let workItem = DispatchWorkItem {
             withAnimation(.easeInOut(duration: 0.28)) {
@@ -1444,27 +1412,6 @@ private struct PageLoadingBar: View {
         }
         dismissWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
-    }
-
-    private func startShimmer() {
-        isShimmering = true
-        shimmerPhase = -0.4
-        withAnimation(
-            .linear(duration: 1.1)
-            .repeatForever(autoreverses: false)
-        ) {
-            shimmerPhase = 1.1
-        }
-    }
-
-    private func stopShimmer() {
-        withAnimation(.easeOut(duration: 0.25)) {
-            shimmerPhase = 1.1
-        }
-        // Remove shimmer layer after animation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            isShimmering = false
-        }
     }
 }
 

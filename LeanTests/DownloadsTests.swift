@@ -28,6 +28,21 @@ struct DownloadsTests {
     }
 
     @MainActor
+    @Test("Late progress never resurrects a finished download")
+    func stragglerProgressKeepsTerminalState() {
+        let manager = DownloadManager(database: nil)
+        let dest = URL(fileURLWithPath: "/tmp/lean-test-straggler.zip")
+        let id = manager.beginDownload(fileName: "lean-test-straggler.zip", sourceURL: nil, destinationURL: dest, totalBytes: 1000)
+        manager.updateProgress(id: id, receivedBytes: 1000, totalBytes: 1000, speedBytesPerSec: 0)
+        manager.finishDownload(id: id)
+        #expect(manager.downloads.first?.state == .completed)
+        // A KVO Task dispatched before observer invalidation landing after
+        // finalize: numbers may refresh, state must not regress.
+        manager.updateProgress(id: id, receivedBytes: 1000, totalBytes: 1000, speedBytesPerSec: 0)
+        #expect(manager.downloads.first?.state == .completed)
+    }
+
+    @MainActor
     @Test("DownloadManager unique destination avoids collisions")
     func uniqueDestination() throws {
         let manager = DownloadManager(database: nil)

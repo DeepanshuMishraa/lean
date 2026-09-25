@@ -42,6 +42,11 @@ enum PasswordVault {
 
     static let didChange = Notification.Name("LeanPasswordVaultDidChange")
     private static let label = "Lean"
+    /// Short-lived cache: every password-field focus and every right-click
+    /// was doing a full synchronous Keychain dump + decode + sort on the
+    /// main thread. Cache for 15s; writes invalidate immediately.
+    private static var allCache: (logins: [SavedPassword], at: Date)?
+    private static let cacheTTL: TimeInterval = 15
 
     static func normalizedHost(_ host: String) -> String? {
         let host = host.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -100,6 +105,9 @@ enum PasswordVault {
     }
 
     static func all() -> Result<[SavedPassword], VaultError> {
+        if let cache = allCache, Date().timeIntervalSince(cache.at) < cacheTTL {
+            return .success(cache.logins)
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassInternetPassword,
             kSecAttrLabel as String: label,
@@ -138,7 +146,9 @@ enum PasswordVault {
                 lastUsed: lastUsed
             )
         }
-        return .success(logins.sorted { ($0.origin, $0.username) < ($1.origin, $1.username) })
+        let sorted = logins.sorted { ($0.origin, $0.username) < ($1.origin, $1.username) }
+        allCache = (sorted, Date())
+        return .success(sorted)
     }
 
     static func matchesOrigin(_ login: SavedPassword, _ origin: URL) -> Bool {
@@ -202,6 +212,7 @@ enum PasswordVault {
             kSecAttrComment as String: String(Date().timeIntervalSince1970),
         ]
         SecItemUpdate(identity(login) as CFDictionary, update as CFDictionary)
+        allCache = nil
     }
 
     static func save(origin: URL, username: String, password: String) -> Result<Void, VaultError> {
@@ -223,6 +234,7 @@ enum PasswordVault {
         // 1. Our own item, if present.
         var status = SecItemUpdate(identity(login) as CFDictionary, update as CFDictionary)
         if status == errSecSuccess {
+            allCache = nil
             NotificationCenter.default.post(name: didChange, object: nil)
             return .success(())
         }
@@ -239,6 +251,7 @@ enum PasswordVault {
         ]
         status = SecItemUpdate(broad as CFDictionary, update as CFDictionary)
         if status == errSecSuccess {
+            allCache = nil
             NotificationCenter.default.post(name: didChange, object: nil)
             return .success(())
         }
@@ -249,6 +262,7 @@ enum PasswordVault {
         add[kSecAttrComment as String] = stamp
         status = SecItemAdd(add as CFDictionary, nil)
         if status == errSecSuccess {
+            allCache = nil
             NotificationCenter.default.post(name: didChange, object: nil)
             return .success(())
         }
@@ -257,6 +271,7 @@ enum PasswordVault {
         SecItemDelete(broad as CFDictionary)
         status = SecItemAdd(add as CFDictionary, nil)
         guard status == errSecSuccess else { return .failure(.keychain(status)) }
+        allCache = nil
         NotificationCenter.default.post(name: didChange, object: nil)
         return .success(())
     }
@@ -301,6 +316,7 @@ enum PasswordVault {
         } else if status != errSecSuccess {
             return .failure(.keychain(status))
         }
+        allCache = nil
         NotificationCenter.default.post(name: didChange, object: nil)
         return .success(())
     }

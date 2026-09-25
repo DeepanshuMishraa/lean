@@ -63,7 +63,6 @@ struct TopBarView: View {
                     }
 
                 }
-                .animation(.spring(response: 0.28, dampingFraction: 0.78), value: store.selectedID)
                 .padding(.vertical, store.enableWindowBorder ? 3 : 5)
                 .background {
                     GeometryReader { geometry in
@@ -396,7 +395,6 @@ private struct TopBarTabItem: View {
                             x: 0,
                             y: 1
                         )
-                        .matchedGeometryEffect(id: "activeTopBarTabPill", in: namespace)
                 }
             }
         }
@@ -691,7 +689,7 @@ private struct TopBarTabItem: View {
                         : store.adaptiveTheme.inactiveTabText
                 )
                 .scaleEffect(isSelected ? 1.0 : 0.985)
-                .animation(.spring(response: 0.26, dampingFraction: 0.76), value: isSelected)
+
                 .lineLimit(1)
 
             Spacer(minLength: 0)
@@ -723,7 +721,6 @@ private struct TopBarTabItem: View {
             }
         }
         .scaleEffect(isSelected ? 1.06 : 0.95)
-        .animation(.spring(response: 0.26, dampingFraction: 0.72), value: isSelected)
         .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
         .frame(width: store.scaled(28), height: store.scaled(store.enableWindowBorder ? 27 : 26))
         .overlay(alignment: .bottomTrailing) {
@@ -752,7 +749,7 @@ private struct TopBarTabItem: View {
             }
             .frame(width: store.scaled(14), height: store.scaled(14))
             .scaleEffect(isSelected ? 1.05 : 0.96)
-            .animation(.spring(response: 0.26, dampingFraction: 0.72), value: isSelected)
+
             .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
 
             Text(tab.displayTitle(isSelected: isSelected, showFullTitle: store.showFullTitleOnActiveTab))
@@ -763,7 +760,7 @@ private struct TopBarTabItem: View {
                         : store.adaptiveTheme.inactiveTabText
                 )
                 .scaleEffect(isSelected ? 1.0 : 0.985)
-                .animation(.spring(response: 0.26, dampingFraction: 0.76), value: isSelected)
+
                 .lineLimit(1)
 
             Spacer(minLength: 0)
@@ -863,7 +860,7 @@ private struct TopBarPinnedTabItem: View {
                 }
             }
             .scaleEffect(isSelected ? 1.06 : 0.95)
-            .animation(.spring(response: 0.26, dampingFraction: 0.72), value: isSelected)
+
             .frame(width: store.scaled(28), height: store.scaled(26))
             .background {
                 ZStack {
@@ -878,7 +875,6 @@ private struct TopBarPinnedTabItem: View {
                                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                                     .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 0.75)
                             )
-                            .matchedGeometryEffect(id: "activeTopBarPinnedTabPill", in: namespace)
                     }
                 }
             }
@@ -1124,7 +1120,16 @@ struct InlineURLBar: View {
                         store.inlineURLBarFrame = geo.frame(in: .global)
                     }
                     .onChange(of: geo.frame(in: .global)) { _, newFrame in
-                        store.inlineURLBarFrame = newFrame
+                        // Geometry fires per-frame during springs/scrolls;
+                        // writing to the store invalidates the root view.
+                        // Only propagate meaningful moves.
+                        let old = store.inlineURLBarFrame
+                        if abs(old.origin.x - newFrame.origin.x) > 1
+                            || abs(old.origin.y - newFrame.origin.y) > 1
+                            || abs(old.width - newFrame.width) > 1
+                            || abs(old.height - newFrame.height) > 1 {
+                            store.inlineURLBarFrame = newFrame
+                        }
                     }
             }
         )
@@ -1210,7 +1215,13 @@ struct InlineURLBar: View {
                         store.inlineSuggestionsFrame = geo.frame(in: .global)
                     }
                     .onChange(of: geo.frame(in: .global)) { _, newFrame in
-                        store.inlineSuggestionsFrame = newFrame
+                        let old = store.inlineSuggestionsFrame
+                        if abs(old.origin.x - newFrame.origin.x) > 1
+                            || abs(old.origin.y - newFrame.origin.y) > 1
+                            || abs(old.width - newFrame.width) > 1
+                            || abs(old.height - newFrame.height) > 1 {
+                            store.inlineSuggestionsFrame = newFrame
+                        }
                     }
             }
         )
@@ -1868,15 +1879,6 @@ struct QuickSettingsPopover: View {
                     )
                     .disabled(!store.adBlockingEnabled)
                 }
-
-                QuickToggleItem(
-                    icon: .mouse,
-                    title: "Smooth scrolling",
-                    isOn: $store.smoothScrollingEnabled,
-                    isDark: store.isDarkMode,
-                    uiFont: store.leanUIFont,
-                    onHoverChanged: handleNonHistoryHovered
-                )
             }
 
             Rectangle()

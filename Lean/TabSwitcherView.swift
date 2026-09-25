@@ -46,7 +46,7 @@ struct TabSwitcherView: View {
     // MARK: - Normal Tab Switcher List (Super-fast, minimal)
     private var normalTabList: some View {
         let tabs = store.switcherTabs
-        return HStack(spacing: 6) {
+        return LazyHStack(spacing: 6) {
             ForEach(0..<tabs.count, id: \.self) { index in
                 let tab = tabs[index]
                 NormalTabItem(
@@ -67,7 +67,9 @@ struct TabSwitcherView: View {
     // MARK: - Thumbnail Card List (Rich visual previews)
     private var thumbnailCardList: some View {
         let tabs = store.switcherTabs
-        return HStack(spacing: 10) {
+        // Lazy: decoding every tab snapshot at once spiked memory/CPU with
+        // many tabs open. Only visible cards materialize.
+        return LazyHStack(spacing: 10) {
             ForEach(0..<tabs.count, id: \.self) { index in
                 let tab = tabs[index]
                 TabThumbnailCard(
@@ -125,7 +127,7 @@ struct NormalTabItem: View {
                 )
         )
         .scaleEffect(isSelected ? 1.0 : 0.98)
-        .animation(.spring(response: 0.14, dampingFraction: 0.9), value: isSelected)
+
     }
 }
 
@@ -143,8 +145,10 @@ struct VisualEffectBlur: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.blendingMode = blendingMode
+        if nsView.material != material || nsView.blendingMode != blendingMode {
+            nsView.material = material
+            nsView.blendingMode = blendingMode
+        }
     }
 }
 
@@ -189,7 +193,7 @@ struct TabThumbnailCard: View {
                 .stroke(cardBorder, lineWidth: isSelected ? 1.5 : 1)
         )
         .scaleEffect(isSelected ? 1.0 : 0.98)
-        .animation(.spring(response: 0.14, dampingFraction: 0.9), value: isSelected)
+
     }
 
     @ViewBuilder

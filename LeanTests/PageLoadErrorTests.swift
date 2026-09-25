@@ -51,7 +51,6 @@ struct PageLoadErrorTests {
             dataStore: .nonPersistent(),
             initialURL: nil,
             scrollbarStyle: .normal,
-            smoothScrolling: false,
             adBlockingEnabled: false
         )
         let keepAlive = tab

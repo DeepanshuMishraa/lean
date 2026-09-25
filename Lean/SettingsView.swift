@@ -1957,13 +1957,6 @@ private struct BrowsingSection: View {
 
                 SettingsGroup(isDark: store.isDarkMode) {
                     CustomToggleRow(
-                        title: "Smooth scrolling",
-                        subtitle: "Eases anchor jumps and find-in-page. Trackpad momentum is drawn by the page itself.",
-                        isOn: $store.smoothScrollingEnabled,
-                        isDark: store.isDarkMode,
-                        uiFont: store.leanUIFont
-                    )
-                    CustomToggleRow(
                         title: "Pages at 120 Hz",
                         subtitle: "Lets pages draw every frame on ProMotion displays. Off is Safari's default and cheaper on battery.",
                         isOn: $store.highFrameRatePages,
@@ -3190,7 +3183,7 @@ private struct PasswordManagerSection: View {
                         title: "Offer passkeys",
                         subtitle: store.passkeysPossible
                             ? "Touch ID or an iCloud passkey, on sites that offer one"
-                            : "Needs an Apple entitlement this build doesn't have — off keeps sites to the password",
+                            : "Touch ID or an iCloud passkey, on sites that offer one — this build lacks Apple's browser entitlement, so if the Mac refuses a request the site falls back to its password",
                         isOn: $store.passkeysEnabled,
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont

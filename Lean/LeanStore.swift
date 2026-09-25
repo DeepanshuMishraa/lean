@@ -236,9 +236,12 @@ final class LeanStore: ObservableObject {
     }
 
     /// Whether sites may use passkeys (Touch ID / iCloud / security key).
-    /// Defaults to whether this build carries Apple's browser entitlement;
-    /// without it the switch stays off and sites fall back to passwords.
-    @Published var passkeysEnabled = Passkeys.isEntitled {
+    /// Defaults on, like Search's entitled releases: explicit passkey
+    /// requests reach the Mac's own sheet with or without Apple's browser
+    /// entitlement (only the one-time permission prompt needs it); if the
+    /// Mac refuses, the site falls back to its password. Off hides the
+    /// option from sites entirely. An explicit user choice always wins.
+    @Published var passkeysEnabled = true {
         didSet {
             persist(passkeysEnabled, forKey: Self.passkeysEnabledKey)
             Passkeys.isEnabled = passkeysEnabled
@@ -287,13 +290,6 @@ final class LeanStore: ObservableObject {
     @Published var enableThumbnailsInTabSwitcher: Bool {
         didSet {
             persist(enableThumbnailsInTabSwitcher, forKey: Self.thumbnailsSwitcherKey)
-        }
-    }
-
-    @Published var smoothScrollingEnabled: Bool {
-        didSet {
-            persist(smoothScrollingEnabled, forKey: Self.smoothScrollingKey)
-            updateAllTabsSmoothScrolling()
         }
     }
 
@@ -490,6 +486,17 @@ final class LeanStore: ObservableObject {
     private var memoryPressureSource: DispatchSourceMemoryPressure?
     private let pictureInPicture = PictureInPicture()
     private var pictureInPictureTabID: LeanTab.ID?
+    /// Generation guard for the async lift: Isolate.on answers a runloop
+    /// after the switch that triggered it, so a fast switch-away/switch-back
+    /// (or close) can land the lift after the page already came home. A
+    /// stale completion must un-isolate, never lift.
+    private var pipGeneration = 0
+    /// Coalesced history+session persistence. `onStateChange` fires 6-10x
+    /// per page load (progress, canGoBack/Forward, title); each used to do
+    /// 2 full SQLite encodes on the main thread. Now debounced to one
+    /// write ~0.8s after the last change.
+    private var pendingPersistWorkItem: DispatchWorkItem?
+    private var pendingHistory: (url: URL, title: String)?
     /// Tab currently being reordered via native drag & drop. Plain (not
     /// @Published) on purpose: it is only read by drop delegates mid-drag.
     var draggingTabID: LeanTab.ID?
@@ -513,9 +520,9 @@ final class LeanStore: ObservableObject {
         self.passwordSavePromptsEnabled = databaseValue(self.database, Bool.self, forKey: Self.passwordSavePromptsKey) ?? true
         self.passwordSuggestionsEnabled = databaseValue(self.database, Bool.self, forKey: Self.passwordSuggestionsKey) ?? true
         let savedPasskeys = databaseValue(self.database, Bool.self, forKey: Self.passkeysEnabledKey)
-        // A choice made while passkeys couldn't work is not a choice about
-        // them: default to what this build can do.
-        let initialPasskeys = savedPasskeys ?? Passkeys.isEntitled
+        // No saved choice: offer passkeys. The Mac answers explicit
+        // requests with its own sheet; a refusal falls back to passwords.
+        let initialPasskeys = savedPasskeys ?? true
         self.passkeysEnabled = initialPasskeys
         Passkeys.isEnabled = initialPasskeys
         self.autoSleepTabsEnabled = databaseValue(self.database, Bool.self, forKey: Self.autoSleepTabsEnabledKey) ?? false
@@ -590,12 +597,6 @@ final class LeanStore: ObservableObject {
             ?? UserDefaults.standard.object(forKey: Self.thumbnailsSwitcherKey) as? Bool
             ?? true
         self.enableThumbnailsInTabSwitcher = savedThumbnails
-
-        // Load saved smooth scrolling preference (default to true)
-        let savedSmoothScrolling = databaseValue(self.database, Bool.self, forKey: Self.smoothScrollingKey)
-            ?? UserDefaults.standard.object(forKey: Self.smoothScrollingKey) as? Bool
-            ?? true
-        self.smoothScrollingEnabled = savedSmoothScrolling
 
         // Colour the tab bar from the page (default off).
         let savedThemedTabBar = databaseValue(self.database, Bool.self, forKey: Self.themedTabBarKey)
@@ -897,13 +898,6 @@ final class LeanStore: ObservableObject {
         }
     }
 
-    func updateAllTabsSmoothScrolling() {
-        let enabled = smoothScrollingEnabled
-        for tab in tabs {
-            tab.applySmoothScrolling(enabled)
-        }
-    }
-
     func updateAllTabsHighFrameRate() {
         if highFrameRatePages {
             FrameRate.fast = true
@@ -957,9 +951,17 @@ final class LeanStore: ObservableObject {
         // or ad as a film, and lifting it yields a blank little window
         // for nothing playing. Mirrors Search's quiet lift.
         guard Players.knows(tab.url) else { return }
+        let generation = pipGeneration
         tab.webView.evaluateJavaScript(Isolate.on) { [weak self, weak tab] result, _ in
             DispatchQueue.main.async {
-                guard let self, let tab, let dimensions = result as? [String: NSNumber],
+                guard let self, let tab else { return }
+                guard self.pipGeneration == generation else {
+                    // Superseded mid-flight (landed, dismissed, or closed):
+                    // never lift a stale page, just make sure it is clean.
+                    tab.webView.evaluateJavaScript(Isolate.off, completionHandler: nil)
+                    return
+                }
+                guard let dimensions = result as? [String: NSNumber],
                       let width = dimensions["width"]?.doubleValue, width > 0,
                       let height = dimensions["height"]?.doubleValue, height > 0 else { return }
                 guard self.selectedID != tab.id else {
@@ -1017,12 +1019,24 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    /// Un-isolate then repair, chained: the repair must run after `off`
+    /// finishes, not alongside it, or the player can re-measure mid-teardown
+    /// and stick again.
+    private func landPiPPage(_ tab: LeanTab) {
+        tab.webView.evaluateJavaScript(Isolate.off) { [weak tab] _, _ in
+            DispatchQueue.main.async {
+                tab?.webView.evaluateJavaScript(Isolate.repair, completionHandler: nil)
+            }
+        }
+    }
+
     private func dismissPictureInPicture() {
         guard let id = pictureInPictureTabID else { return }
+        pipGeneration += 1
         pictureInPictureTabID = nil
         pictureInPicture.drop()
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
-        tab.webView.evaluateJavaScript(Isolate.off, completionHandler: nil)
+        landPiPPage(tab)
         objectWillChange.send()
     }
 
@@ -1035,9 +1049,10 @@ final class LeanStore: ObservableObject {
         // dropping is what left the tab showing a detached page — blank
         // until the user navigated away and back. Mirrors Search's
         // Browser.land(), where the window closes whatever else is true.
+        pipGeneration += 1
         pictureInPictureTabID = nil
         if pictureInPicture.showing { pictureInPicture.drop() }
-        tab.webView.evaluateJavaScript(Isolate.off, completionHandler: nil)
+        landPiPPage(tab)
         // And go to the tab, wherever this was asked from: the widget's
         // return arrow must land on the playing tab — bringing the browser
         // forward if it wasn't — not just close the window. A manual
@@ -1544,6 +1559,32 @@ final class LeanStore: ObservableObject {
         persist(recentlyClosed.map(\.absoluteString), forKey: Self.recentlyClosedKey)
     }
 
+    /// Debounced history+session write for high-frequency tab events.
+    private func scheduleDebouncedPersist() {
+        pendingPersistWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            if let pending = self.pendingHistory {
+                self.pendingHistory = nil
+                self.recordHistory(url: pending.url, title: pending.title)
+            }
+            self.saveSession()
+        }
+        pendingPersistWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: workItem)
+    }
+
+    /// Flush any pending debounced writes (close, quit, tab select).
+    func flushPendingPersist() {
+        pendingPersistWorkItem?.cancel()
+        pendingPersistWorkItem = nil
+        if let pending = pendingHistory {
+            pendingHistory = nil
+            recordHistory(url: pending.url, title: pending.title)
+        }
+        saveSession()
+    }
+
     func togglePin(tab: LeanTab) {
         guard tab.url != nil || tab.isPinned else { return }
         withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
@@ -1598,7 +1639,6 @@ final class LeanStore: ObservableObject {
             initialURL: configuration == nil ? url : nil,
             isDark: isDarkMode,
             scrollbarStyle: scrollbarStyle,
-            smoothScrolling: smoothScrollingEnabled,
             pageFont: webPageFont,
             adBlockingEnabled: adBlockingEnabled,
             adBlockingExcludedHosts: adBlockingExcludedHosts,
@@ -1616,10 +1656,12 @@ final class LeanStore: ObservableObject {
         tab.onStateChange = { [weak self, weak tab] in
             guard let self, let tab else { return }
             self.objectWillChange.send()
+            // Coalesce: one debounced SQLite write instead of 2 per event.
+            // History only for settled (non-loading) states; session always.
             if let tabURL = tab.url, !tab.isLoading {
-                self.recordHistory(url: tabURL, title: tab.title)
+                self.pendingHistory = (tabURL, tab.title)
             }
-            self.saveSession()
+            self.scheduleDebouncedPersist()
         }
         tab.downloadManager = downloadManager
         tab.mediaPermissionStore = mediaPermissionStore
@@ -1657,7 +1699,9 @@ final class LeanStore: ObservableObject {
 
     func select(tab: LeanTab) {
         selectedID = tab.id
-        saveSession()
+        // Debounced: select() is the tab-switch hot path and used to do 2
+        // full SQLite encodes on the main thread per switch.
+        scheduleDebouncedPersist()
     }
 
     func openTabAsSplit(_ tab: LeanTab) {
@@ -2067,7 +2111,6 @@ final class LeanStore: ObservableObject {
         persist(tabLayout.rawValue, forKey: Self.tabLayoutKey)
         persist(isSidebarCollapsed, forKey: Self.isSidebarCollapsedKey)
         persist(enableThumbnailsInTabSwitcher, forKey: Self.thumbnailsSwitcherKey)
-        persist(smoothScrollingEnabled, forKey: Self.smoothScrollingKey)
         persist(themedTabBar, forKey: Self.themedTabBarKey)
         persist(peeksLinks, forKey: Self.peeksLinksKey)
         persist(showFullTitleOnActiveTab, forKey: Self.showFullTitleKey)
@@ -2117,7 +2160,6 @@ final class LeanStore: ObservableObject {
     private static let tabLayoutKey = "tabLayout"
     private static let isSidebarCollapsedKey = "isSidebarCollapsed"
     private static let thumbnailsSwitcherKey = "enableThumbnailsInTabSwitcher"
-    private static let smoothScrollingKey = "smoothScrollingEnabled"
     private static let peeksLinksKey = "links.peek"
     private static let themedTabBarKey = "themedTabBar"
     private static let highFrameRatePagesKey = "highFrameRatePages"

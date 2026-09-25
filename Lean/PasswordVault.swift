@@ -116,7 +116,12 @@ enum PasswordVault {
         ]
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return .success([]) }
+        if status == errSecItemNotFound {
+            // Cache the empty vault too: without it every focus and
+            // right-click repeats the synchronous Keychain round-trip.
+            allCache = ([], Date())
+            return .success([])
+        }
         guard status == errSecSuccess else { return .failure(.keychain(status)) }
         let attributes = result as? [[String: Any]] ?? []
         let logins = attributes.compactMap { item -> SavedPassword? in

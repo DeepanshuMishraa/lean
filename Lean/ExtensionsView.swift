@@ -368,13 +368,26 @@ private struct ExtensionsPopoverContent: View {
 
                     let permissionsContent = VStack(spacing: 3) {
                         ForEach(item.requiredPermissions, id: \.self) { perm in
-                            permissionRow(
-                                title: perm,
-                                isOn: Binding(
-                                    get: { item.grantedPermissions.contains(perm) },
-                                    set: { manager.setPermission(perm, enabled: $0, for: item.id) }
+                            // Required nativeMessaging is consent given at
+                            // install (re-granted on every load): showing it
+                            // revocable would refuse a helper the user
+                            // already approved. Optional stays revocable.
+                            if perm == WKWebExtension.Permission.nativeMessaging.rawValue {
+                                permissionRow(
+                                    title: "\(perm) (required)",
+                                    isOn: .constant(true)
                                 )
-                            )
+                                .disabled(true)
+                                .opacity(0.75)
+                            } else {
+                                permissionRow(
+                                    title: perm,
+                                    isOn: Binding(
+                                        get: { item.grantedPermissions.contains(perm) },
+                                        set: { manager.setPermission(perm, enabled: $0, for: item.id) }
+                                    )
+                                )
+                            }
                         }
                         ForEach(item.optionalPermissions, id: \.self) { perm in
                             permissionRow(

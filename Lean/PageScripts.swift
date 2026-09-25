@@ -295,9 +295,18 @@ enum PageScripts {
                 style.id = 'lean-custom-font-style';
                 (document.head || document.documentElement).appendChild(style);
             }
-            style.textContent = "\(css)";
+            style.textContent = "\(PageScripts.jsString(css))";
         })();
         """
+    }
+
+    /// Encodes text as a JavaScript double-quoted string literal: the CSS
+    /// carries family names that may hold backslashes or quotes.
+    static func jsString(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\r", with: "")
     }
 
     static func scrollbar(_ style: ScrollbarStyle) -> String {

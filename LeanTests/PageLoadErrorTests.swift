@@ -3,6 +3,32 @@ import Testing
 @testable import Lean
 
 struct PageLoadErrorTests {
+    /// A loopback port nothing listens on: bind an ephemeral port, read it
+    /// back, and close it. Connecting there refuses fast, with a port the
+    /// test owns instead of a fixed one.
+    nonisolated static func closedLoopbackPort() -> UInt16 {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return 9 }
+        defer { close(fd) }
+        var addr = sockaddr_in()
+        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = 0
+        addr.sin_addr.s_addr = INADDR_LOOPBACK.bigEndian
+        guard withUnsafeMutablePointer(to: &addr, {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }) == 0 else { return 9 }
+        var actual = sockaddr_in()
+        var len = socklen_t(MemoryLayout<sockaddr_in>.size)
+        withUnsafeMutablePointer(to: &actual) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { _ = getsockname(fd, $0, &len) }
+        }
+        let port = CFSwapInt16BigToHost(actual.sin_port)
+        return port == 0 ? 9 : port
+    }
+
     private func failure(code: Int, url: String = "http://localhost:3000/") -> (Error, URL) {
         let target = URL(string: url)!
         let error = NSError(domain: NSURLErrorDomain, code: code, userInfo: [NSURLErrorFailingURLErrorKey: target])
@@ -54,8 +80,11 @@ struct PageLoadErrorTests {
             adBlockingEnabled: false
         )
         let keepAlive = tab
-        // Nothing listens on discard-port 9: connection refused, fast.
-        tab.load(URL(string: "http://127.0.0.1:9/")!)
+        // A port this test owns and closes: connecting there reliably
+        // refuses, without depending on the fixed discard port staying
+        // closed on every machine this suite runs on.
+        let port = Self.closedLoopbackPort()
+        tab.load(URL(string: "http://127.0.0.1:\(port)/")!)
         var ticks = 0
         while tab.pageError == nil, ticks < 150 {
             try await Task.sleep(for: .milliseconds(100))

@@ -5,12 +5,13 @@
     <!-- Release entitlements for passkeys. NOT wired into project.yml:
     the restricted key below is refused without the matching Developer ID
     provisioning profile, which Apple grants to browsers on request, so
-    local and ad-hoc builds keep using Lean.entitlements (where passkeys
-    stay off and sites fall back to passwords).
+    local and ad-hoc builds keep using Lean.entitlements.
     To ship passkeys: request the `com.apple.developer.web-browser
     .public-key-credential` entitlement from Apple, place the issued
     `.provisionprofile` for com.dipxsy.lean beside the build, embed it,
-    and sign with CODE_SIGN_ENTITLEMENTS pointing at this file. -->
+    sign every embedded component (including Sparkle) with the same
+    Developer ID identity, and sign with CODE_SIGN_ENTITLEMENTS pointing
+    at this file — keeping hardened runtime library validation on. -->
     <key>com.apple.security.app-sandbox</key>
     <true/>
     <key>com.apple.security.network.client</key>
@@ -36,12 +37,6 @@
     <key>com.apple.developer.team-identifier</key>
     <string>$(DEVELOPMENT_TEAM)</string>
     <key>com.apple.developer.web-browser.public-key-credential</key>
-    <true/>
-    <!-- Ad-hoc signed (no Team ID): dyld derives each binary's team from its
-    cdhash, so the app and embedded Sparkle can never match teams under the
-    hardened runtime's library validation. Disable it or every Release build
-    aborts at launch with "different Team IDs". Safe: distribution is ad-hoc. -->
-    <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
 </dict>
 </plist>

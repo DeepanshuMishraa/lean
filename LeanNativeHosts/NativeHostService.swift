@@ -23,15 +23,17 @@ final class NativeHostRunner: NSObject, LeanNativeHostServiceProtocol {
     }
 
     func launchHost(named name: String, origin: String, reply: @escaping (String?, NSError?) -> Void) {
-        let session: HostSession
+        let program: URL
         do {
-            let program = try NativeHostManifests.resolveHost(named: name, origin: origin, folders: manifestFolders)
-            session = HostSession(program: program, origin: origin)
-            try session.start()
+            program = try NativeHostManifests.resolveHost(named: name, origin: origin, folders: manifestFolders)
         } catch {
             reply(nil, error as NSError)
             return
         }
+        // Registered before start(): output or an exit arriving between
+        // spawn and handler assignment would otherwise be dropped, and a
+        // start failure must not leave the session listed.
+        let session = HostSession(program: program, origin: origin)
         lock.lock()
         sessions[session.id] = session
         lock.unlock()
@@ -41,6 +43,13 @@ final class NativeHostRunner: NSObject, LeanNativeHostServiceProtocol {
         session.onExit = { [weak self] in
             self?.forget(session.id)
             self?.client?.nativeHostSessionDidExit(session.id)
+        }
+        do {
+            try session.start()
+        } catch {
+            forget(session.id)
+            reply(nil, error as NSError)
+            return
         }
         // A new launch is often a worker starting over; a previous session
         // that already exited may still be listed.
@@ -62,28 +71,39 @@ final class NativeHostRunner: NSObject, LeanNativeHostServiceProtocol {
     }
 
     func sendOneShotMessage(_ json: Data, toHostNamed name: String, origin: String, reply: @escaping (Data?, NSError?) -> Void) {
-        let session: HostSession
+        let program: URL
         do {
-            let program = try NativeHostManifests.resolveHost(named: name, origin: origin, folders: manifestFolders)
-            session = HostSession(program: program, origin: origin)
+            program = try NativeHostManifests.resolveHost(named: name, origin: origin, folders: manifestFolders)
+        } catch {
+            reply(nil, error as NSError)
+            return
+        }
+        let session = HostSession(program: program, origin: origin)
+        do {
             try session.start()
         } catch {
             reply(nil, error as NSError)
             return
         }
-        do {
-            try session.write(json: json)
-        } catch {
-            session.stop()
-            reply(nil, error as NSError)
-            return
-        }
+        // Waiter before write: a fast host answers between the two, and an
+        // answer with no waiter is dropped to onMessage (nil here) — lost.
         session.readOne(timeout: 30) { answer in
             session.stop()
             switch answer {
             case .success(let data): reply(data, nil)
             case .failure(let error): reply(nil, error as NSError)
             }
+        }
+        do {
+            try session.write(json: json)
+        } catch {
+            // The waiter above is still pending: stop() would resume it with
+            // success(nil) and reply success. Drop it first so the write
+            // error is what the caller hears, exactly once.
+            session.dropWaiters()
+            session.stop()
+            reply(nil, error as NSError)
+            return
         }
     }
 
@@ -135,6 +155,9 @@ final class HostSession {
     private let lock = NSLock()
     private var waiters: [Waiter] = []
     private(set) var exited = false
+    /// The process is gone but stdout may not be: set by terminationHandler,
+    /// which leaves finishing to the EOF path (or its delay fallback).
+    private(set) var processExited = false
     var onMessage: ((Data) -> Void)?
     var onExit: (() -> Void)?
 
@@ -161,7 +184,20 @@ final class HostSession {
             }
             self.take(chunk)
         }
-        process.terminationHandler = { [weak self] _ in self?.finish() }
+        // A reply already sitting in the pipe must reach its waiter through
+        // the EOF path's take() — never finish here, which would resume
+        // waiters with nil and report the exit before the answer. The exit
+        // is recorded; if EOF never arrives (an inherited fd held open),
+        // finish on a delay instead of hanging the session.
+        process.terminationHandler = { [weak self] _ in
+            guard let self else { return }
+            self.lock.lock()
+            self.processExited = true
+            self.lock.unlock()
+            DispatchQueue.global().asyncAfter(deadline: .now() + 5) { [weak self] in
+                self?.finish()
+            }
+        }
         try process.run()
     }
 
@@ -173,6 +209,15 @@ final class HostSession {
 
     func write(json: Data) throws {
         try input.fileHandleForWriting.write(contentsOf: NativeMessageFraming.encode(json: json))
+    }
+
+    /// Abandons pending waiters without resuming them: the caller's own
+    /// error (e.g. a failed write) is the answer, and the timeout work
+    /// standing down on the missing waiter keeps delivery exactly-once.
+    func dropWaiters() {
+        lock.lock()
+        waiters = []
+        lock.unlock()
     }
 
     /// The next message from the host, or nil if it exits first. Gives up

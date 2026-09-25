@@ -25,8 +25,9 @@ final class OmnibarService {
     /// Memoized suggestions: the views evaluate `suggestions` 3-5x per
     /// render (body + showSuggestions + key handlers), and typing re-renders
     /// per keystroke. Cache hits are a dict lookup; misses do the real work.
-    /// Key includes counts so tab/history changes invalidate; TTL covers
-    /// rapid re-evaluation of the same query.
+    /// The key fingerprints the query and every suggestion target, so a
+    /// retitled history entry or a navigated tab cannot reuse stale results;
+    /// the TTL only covers rapid re-evaluation of identical inputs.
     private var memo: [String: (results: [OmnibarSuggestion], at: Date)] = [:]
     private let memoTTL: TimeInterval = 2
     private let lock = NSLock()
@@ -38,7 +39,12 @@ final class OmnibarService {
         searchEngine: SearchEngine = .google
     ) -> [OmnibarSuggestion] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cacheKey = "\(trimmed.lowercased())|\(history.count)|\(openTabs.count)|\(searchEngine.rawValue)|\(openTabs.map(\.id.uuidString).joined(separator: ","))"
+        // Case-preserving query plus full target fingerprints: lowercasing
+        // or counts alone would serve stale rows after a retitle or a tab
+        // navigation to a same-shaped target list.
+        let historyPrint = history.map { "\($0.url.absoluteString)|\($0.title)" }.joined(separator: "\n")
+        let tabsPrint = openTabs.map { "\($0.id.uuidString)|\($0.title)|\($0.url.absoluteString)" }.joined(separator: "\n")
+        let cacheKey = "\(trimmed)|\(searchEngine.rawValue)|\(historyPrint.hashValue)|\(tabsPrint.hashValue)"
         lock.lock()
         if let hit = memo[cacheKey], Date().timeIntervalSince(hit.at) < memoTTL {
             let results = hit.results

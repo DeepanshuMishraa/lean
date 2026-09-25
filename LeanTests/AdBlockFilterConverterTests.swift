@@ -121,9 +121,11 @@ struct AdBlockFilterConverterTests {
         ||ads.example.com^
         """
         let result = AdBlockFilterConverter.convert(text)
-        #expect(result.rules.count == 1)
-        #expect(result.keptCount == 1)
-        #expect(result.skippedCount == 3)
+        // The trailing `^` expands to separator-class and end-anchor rules;
+        // the repeated line contributes only duplicates.
+        #expect(result.rules.count == 2)
+        #expect(result.keptCount == 2)
+        #expect(result.skippedCount == 4)
     }
 
     @Test("Negated resource types are skipped, not treated as patterns")

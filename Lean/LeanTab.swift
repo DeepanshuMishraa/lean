@@ -746,6 +746,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         printItem.target = self
         printItem.isEnabled = !isSettingsPage
         menu.addItem(printItem)
+        // WebKit's own first item reads Stop while the page loads and Reload
+        // once it settles; this one reloads unconditionally.
+        let reloadItem = NSMenuItem(title: "Reload", action: #selector(pageMenuReload), keyEquivalent: "")
+        reloadItem.target = self
+        menu.addItem(reloadItem)
         let source = NSMenuItem(title: "View Page Source", action: #selector(pageMenuShowSource), keyEquivalent: "")
         source.target = self
         menu.addItem(source)
@@ -762,6 +767,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
     @objc private func pageMenuShowSource() { showPageSource() }
     @objc private func pageMenuPrint() { printPage() }
+    @objc private func pageMenuReload() { reload() }
 
     @objc private func pageMenuFillSavedPassword() {
         guard passwordSuggestionsEnabled,
@@ -1580,7 +1586,7 @@ extension LeanTab: WKNavigationDelegate {
         // `.download` turns it into the `WKDownload` below.
         if let url = navigationAction.request.url,
            let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
-           navigationAction.targetFrame == nil || navigationAction.targetFrame?.isMainFrame == true {
+           navigationAction.targetFrame?.isMainFrame == true {
             pendingMainFrameURL = url
         }
         guard !navigationAction.shouldPerformDownload else {

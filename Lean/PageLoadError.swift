@@ -130,7 +130,7 @@ struct PageLoadError: Equatable, Sendable {
         let failing = ns.userInfo[NSURLErrorFailingURLErrorKey] as? URL ?? url
         let host = failing?.host ?? url?.host
         let name = host.map { "“\($0)”" } ?? "This page"
-        let devHint = failing.map { AddressResolver.isLoopbackURL($0) } ?? false
+        let devHint = (failing.map { AddressResolver.isLoopbackURL($0) } ?? false)
             ? "\n\nIf this is a dev server, make sure it's running, then reload."
             : ""
         switch ns.code {

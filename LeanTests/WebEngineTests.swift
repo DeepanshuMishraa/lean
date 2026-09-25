@@ -120,6 +120,33 @@ struct MediaPermissionStoreTests {
     }
 
     @MainActor
+    @Test("An explicitly cleared database is not resurrected by the mirror")
+    func explicitEmptyBeatsMirror() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("Lean.sqlite3")
+
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let database = try AppDatabase(url: url)
+        let first = MediaPermissionStore(database: database, userDefaults: defaults)
+        first.setDecision(true, forOriginKey: "https://meet.google.com|microphone")
+        first.clear()
+        // Database now holds an explicit empty dictionary. Plant a stale
+        // mirror entry directly (same key MediaPermissionStore persists
+        // under): a fresh instance must stay empty, not resurrect it.
+        defaults.set(
+            ["https://meet.google.com|microphone": true],
+            forKey: "mediaCapturePermissions_v1"
+        )
+        let second = MediaPermissionStore(database: try AppDatabase(url: url), userDefaults: defaults)
+        #expect(second.savedDecisions.isEmpty)
+        #expect(second.decision(forOriginKey: "https://meet.google.com|microphone") == nil)
+    }
+
+    @MainActor
     @Test("Decisions survive a database reopen")
     func databaseRoundTrip() throws {
         let directory = FileManager.default.temporaryDirectory

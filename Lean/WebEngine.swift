@@ -93,18 +93,25 @@ final class MediaPermissionStore: ObservableObject {
     init(database: AppDatabase? = nil, userDefaults: UserDefaults = .standard) {
         self.database = database
         self.userDefaults = userDefaults
+        var restoredFromDatabase = false
         if let database {
             switch database.value([String: Bool].self, forKey: Self.storageKey) {
             case .success(let saved):
-                decisions = saved ?? [:]
+                if let saved {
+                    decisions = saved
+                    restoredFromDatabase = true
+                }
             case .failure(let error):
                 NSLog("Could not read media permissions: %@", String(describing: error))
             }
         }
         // UserDefaults mirrors the database, as with the other persisted
         // preferences: a decision must survive even when the database is
-        // unavailable, and the database wins when both exist.
-        if decisions.isEmpty,
+        // unavailable, and the database wins when both exist. The mirror is
+        // only restored when the database holds nothing — an explicitly
+        // empty dictionary (every decision cleared) must stay empty, not
+        // resurrect cleared permissions.
+        if !restoredFromDatabase,
            let mirrored = userDefaults.dictionary(forKey: Self.storageKey) as? [String: Bool] {
             decisions = mirrored
         }

@@ -56,4 +56,14 @@ struct AddressResolverTests {
         #expect(!AddressResolver.isLoopbackURL(URL(string: "https://example.com/")!))
         #expect(!AddressResolver.isLoopbackURL(URL(string: "https://duckduckgo.com/?q=localhost")!))
     }
+
+    @Test("Public hostnames sharing private prefixes stay public")
+    func privatePrefixLookalikes() {
+        #expect(!AddressResolver.isLoopbackURL(URL(string: "https://10.com/")!))
+        #expect(!AddressResolver.isLoopbackURL(URL(string: "https://192.168.com/")!))
+        #expect(!AddressResolver.isLoopbackURL(URL(string: "https://10.example.com/")!))
+        #expect(AddressResolver.loopbackServerURL(from: "10.0.0.5:3000")?.absoluteString == "http://10.0.0.5:3000")
+        #expect(AddressResolver.loopbackServerURL(from: "192.168.1.10:8080")?.absoluteString == "http://192.168.1.10:8080")
+        #expect(AddressResolver.loopbackServerURL(from: "10.com:8080") == nil)
+    }
 }

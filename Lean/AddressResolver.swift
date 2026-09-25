@@ -142,11 +142,11 @@ enum AddressResolver {
         if lower == "::1" || lower == "[::1]" { return true }
         if lower == "0.0.0.0" { return true }
         let parts = lower.split(separator: ".", omittingEmptySubsequences: false)
-        if parts.count == 4, parts.allSatisfy({ UInt8($0) != nil }) {
-            // Entire 127/8 loopback range, plus common LAN ranges.
-            if parts[0] == "127" { return true }
-            if lower.hasPrefix("192.168.") || lower.hasPrefix("10.") { return true }
-        }
+        guard parts.count == 4, parts.allSatisfy({ UInt8($0) != nil }) else { return false }
+        // Entire 127/8 loopback range, plus common LAN ranges — only inside
+        // the validated four-component IPv4 branch, so public hostnames such
+        // as 10.com or 192.168.com keep their public-domain behavior.
+        if parts[0] == "127" { return true }
         return lower.hasPrefix("192.168.") || lower.hasPrefix("10.")
     }
 }

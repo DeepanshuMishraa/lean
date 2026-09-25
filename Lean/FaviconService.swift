@@ -38,20 +38,25 @@ final class FaviconService {
             return
         }
 
+        // Keyed by host plus the resolved explicit icon: different pages on
+        // one host declare different icons, and coalescing them would hand
+        // every waiter the first answerer's icon.
+        let explicitKey = explicitURLString.flatMap { URL(string: $0, relativeTo: url)?.absoluteString } ?? ""
+        let flightKey = "\(host)|\(explicitKey)"
         lock.lock()
-        if inFlight[host] != nil {
-            inFlight[host]?.append(completion)
+        if inFlight[flightKey] != nil {
+            inFlight[flightKey]?.append(completion)
             lock.unlock()
             return
         }
-        inFlight[host] = [completion]
+        inFlight[flightKey] = [completion]
         lock.unlock()
 
         let finish: @MainActor @Sendable (NSImage?) -> Void = { [weak self] image in
             guard let self else { return }
             var callbacks: [@MainActor @Sendable (NSImage?) -> Void] = []
             self.lock.lock()
-            callbacks = self.inFlight.removeValue(forKey: host) ?? []
+            callbacks = self.inFlight.removeValue(forKey: flightKey) ?? []
             self.lock.unlock()
             if let image {
                 let scaled = self.downscaled(image, to: 64)

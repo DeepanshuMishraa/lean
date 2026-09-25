@@ -43,6 +43,9 @@ struct LeanApp: App {
                     store.openURL(url)
                     NSApp.activate(ignoringOtherApps: true)
                 }
+                // View-level acceptance so an existing window receives links
+                // directly; the scene-level matcher below covers cold starts.
+                .handlesExternalEvents(preferring: [], allowing: ["http", "https"])
         }
         .windowStyle(.hiddenTitleBar)
         // Links from other apps must land as a tab in an existing window,

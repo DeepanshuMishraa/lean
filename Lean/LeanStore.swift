@@ -236,11 +236,11 @@ final class LeanStore: ObservableObject {
     }
 
     /// Whether sites may use passkeys (Touch ID / iCloud / security key).
-    /// Defaults on, like Search's entitled releases: explicit passkey
-    /// requests reach the Mac's own sheet with or without Apple's browser
-    /// entitlement (only the one-time permission prompt needs it); if the
-    /// Mac refuses, the site falls back to its password. Off hides the
-    /// option from sites entirely. An explicit user choice always wins.
+    /// Offered by default; an explicit user choice always wins. Handing a
+    /// request to macOS needs Apple's browser entitlement to reach the
+    /// sheet — ad-hoc builds don't carry it, so when macOS refuses, the
+    /// site falls back to its password. The one-time system permission
+    /// prompt is only ever asked on entitled builds.
     @Published var passkeysEnabled = true {
         didSet {
             persist(passkeysEnabled, forKey: Self.passkeysEnabledKey)
@@ -249,8 +249,8 @@ final class LeanStore: ObservableObject {
         }
     }
 
-    /// Whether this build can actually do passkeys: signed with Apple's
-    /// browser entitlement. Fixed for the life of the process.
+    /// Whether this build carries Apple's browser passkey entitlement and
+    /// so can reach the Mac's sheet. Fixed for the life of the process.
     let passkeysPossible = Passkeys.isEntitled
 
     @Published var autoSleepTabsEnabled = false {

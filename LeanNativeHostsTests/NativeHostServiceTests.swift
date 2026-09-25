@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-@testable import LeanNativeHosts
 
 /// The service's session and runner flow, against real processes.
 /// A tiny echo host stands in for one: like a real host it ignores its

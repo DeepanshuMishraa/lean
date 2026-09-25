@@ -567,11 +567,11 @@ struct SidebarTabItem: View {
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(isHovered ? store.adaptiveTheme.inactiveTabBackground : Color.clear)
+                    .fill(isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : Color.clear)
 
                 if isSelected {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(store.adaptiveTheme.inactiveTabHoverBackground)
+                        .fill(store.adaptiveTheme.activeTabBackground)
                         .overlay(
                             RoundedRectangle(cornerRadius: 9, style: .continuous)
                                 .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)

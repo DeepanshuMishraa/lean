@@ -106,9 +106,18 @@ enum ContentBlocker {
     private static var cachedRuleLists: [WKContentRuleList] = []
     private static var loadTask: Task<[WKContentRuleList], Never>?
     private static var refreshTask: Task<Void, Never>?
+    /// Fingerprint + date of filter texts whose compile already failed.
+    /// A persistently failing compile must not spray orphan files on every
+    /// launch: same texts are not retried within the backoff window.
+    private static let lastFailedHashKey = "adBlockFiltersLastFailedHash"
+    private static let lastFailedDateKey = "adBlockFiltersLastFailedDate"
+    private static let failedRetryInterval: TimeInterval = 7 * 24 * 60 * 60
 
     /// Compiled rule lists, from WebKit's store or the offline fallback.
-    /// Call `refreshIfNeeded()` separately (e.g. at launch) to update lists.
+    /// Stored lists are always consulted first — a valid compile from any
+    /// earlier run is reused as-is. The schema version only gates background
+    /// refreshes, never loading: gating loads on it recompiled from scratch
+    /// on every launch whenever a refresh had not yet completed.
     static func ruleLists() async -> [WKContentRuleList] {
         if !cachedRuleLists.isEmpty {
             return cachedRuleLists
@@ -118,8 +127,7 @@ enum ContentBlocker {
         }
 
         let task = Task {
-            let schemaVersion = UserDefaults.standard.integer(forKey: schemaVersionKey)
-            let stored = schemaVersion >= currentSchemaVersion ? await loadStoredRuleLists() : []
+            let stored = await loadStoredRuleLists()
             if !stored.isEmpty {
                 return stored
             }
@@ -160,6 +168,8 @@ enum ContentBlocker {
                    Date().timeIntervalSince(lastUpdated) < updateInterval {
                     return
                 }
+                await refreshNow(cachedTexts: cached)
+                return
             }
             await refreshNow()
         }
@@ -173,9 +183,11 @@ enum ContentBlocker {
 
     /// Fetch, convert, persist, and compile all filter lists.
     /// Individual source failures fall back to cached text; total failure keeps the old lists.
+    /// Pass already-loaded texts (e.g. from the staleness check) to avoid
+    /// reading the filter files twice.
     @discardableResult
-    static func refreshNow() async -> RefreshResult? {
-        let cached = loadCachedFilterTexts()
+    static func refreshNow(cachedTexts: [String: String]? = nil) async -> RefreshResult? {
+        let cached = cachedTexts ?? loadCachedFilterTexts()
         var fresh: [String: String] = [:]
 
         await withTaskGroup(of: (String, String?).self) { group in
@@ -200,12 +212,27 @@ enum ContentBlocker {
         guard !merged.isEmpty else { return nil }
 
         let texts = filterSources.compactMap { merged[$0.id] } + [curatedYouTubeFilters]
+        // Same texts that already failed recently: compiling again only
+        // sprays orphan files WebKit never cleans up. New or old-enough
+        // texts always get their attempt. (Stable FNV hash: Swift's
+        // hashValue is re-seeded per launch and useless across runs.)
+        let fingerprint = Self.stableHash(texts.joined(separator: "\n"))
+        if fingerprint == UserDefaults.standard.integer(forKey: lastFailedHashKey) {
+            let lastFailed = UserDefaults.standard.double(forKey: lastFailedDateKey)
+            if lastFailed > 0, Date().timeIntervalSince(Date(timeIntervalSince1970: lastFailed)) < failedRetryInterval {
+                return nil
+            }
+        }
         let encoded = await encode(texts: texts)
         guard !encoded.json.isEmpty else { return nil }
 
         persistFilterTexts(merged)
         let compiled = await compile(encoded: encoded.json)
-        guard !compiled.isEmpty else { return nil }
+        guard !compiled.isEmpty else {
+            UserDefaults.standard.set(fingerprint, forKey: lastFailedHashKey)
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastFailedDateKey)
+            return nil
+        }
 
         cachedRuleLists = compiled
         UserDefaults.standard.set(currentSchemaVersion, forKey: schemaVersionKey)
@@ -295,6 +322,16 @@ enum ContentBlocker {
 
     // MARK: - Compilation
 
+    /// Stable 63-bit FNV-1a hash for cross-launch fingerprinting.
+    nonisolated static func stableHash(_ text: String) -> Int {
+        var hash: UInt64 = 14_695_901_906_576_741
+        for byte in text.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return Int(truncatingIfNeeded: hash & 0x7FFF_FFFF_FFFF_FFFF)
+    }
+
     private struct EncodedRules: Sendable {
         var json: [String]
         var keptCount: Int
@@ -303,11 +340,14 @@ enum ContentBlocker {
     private static func loadStoredRuleLists() async -> [WKContentRuleList] {
         guard let store = WKContentRuleListStore.default() else { return [] }
         var lists: [WKContentRuleList] = []
+        // Tolerant: a partially written set still blocks with what is there
+        // instead of triggering a full recompile for one missing chunk.
         for index in 0..<maxStoredLists {
-            guard let list = try? await store.contentRuleList(
+            if let list = try? await store.contentRuleList(
                 forIdentifier: "\(listIdentifierPrefix).\(index)"
-            ) else { break }
-            lists.append(list)
+            ) {
+                lists.append(list)
+            }
         }
         return lists
     }

@@ -88,7 +88,12 @@ struct LeanFont: RawRepresentable, Hashable, Identifiable, CaseIterable, Codable
     var cssFamily: String {
         if self == .geistSans { return "'Geist', 'Geist Sans', -apple-system, BlinkMacSystemFont, sans-serif" }
         if self == .system { return "-apple-system, BlinkMacSystemFont, sans-serif" }
-        return "'\(rawValue)', -apple-system, BlinkMacSystemFont, sans-serif"
+        // Family names come from the system font list, not a closed set:
+        // escape backslashes and quotes before quoting for CSS.
+        let family = rawValue
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+        return "'\(family)', -apple-system, BlinkMacSystemFont, sans-serif"
     }
 }
 

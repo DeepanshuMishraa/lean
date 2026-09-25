@@ -350,6 +350,21 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
             let extensionModel = try await WKWebExtension(resourceBaseURL: folder(for: id))
             let context = WKWebExtensionContext(for: extensionModel)
             context.uniqueIdentifier = id
+            // Installing was the consent for what the extension requires: a
+            // required nativeMessaging permission (iCloud Passwords' helper,
+            // the 1Password/Bitwarden desktop apps) is granted on every load,
+            // or the helper is refused even though the user approved it at
+            // install. Optional nativeMessaging still needs an explicit
+            // grant. Mirrors Search.
+            let requiredValues = Set(extensionModel.requestedPermissions.map(\.rawValue))
+            let resolved = Self.resolvedLoadPermissions(
+                requiredValues: requiredValues,
+                grantedValues: installed[index].grantedPermissions
+            )
+            if resolved != installed[index].grantedPermissions {
+                installed[index].grantedPermissions = resolved
+                do { try save() } catch { errorMessage = error.localizedDescription }
+            }
             for permission in extensionModel.requestedPermissions.union(extensionModel.optionalPermissions) {
                 let granted = installed[index].grantedPermissions.contains(permission.rawValue)
                 context.setPermissionStatus(granted ? .grantedExplicitly : .deniedExplicitly, for: permission)
@@ -382,6 +397,15 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
 
     private func updated(_ values: [String], value: String, enabled: Bool) -> [String] {
         enabled ? Array(Set(values).union([value])).sorted() : values.filter { $0 != value }
+    }
+
+    /// Permissions an extension holds once loaded: previously granted ones,
+    /// plus `nativeMessaging` when the manifest requires it (see `load`).
+    /// Pure so the consent rule is unit-testable.
+    nonisolated static func resolvedLoadPermissions(requiredValues: Set<String>, grantedValues: [String]) -> [String] {
+        let key = WKWebExtension.Permission.nativeMessaging.rawValue
+        guard requiredValues.contains(key), !grantedValues.contains(key) else { return grantedValues }
+        return (Set(grantedValues).union([key])).sorted()
     }
 
     private func folder(for id: String) -> URL {

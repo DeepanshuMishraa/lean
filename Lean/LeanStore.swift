@@ -297,6 +297,37 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    /// The top strip takes the colour the active page declares for itself
+    /// with `theme-color`, and follows it from tab to tab. Only the strip
+    /// across the top — the sidebar layout is unaffected, and a page that
+    /// hasn't declared a colour leaves the strip as it always looked. Off
+    /// unless asked for.
+    @Published var themedTabBar: Bool {
+        didSet {
+            persist(themedTabBar, forKey: Self.themedTabBarKey)
+        }
+    }
+
+    @Published var highFrameRatePages: Bool {
+        didSet {
+            persist(highFrameRatePages, forKey: Self.highFrameRatePagesKey)
+            updateAllTabsHighFrameRate()
+        }
+    }
+
+    /// A link's page, peeked at over this one (see PeekPanel). Off unless
+    /// asked for, in Settings › General.
+    @Published var peekTab: LeanTab?
+
+    /// Shift-click on a link opens it in a panel over the page. Off unless
+    /// asked for.
+    @Published var peeksLinks: Bool {
+        didSet {
+            persist(peeksLinks, forKey: Self.peeksLinksKey)
+            updateAllTabsPeekPreferences()
+        }
+    }
+
     @Published var showFullTitleOnActiveTab: Bool {
         didSet {
             persist(showFullTitleOnActiveTab, forKey: Self.showFullTitleKey)
@@ -566,6 +597,26 @@ final class LeanStore: ObservableObject {
             ?? true
         self.smoothScrollingEnabled = savedSmoothScrolling
 
+        // Colour the tab bar from the page (default off).
+        let savedThemedTabBar = databaseValue(self.database, Bool.self, forKey: Self.themedTabBarKey)
+            ?? UserDefaults.standard.object(forKey: Self.themedTabBarKey) as? Bool
+            ?? false
+        self.themedTabBar = savedThemedTabBar
+
+        // Pages at 120 Hz (default off: it costs energy, and a still page
+        // costs nothing either way). Takes effect for new pages at once.
+        let savedHighFrameRate = databaseValue(self.database, Bool.self, forKey: Self.highFrameRatePagesKey)
+            ?? UserDefaults.standard.object(forKey: Self.highFrameRatePagesKey) as? Bool
+            ?? false
+        self.highFrameRatePages = savedHighFrameRate
+        FrameRate.fast = savedHighFrameRate
+
+        // Peek at a link with a shift-click (default off).
+        let savedPeeksLinks = databaseValue(self.database, Bool.self, forKey: Self.peeksLinksKey)
+            ?? UserDefaults.standard.object(forKey: Self.peeksLinksKey) as? Bool
+            ?? false
+        self.peeksLinks = savedPeeksLinks
+
         // Load saved show full title preference (default to true)
         let savedShowFullTitle = databaseValue(self.database, Bool.self, forKey: Self.showFullTitleKey)
             ?? UserDefaults.standard.object(forKey: Self.showFullTitleKey) as? Bool
@@ -592,7 +643,7 @@ final class LeanStore: ObservableObject {
                 ?? UserDefaults.standard.string(forKey: Self.webPageFontKey)
                 ?? defaultFont
         }
-        self.leanUIFont = LeanFont(rawValue: savedLeanUIFont) ?? .geistSans
+        self.leanUIFont = LeanFont(rawValue: savedLeanUIFont)
 
         let savedHeadingWeight = databaseValue(self.database, Int.self, forKey: Self.uiHeadingWeightKey)
             ?? UserDefaults.standard.object(forKey: Self.uiHeadingWeightKey) as? Int
@@ -609,7 +660,7 @@ final class LeanStore: ObservableObject {
             ?? 100
         self.browserUIScalePercent = min(120, max(80, savedBrowserUIScale))
 
-        self.webPageFont = LeanFont(rawValue: savedWebPageFont) ?? .geistSans
+        self.webPageFont = LeanFont(rawValue: savedWebPageFont)
 
         let savedZen = databaseValue(self.database, Bool.self, forKey: Self.zenModeKey)
             ?? UserDefaults.standard.object(forKey: Self.zenModeKey) as? Bool
@@ -853,6 +904,25 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    func updateAllTabsHighFrameRate() {
+        if highFrameRatePages {
+            FrameRate.fast = true
+            for tab in tabs {
+                tab.applyHighFrameRate()
+            }
+        } else {
+            FrameRate.fast = false
+            FrameRate.restoreChanged()
+        }
+    }
+
+    func updateAllTabsPeekPreferences() {
+        let peeks = peeksLinks
+        for tab in tabs {
+            tab.peeksLinks = peeks
+        }
+    }
+
     func updateAllTabsFonts() {
         for tab in tabs {
             tab.applyPageFont(webPageFont)
@@ -882,6 +952,11 @@ final class LeanStore: ObservableObject {
 
     private func showPictureInPicture(for tab: LeanTab) {
         guard !pictureInPicture.showing, !tab.isSleeping else { return }
+        // Automatic float only from places people go to watch: anywhere
+        // else a technically-playing video is as likely a muted hero loop
+        // or ad as a film, and lifting it yields a blank little window
+        // for nothing playing. Mirrors Search's quiet lift.
+        guard Players.knows(tab.url) else { return }
         tab.webView.evaluateJavaScript(Isolate.on) { [weak self, weak tab] result, _ in
             DispatchQueue.main.async {
                 guard let self, let tab, let dimensions = result as? [String: NSNumber],
@@ -922,7 +997,23 @@ final class LeanStore: ObservableObject {
                     url: tab.url,
                     favicon: tab.favicon
                 )
+                self.revealPictureInPicture(for: tab)
             }
+        }
+    }
+
+    /// The lift starts invisible (see PictureInPicture.lift): reveal it
+    /// once the isolated layout settles, or after a short fallback so a
+    /// page that never settles still shows instead of hanging black.
+    private func revealPictureInPicture(for tab: LeanTab) {
+        tab.webView.evaluateJavaScript(Isolate.settled) { [weak self] result, _ in
+            DispatchQueue.main.async {
+                guard (result as? Bool) == true else { return }
+                self?.pictureInPicture.reveal()
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            self?.pictureInPicture.reveal()
         }
     }
 
@@ -938,17 +1029,25 @@ final class LeanStore: ObservableObject {
     private func returnFromPictureInPicture() {
         guard let id = pictureInPictureTabID,
               let tab = tabs.first(where: { $0.id == id }) else { return }
-        // Restore the video while the page is still in the PiP panel. Revealing
-        // the tab only after its DOM layout is back avoids showing the player
-        // resizing in front of the user.
-        tab.webView.evaluateJavaScript(Isolate.off) { [weak self, weak tab] _, _ in
-            DispatchQueue.main.async {
-                guard let self, tab != nil, self.pictureInPictureTabID == id else { return }
-                self.pictureInPictureTabID = nil
-                self.pictureInPicture.drop()
-                self.objectWillChange.send()
-            }
+        // Land first, synchronously: the stage takes the page back on its
+        // next layout (see LeanStageView), so by the time the tab is shown
+        // the view is already home. Waiting for the JS round-trip before
+        // dropping is what left the tab showing a detached page — blank
+        // until the user navigated away and back. Mirrors Search's
+        // Browser.land(), where the window closes whatever else is true.
+        pictureInPictureTabID = nil
+        if pictureInPicture.showing { pictureInPicture.drop() }
+        tab.webView.evaluateJavaScript(Isolate.off, completionHandler: nil)
+        // And go to the tab, wherever this was asked from: the widget's
+        // return arrow must land on the playing tab — bringing the browser
+        // forward if it wasn't — not just close the window. A manual
+        // selection is already there, so setting it again is a no-op.
+        if selectedID != id {
+            selectedID = id
         }
+        NSApp.activate(ignoringOtherApps: true)
+        tab.webView.window?.makeFirstResponder(tab.webView)
+        objectWillChange.send()
     }
 
     private func handleTabSelectionChange(from previous: LeanTab.ID?, to current: LeanTab.ID?) {
@@ -960,7 +1059,14 @@ final class LeanStore: ObservableObject {
         if !isReturningToPictureInPictureTab,
            let previous, previous != pictureInPictureTabID,
            let tab = tabs.first(where: { $0.id == previous }) {
-            showPictureInPicture(for: tab)
+            // After this runloop: the selection commit and its SwiftUI
+            // update go first, so the new tab's content appears at once
+            // instead of waiting behind the lift's JS round-trip. The lift
+            // itself still refuses a tab that is selected by then.
+            DispatchQueue.main.async { [weak self, weak tab] in
+                guard let self, let tab else { return }
+                self.showPictureInPicture(for: tab)
+            }
         }
         if let previous, tabs.contains(where: { $0.id == previous }) {
             inactiveSince[previous] = Date()
@@ -1517,6 +1623,15 @@ final class LeanStore: ObservableObject {
         }
         tab.downloadManager = downloadManager
         tab.mediaPermissionStore = mediaPermissionStore
+        tab.peeksLinks = peeksLinks
+        tab.onPeekLink = { [weak self, weak tab] url in
+            guard let self, let tab else { return }
+            self.peek(url, from: tab)
+        }
+        tab.onDownloadFailed = { [weak self] in
+            guard let self else { return }
+            self.isDownloadsPresented = true
+        }
         tab.onCloseTab = { [weak self, weak tab] in
             guard let self, let tab else { return }
             self.close(tab)
@@ -1624,26 +1739,45 @@ final class LeanStore: ObservableObject {
         objectWillChange.send()
     }
 
+    /// Close a split pane without closing its tab: the pane leaves the split
+    /// and rejoins the row as a standalone tab. When one pane (or none) is
+    /// left, the split collapses with the remainder taking the parent's
+    /// slot. Nothing here ever destroys a tab.
     func closeSplitPane(in parentTab: LeanTab, pane: LeanTab) {
-        guard parentTab.isSplit else { return }
-        pane.destroy()
+        guard parentTab.isSplit,
+              parentTab.splitTabs.contains(where: { $0.id == pane.id }),
+              let parentIndex = tabs.firstIndex(where: { $0.id == parentTab.id }) else { return }
         parentTab.splitTabs.removeAll { $0.id == pane.id }
+        pane.splitTabs.removeAll()
         if parentTab.splitTabs.count <= 1 {
-            if let remaining = parentTab.splitTabs.first {
-                if parentTab.id != remaining.id {
-                    if let idx = tabs.firstIndex(where: { $0.id == parentTab.id }) {
-                        tabs[idx] = remaining
-                        select(tab: remaining)
-                    }
-                }
-                remaining.splitTabs.removeAll()
+            // Collapse: lay the survivors back into the row at the parent's
+            // slot — the remainder first, then the closed pane — and select
+            // the remainder.
+            var survivors = parentTab.splitTabs
+            if !survivors.contains(where: { $0.id == parentTab.id }), pane.id != parentTab.id {
+                survivors.append(parentTab)
+            }
+            if !survivors.contains(where: { $0.id == pane.id }) {
+                survivors.append(pane)
             }
             parentTab.splitTabs.removeAll()
+            for tab in survivors { tab.splitTabs.removeAll() }
+            if survivors.isEmpty {
+                // Unreachable (a split holds at least two): keep the pane.
+                tabs.insert(pane, at: min(parentIndex + 1, tabs.count))
+                select(tab: pane)
+            } else {
+                tabs.replaceSubrange(parentIndex...parentIndex, with: survivors)
+                select(tab: survivors[0])
+            }
         } else {
+            tabs.insert(pane, at: min(parentIndex + 1, tabs.count))
             if parentTab.activeSplitIndex >= parentTab.splitTabs.count {
                 parentTab.activeSplitIndex = max(0, parentTab.splitTabs.count - 1)
             }
         }
+        saveSession()
+        scheduleAutoSleep()
         objectWillChange.send()
     }
 
@@ -1688,8 +1822,53 @@ final class LeanStore: ObservableObject {
     }
 
     func closeSelectedTab() {
+        if peekTab != nil {
+            closePeek()
+            return
+        }
         guard let selectedTab else { return }
         close(selectedTab)
+    }
+
+    // MARK: - Link peek
+
+    /// Shift-click on a link, from a tab in the row: its page opens over
+    /// this one, which stays where it was underneath. One at a time.
+    func peek(_ url: URL, from tab: LeanTab) {
+        guard peekTab == nil, tabs.contains(where: { $0.id == tab.id }) else { return }
+        let page = createTab(url: url)
+        page.isPeekTab = true
+        page.peeksLinks = false
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) { peekTab = page }
+    }
+
+    /// Put away: the page goes with the panel.
+    func closePeek() {
+        guard let page = peekTab else { return }
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) { peekTab = nil }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            page.destroy()
+        }
+    }
+
+    /// Kept: a tab beside the one it was opened from, and in front — loaded
+    /// as it is, nothing loaded twice.
+    func keepPeek() {
+        guard let page = peekTab else { return }
+        let here = tabs.firstIndex { $0.id == selectedID }
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) { peekTab = nil }
+        page.isPeekTab = false
+        page.peeksLinks = peeksLinks
+        insert(page, at: here.map { $0 + 1 } ?? tabs.count)
+        selectedID = page.id
+        saveSession()
+        scheduleAutoSleep()
+    }
+
+    /// A tab made outside the row — a peek being kept — put in it at `index`.
+    func insert(_ tab: LeanTab, at index: Int) {
+        tabs.insert(tab, at: min(max(0, index), tabs.count))
+        saveSession()
     }
 
     func reopenClosedTab() {
@@ -1737,7 +1916,9 @@ final class LeanStore: ObservableObject {
         inlineURLBarFrame = .zero
         inlineSuggestionsFrame = .zero
         floatingPaletteFrame = .zero
-        selectedID = id
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+            selectedID = id
+        }
         saveSession()
         DispatchQueue.main.async { [weak self] in
             guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
@@ -1750,7 +1931,9 @@ final class LeanStore: ObservableObject {
               let selectedID,
               let index = tabs.firstIndex(where: { $0.id == selectedID }) else { return }
         let offset = reverse ? tabs.count - 1 : 1
-        self.selectedID = tabs[(index + offset) % tabs.count].id
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+            self.selectedID = tabs[(index + offset) % tabs.count].id
+        }
         saveSession()
         DispatchQueue.main.async { [weak self] in
             guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
@@ -1782,7 +1965,9 @@ final class LeanStore: ObservableObject {
         guard !tabs.isEmpty else { return }
         let index = number == 9 ? tabs.count - 1 : number - 1
         guard tabs.indices.contains(index) else { return }
-        selectedID = tabs[index].id
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+            selectedID = tabs[index].id
+        }
         saveSession()
     }
 
@@ -1828,7 +2013,9 @@ final class LeanStore: ObservableObject {
         isTabSwitcherVisible = false
         let validTabs = switcherTabs
         if validTabs.indices.contains(switcherSelectedIndex) {
-            selectedID = validTabs[switcherSelectedIndex].id
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                selectedID = validTabs[switcherSelectedIndex].id
+            }
             saveSession()
         }
     }
@@ -1881,6 +2068,8 @@ final class LeanStore: ObservableObject {
         persist(isSidebarCollapsed, forKey: Self.isSidebarCollapsedKey)
         persist(enableThumbnailsInTabSwitcher, forKey: Self.thumbnailsSwitcherKey)
         persist(smoothScrollingEnabled, forKey: Self.smoothScrollingKey)
+        persist(themedTabBar, forKey: Self.themedTabBarKey)
+        persist(peeksLinks, forKey: Self.peeksLinksKey)
         persist(showFullTitleOnActiveTab, forKey: Self.showFullTitleKey)
         persist(leanUIFont.rawValue, forKey: Self.leanUIFontKey)
         persist(uiHeadingWeight.rawValue, forKey: Self.uiHeadingWeightKey)
@@ -1929,6 +2118,9 @@ final class LeanStore: ObservableObject {
     private static let isSidebarCollapsedKey = "isSidebarCollapsed"
     private static let thumbnailsSwitcherKey = "enableThumbnailsInTabSwitcher"
     private static let smoothScrollingKey = "smoothScrollingEnabled"
+    private static let peeksLinksKey = "links.peek"
+    private static let themedTabBarKey = "themedTabBar"
+    private static let highFrameRatePagesKey = "highFrameRatePages"
     private static let showFullTitleKey = "showFullTitleOnActiveTab"
     private static let leanUIFontKey = "leanUIFont"
     private static let uiHeadingWeightKey = "uiHeadingWeight"

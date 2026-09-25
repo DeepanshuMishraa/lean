@@ -232,7 +232,17 @@ struct LeanView: View {
                 VStack(spacing: 0) {
                     // Top Bar - In Zen mode, disappears and reveals on hover
                     if isTopBarVisible {
-                        TopBarView(store: store)
+                        // Themed only while there is a tab to read a colour
+                        // from — a window caught between tabs draws the row
+                        // exactly as it always has.
+                        Group {
+                            if let tab = store.selectedTab {
+                                TopBarView(store: store)
+                                    .modifier(ThemeColorStrip(tab: tab, enabled: store.themedTabBar, window: store.themeColors.windowBackground))
+                            } else {
+                                TopBarView(store: store)
+                            }
+                        }
                             .onHover { hovering in
                                 if store.enableZenMode {
                                     setZenHoverState(isHoveringTop: hovering)
@@ -373,6 +383,12 @@ struct LeanView: View {
                 ))
                 .animation(.easeOut(duration: 0.12), value: store.isExtensionsPresented)
                 .zIndex(190)
+            }
+
+            // Link Preview / Peek Panel (Shift + Click)
+            if let page = store.peekTab {
+                PeekPanel(store: store, tab: page)
+                    .zIndex(185)
             }
 
             // Ctrl+Tab Thumbnail Switcher Overlay
@@ -601,6 +617,7 @@ struct LeanView: View {
                 }
             }
         }
+        .animation(nil, value: store.selectedID)
     }
 
     private func setupKeyMonitor() {
@@ -750,6 +767,18 @@ struct LeanView: View {
 
         // Monitor keyDown for registered custom shortcuts and Escape
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // When link peek preview is active:
+            if store.peekTab != nil {
+                if event.keyCode == 53 {
+                    store.closePeek()
+                    return nil
+                }
+                if event.keyCode == 36 && event.modifierFlags.contains(.command) {
+                    store.keepPeek()
+                    return nil
+                }
+            }
+
             // Intercept Escape (keyCode 53) to close quick settings, inline url bar, bookmarks, floating omnibar, new tab omnibar, or tab switcher
             if event.keyCode == 53 {
                 if store.isBookmarkDialogPresented {
@@ -907,18 +936,89 @@ struct LeanView: View {
     }
 }
 
-private struct WebView: NSViewRepresentable {
+/// The one place a page is allowed to be. The tab's web view is lifted out
+/// of here into the floating window while its video plays elsewhere, and
+/// taken back here when it lands — no reload, no lost scroll position.
+/// Mirrors Search's StageView: a single `wanted` fact, reconciled on every
+/// layout, so a page taken by the floating window can never leave a tab
+/// holding nothing while believing it holds something (the blank page).
+///
+/// Internal so PeekPanel can host a peeked tab's page the same way.
+struct WebView: NSViewRepresentable {
     @ObservedObject var tab: LeanTab
 
-    func makeNSView(context: Context) -> WKWebView {
-        tab.webView.wantsLayer = true
-        tab.webView.layer?.drawsAsynchronously = true
-        return tab.webView
+    func makeNSView(context: Context) -> LeanStageView {
+        LeanStageView()
     }
 
-    func updateNSView(_ nsView: WKWebView, context: Context) {
-        nsView.wantsLayer = true
-        nsView.layer?.drawsAsynchronously = true
+    func updateNSView(_ view: LeanStageView, context: Context) {
+        tab.webView.wantsLayer = true
+        view.show(tab.webView)
+    }
+}
+
+/// Internal alongside WebView so PeekPanel can host a peeked tab's page.
+final class LeanStageView: NSView {
+    private weak var wanted: NSView?
+
+    override func layout() {
+        super.layout()
+        settle()
+    }
+
+    func show(_ page: NSView?) {
+        wanted = page
+        settle()
+    }
+
+    private func settle() {
+        // A video filling the screen lends its page to WebKit's own window.
+        // WebKit puts it back itself on the way out.
+        if let web = wanted as? WKWebView, web.fullscreenState != .notInFullscreen { return }
+
+        // Anything here that isn't wanted, out. Only ever what is actually
+        // ours: except the Web Inspector docked beside the page. WebKit puts
+        // it here, next to the web view, and shrinks the page to make room.
+        // Taken out on the next resize, it left the page shrunk beside
+        // nothing.
+        let docked = inspecting
+        for view in subviews where view !== wanted && !(docked && Self.isInspector(view)) {
+            view.removeFromSuperview()
+        }
+
+        guard let wanted, window != nil else { return }
+        if wanted.superview !== self {
+            // A web view can have only one superview, so taking it back is
+            // how it is taken back.
+            wanted.removeFromSuperview()
+            addSubview(wanted)
+            wanted.needsLayout = true
+            wanted.needsDisplay = true
+            wanted.layer?.setNeedsDisplay()
+        }
+        // With the inspector docked, WebKit lays the page and it out side by
+        // side as this view changes size; setting the page's frame here would
+        // cover the inspector.
+        if !(docked && subviews.contains(where: Self.isInspector)) {
+            wanted.frame = bounds
+        }
+    }
+
+    /// Whether the page on show has its Web Inspector up. WebKit answers only
+    /// through names outside its public framework, asked for before use (see
+    /// Inspector.swift).
+    private var inspecting: Bool {
+        guard let web = wanted as? WKWebView else { return false }
+        let get = NSSelectorFromString("_inspector")
+        guard web.responds(to: get), let inspector = web.perform(get)?.takeUnretainedValue() as? NSObject else { return false }
+        let visible = NSSelectorFromString("isVisible")
+        guard inspector.responds(to: visible) else { return false }
+        typealias Getter = @convention(c) (AnyObject, Selector) -> Bool
+        return unsafeBitCast(inspector.method(for: visible), to: Getter.self)(inspector, visible)
+    }
+
+    private static func isInspector(_ view: NSView) -> Bool {
+        String(describing: type(of: view)).hasPrefix("WKInspector")
     }
 }
 
@@ -1637,7 +1737,7 @@ private struct SplitPaneView: View {
 
             InteractiveIconButton(
                 icon: .x,
-                helpText: "Close split pane",
+                helpText: "Remove pane from split",
                 size: 22,
                 iconSize: 9,
                 color: store.adaptiveTheme.secondaryText,

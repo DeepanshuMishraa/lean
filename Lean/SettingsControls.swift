@@ -498,6 +498,7 @@ struct FontPickerRow: View {
     let pickerId: String
     var headingWeight: LeanFontWeight = .medium
     var bodyWeight: LeanFontWeight = .regular
+    var onShowAllFonts: (() -> Void)? = nil
 
     @EnvironmentObject private var dropdownState: DropdownMenuState
 
@@ -515,7 +516,8 @@ struct FontPickerRow: View {
         isDark: Bool,
         pickerId: String = UUID().uuidString,
         headingWeight: LeanFontWeight = .medium,
-        bodyWeight: LeanFontWeight = .regular
+        bodyWeight: LeanFontWeight = .regular,
+        onShowAllFonts: (() -> Void)? = nil
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -525,6 +527,7 @@ struct FontPickerRow: View {
         self.pickerId = pickerId
         self.headingWeight = headingWeight
         self.bodyWeight = bodyWeight
+        self.onShowAllFonts = onShowAllFonts
     }
 
     var body: some View {
@@ -553,12 +556,12 @@ struct FontPickerRow: View {
                 dropdownState.toggle(pickerId)
             }
             .popover(isPresented: dropdownState.presentationBinding(for: pickerId), arrowEdge: .bottom) {
-                CustomDropdownCard(isDark: isDark, width: 215) {
+                CustomDropdownCard(isDark: isDark, width: 220) {
                     ForEach(LeanFont.allCases) { fontChoice in
                         let isChosen = selection == fontChoice
                         CustomDropdownItemRow(
                             title: fontChoice.displayName,
-                            font: fontChoice.font(size: 13, weight: isChosen ? .semibold : .regular),
+                            font: fontChoice.font(size: 12.5, weight: isChosen ? .semibold : .regular),
                             isSelected: isChosen,
                             isDark: isDark,
                             leading: nil as EmptyView?
@@ -566,6 +569,31 @@ struct FontPickerRow: View {
                             selection = fontChoice
                             dropdownState.dismiss()
                         }
+                    }
+
+                    if !LeanFont.allCases.contains(selection) {
+                        CustomDropdownItemRow(
+                            title: selection.displayName,
+                            font: selection.font(size: 12.5, weight: .semibold),
+                            isSelected: true,
+                            isDark: isDark,
+                            leading: nil as EmptyView?
+                        ) {
+                            dropdownState.dismiss()
+                        }
+                    }
+
+                    Rectangle()
+                        .fill(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06))
+                        .frame(height: 0.75)
+                        .padding(.vertical, 2)
+
+                    FontAllFontsMenuItem(
+                        isDark: isDark,
+                        uiFont: uiFont
+                    ) {
+                        dropdownState.dismiss()
+                        onShowAllFonts?()
                     }
                 }
             }
@@ -580,6 +608,46 @@ struct FontPickerRow: View {
         )
         .onHover { isRowHovered = $0 }
         .zIndex(isPresented ? 100 : 1)
+    }
+}
+
+struct FontAllFontsMenuItem: View {
+    let isDark: Bool
+    let uiFont: LeanFont
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                LeanIcon.textAlignLeft.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 11, height: 11)
+                    .foregroundColor(isDark ? Color.white.opacity(0.7) : Color.black.opacity(0.6))
+
+                Text("Show all fonts...")
+                    .font(uiFont.font(size: 12, weight: .medium))
+                    .foregroundColor(isDark ? Color(white: 0.92) : Color(white: 0.16))
+
+                Spacer(minLength: 4)
+
+                LeanIcon.caretRight.bold
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 9, height: 9)
+                    .foregroundColor(isDark ? Color.white.opacity(0.4) : Color.black.opacity(0.35))
+            }
+            .padding(.horizontal, 9)
+            .frame(maxWidth: .infinity)
+            .frame(height: 29)
+            .background(
+                isHovered ? (isDark ? Color.white.opacity(0.09) : Color.black.opacity(0.05)) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 

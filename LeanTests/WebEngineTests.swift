@@ -55,9 +55,28 @@ struct DownloadPolicyTests {
         #expect(!DownloadPolicy.shouldDownload(contentDisposition: "inline; filename=\"attachment.pdf\"", mimeType: "application/pdf"))
         #expect(!DownloadPolicy.shouldDownload(contentDisposition: nil, mimeType: nil))
     }
+
+    @Test("Unshowable MIME types become downloads")
+    func unshowableMimeType() {
+        #expect(DownloadPolicy.shouldDownload(
+            contentDisposition: nil,
+            mimeType: "application/zip",
+            canShowMIMEType: false
+        ))
+        #expect(!DownloadPolicy.shouldDownload(
+            contentDisposition: nil,
+            mimeType: "text/html",
+            canShowMIMEType: true
+        ))
+    }
 }
 
 struct MediaPermissionStoreTests {
+    private func isolatedDefaults() -> (UserDefaults, String) {
+        let suite = "lean.tests.\(UUID().uuidString)"
+        return (UserDefaults(suiteName: suite)!, suite)
+    }
+
     @Test("Origin keys are scheme + host scoped")
     func originKeys() {
         #expect(MediaPermissionStore.originKey(for: URL(string: "https://meet.google.com/x")!) == "https://meet.google.com")
@@ -70,7 +89,9 @@ struct MediaPermissionStoreTests {
     @MainActor
     @Test("Decisions round-trip in memory without a database")
     func inMemoryDecisions() {
-        let store = MediaPermissionStore(database: nil)
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = MediaPermissionStore(database: nil, userDefaults: defaults)
         #expect(store.decision(forOriginKey: "https://meet.google.com|microphone") == nil)
         store.setDecision(true, forOriginKey: "https://meet.google.com|microphone")
         #expect(store.decision(forOriginKey: "https://meet.google.com|microphone") == true)
@@ -82,5 +103,41 @@ struct MediaPermissionStoreTests {
         #expect(store.savedDecisions.map(\.origin) == ["https://other.example"])
         store.clear()
         #expect(store.decision(forOriginKey: "https://meet.google.com|microphone") == nil)
+    }
+
+    @MainActor
+    @Test("Decisions survive without a database via the defaults mirror")
+    func defaultsMirrorWithoutDatabase() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = MediaPermissionStore(database: nil, userDefaults: defaults)
+        first.setDecision(true, forOriginKey: "https://meet.google.com|microphone")
+        // A fresh instance with no database — a launch where sqlite is
+        // unavailable — still sees yesterday's answer instead of asking again.
+        let second = MediaPermissionStore(database: nil, userDefaults: defaults)
+        #expect(second.decision(forOriginKey: "https://meet.google.com|microphone") == true)
+        #expect(second.decision(forOriginKey: "https://meet.google.com|camera") == nil)
+    }
+
+    @MainActor
+    @Test("Decisions survive a database reopen")
+    func databaseRoundTrip() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("Lean.sqlite3")
+
+        let (firstDefaults, firstSuite) = isolatedDefaults()
+        defer { firstDefaults.removePersistentDomain(forName: firstSuite) }
+        let first = MediaPermissionStore(database: try AppDatabase(url: url), userDefaults: firstDefaults)
+        first.setDecision(false, forOriginKey: "https://example.com|camera")
+
+        // A clean defaults suite proves the database (not the mirror)
+        // carried the decision across.
+        let (secondDefaults, secondSuite) = isolatedDefaults()
+        defer { secondDefaults.removePersistentDomain(forName: secondSuite) }
+        let second = MediaPermissionStore(database: try AppDatabase(url: url), userDefaults: secondDefaults)
+        #expect(second.decision(forOriginKey: "https://example.com|camera") == false)
     }
 }

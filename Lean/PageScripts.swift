@@ -68,17 +68,22 @@ enum PageScripts {
                     var isPlaying = mediaElements.some(function(el) {
                         return !el.paused && !el.ended && el.readyState > 1;
                     });
-                    var audioContexts = window.__leanAudioContexts || [];
-                    var webAudio = audioContexts.some(function(ref) {
-                        var ctx = ref && ref.deref && ref.deref();
-                        return ctx && ctx.state === 'running';
-                    });
-                    var active = isPlaying || webAudio;
+                    // A running AudioContext is not sound: players (YouTube
+                    // included) keep one alive long after the last audible
+                    // sample, and treating it as playing stuck the tab's
+                    // music icon on with nothing to hear. Only elements
+                    // count here.
+                    var active = isPlaying;
                     var muted = mediaElements.length > 0 && mediaElements.every(function(el) {
                         return el.muted || el.volume === 0;
                     });
 
-                    if (lastState === null || lastState.isPlaying !== active || lastState.isMuted !== muted) {
+                    var changed = lastState === null || lastState.isPlaying !== active || lastState.isMuted !== muted;
+                    // While playing, every poll reports in (a heartbeat), not
+                    // just on change: a frame that played briefly and then
+                    // detached can never send its goodbye, so the native
+                    // side evicts frames it stops hearing from.
+                    if (changed || active) {
                         lastState = { isPlaying: active, isMuted: muted };
                         if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(mediaStateMessageName)) {
                             window.webkit.messageHandlers.\(mediaStateMessageName).postMessage({
@@ -260,7 +265,12 @@ enum PageScripts {
         var rules: [String] = []
 
         if font != .system {
-            rules.append("html body, html body *:not(svg):not(svg *) { font-family: \(font.cssFamily) !important; }")
+            // Deliberately NOT !important: a page rule with any class-level
+            // specificity (icon ligature fonts — Meet's Material Symbols,
+            // Font Awesome — live on classes) must win over this, or icon
+            // buttons render as raw text ("mic", "call_end"). Body text,
+            // which only inherits its stack, still takes this rule.
+            rules.append("html body, html body *:not(svg):not(svg *) { font-family: \(font.cssFamily); }")
         }
 
         if headingWeight > 0 {

@@ -48,6 +48,19 @@ final class OmnibarService {
             return results
         }
 
+        // A loopback server with something after the host (localhost:3000)
+        // is never a search: one row that opens the server, nothing else —
+        // no history, no search-engine row. Bare "localhost" keeps the
+        // normal list below.
+        if let serverURL = AddressResolver.loopbackServerURL(from: trimmed) {
+            return [OmnibarSuggestion(
+                primaryText: serverURL.absoluteString,
+                secondaryText: "Open local server",
+                isSearch: false,
+                targetURL: serverURL
+            )]
+        }
+
         // Suggest Lean Settings if query matches settings / lean
         if "settings".hasPrefix(lower) || "lean://settings".hasPrefix(lower) || lower == "lean" {
             results.append(OmnibarSuggestion(
@@ -77,8 +90,28 @@ final class OmnibarService {
             }
         }
 
-        // 2. Add matching history entries
+        // 2. Direct URL for what was typed.
         var directMatch: OmnibarSuggestion?
+        if !trimmed.contains(" ") {
+            if let url = AddressResolver.webURL(from: trimmed) {
+                let host = url.host ?? trimmed
+                directMatch = OmnibarSuggestion(
+                    primaryText: host,
+                    secondaryText: host,
+                    isSearch: false,
+                    targetURL: url
+                )
+            }
+        }
+        // A bare loopback address navigates on Enter even with history
+        // about it (e.g. a past search for it): it goes first, the rest
+        // still shows.
+        let loopbackFirst = directMatch.map { AddressResolver.isLoopbackURL($0.targetURL) } ?? false
+        if loopbackFirst, let directMatch {
+            results.append(directMatch)
+        }
+
+        // 3. Add matching history entries
         let historyMatches = history.filter { item in
             let title = item.title.lowercased()
             let host = item.url.host?.lowercased() ?? ""
@@ -104,29 +137,13 @@ final class OmnibarService {
             ))
         }
 
-        // 3. Fallback for domain-like input
-        if directMatch == nil && !trimmed.contains(" ") {
-            if trimmed.contains(".") || trimmed.hasPrefix("localhost") {
-                let urlString = trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://")
-                    ? trimmed
-                    : "https://\(trimmed)"
-                if let url = URL(string: urlString) {
-                    let host = url.host ?? trimmed
-                    directMatch = OmnibarSuggestion(
-                        primaryText: host,
-                        secondaryText: host,
-                        isSearch: false,
-                        targetURL: url
-                    )
-                }
-            }
-        }
-
-        if let directMatch {
+        // 4. Fallback for domain-like input is computed above (2.); a
+        // non-loopback direct navigation goes here, after history.
+        if !loopbackFirst, let directMatch {
             results.append(directMatch)
         }
 
-        // 4. Search suggestion with the selected search engine
+        // 5. Search suggestion with the selected search engine
         var comp = searchEngine.searchURL.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
         comp?.queryItems = [URLQueryItem(name: "q", value: trimmed)]
         if let searchURL = comp?.url {

@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct TopBarView: View {
     @ObservedObject var store: LeanStore
+    @Namespace private var tabSelectionNamespace
     @State private var isTabStripHovered = false
     @State private var tabScrollMetrics = HorizontalScrollMetrics()
     @State private var tabContentWidth: CGFloat = 0
@@ -24,6 +25,7 @@ struct TopBarView: View {
                                 TopBarPinnedTabItem(
                                     tab: tab,
                                     isSelected: tab.id == store.selectedID,
+                                    namespace: tabSelectionNamespace,
                                     store: store,
                                     onSelect: { handleTabSelection(tab) },
                                     onClose: { store.close(tab) }
@@ -53,6 +55,7 @@ struct TopBarView: View {
                         TopBarTabItem(
                             tab: tab,
                             isSelected: tab.id == store.selectedID,
+                            namespace: tabSelectionNamespace,
                             store: store,
                             onSelect: { handleTabSelection(tab) },
                             onClose: { store.close(tab) }
@@ -60,6 +63,7 @@ struct TopBarView: View {
                     }
 
                 }
+                .animation(.spring(response: 0.28, dampingFraction: 0.78), value: store.selectedID)
                 .padding(.vertical, store.enableWindowBorder ? 3 : 5)
                 .background {
                     GeometryReader { geometry in
@@ -307,7 +311,9 @@ struct TopBarView: View {
                 }
             }
         } else {
-            store.switchToTab(id: tab.id)
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                store.switchToTab(id: tab.id)
+            }
         }
     }
 }
@@ -315,6 +321,7 @@ struct TopBarView: View {
 private struct TopBarTabItem: View {
     @ObservedObject var tab: LeanTab
     let isSelected: Bool
+    var namespace: Namespace.ID
     @ObservedObject var store: LeanStore
     let onSelect: () -> Void
     let onClose: () -> Void
@@ -330,6 +337,20 @@ private struct TopBarTabItem: View {
 
     private var shouldShowClose: Bool {
         isHovered && !showURLBar
+    }
+
+    /// Caps tab width so a long title truncates with an ellipsis instead of
+    /// stretching the tab (and the strip) to fit all of it. The active tab
+    /// gets room when "Expand active tab title" is on; everything else
+    /// condenses. The full title is still one hover away via tooltip.
+    private var tabTitleMaxWidth: CGFloat? {
+        switch store.tabDisplayMode {
+        case .iconOnly:
+            return nil
+        case .textOnly, .hybrid:
+            let expanded = isSelected && store.showFullTitleOnActiveTab
+            return store.scaled(expanded ? 240 : 160)
+        }
     }
 
     private func handleHoverChange(_ hovering: Bool) {
@@ -349,32 +370,36 @@ private struct TopBarTabItem: View {
             .frame(
                 minWidth: showURLBar ? store.scaled(260) : (tab.isSplit ? store.scaled(CGFloat(90 * tab.splitTabs.count)) : nil),
                 idealWidth: showURLBar ? store.scaled(320) : (tab.isSplit ? store.scaled(CGFloat(130 * tab.splitTabs.count)) : nil),
-                maxWidth: showURLBar ? store.scaled(440) : (tab.isSplit ? store.scaled(CGFloat(180 * tab.splitTabs.count)) : nil)
+                maxWidth: showURLBar ? store.scaled(440) : (tab.isSplit ? store.scaled(CGFloat(180 * tab.splitTabs.count)) : tabTitleMaxWidth)
             )
             .frame(height: store.scaled(store.enableWindowBorder ? 27 : 26))
         }
         .buttonStyle(.plain)
         .overlay { TabMiddleClick { onClose() } }
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(
-                    isSelected
-                        ? store.adaptiveTheme.activeTabBackground
-                        : (isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : store.adaptiveTheme.inactiveTabBackground)
-                )
-                .overlay(
-                    isSelected && store.enableWindowBorder
-                        ? RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
-                        : nil
-                )
-                .shadow(
-                    color: isSelected && store.enableWindowBorder ? store.adaptiveTheme.activeTabShadow : Color.clear,
-                    radius: store.adaptiveTheme.isFrameLight ? 2 : 4,
-                    x: 0,
-                    y: 1
-                )
-        )
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : store.adaptiveTheme.inactiveTabBackground)
+
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(store.adaptiveTheme.activeTabBackground)
+                        .overlay(
+                            store.enableWindowBorder
+                                ? RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
+                                : nil
+                        )
+                        .shadow(
+                            color: store.enableWindowBorder ? store.adaptiveTheme.activeTabShadow : Color.clear,
+                            radius: store.adaptiveTheme.isFrameLight ? 2 : 4,
+                            x: 0,
+                            y: 1
+                        )
+                        .matchedGeometryEffect(id: "activeTopBarTabPill", in: namespace)
+                }
+            }
+        }
         .overlay {
             if showURLBar {
                 InlineURLBar(
@@ -665,6 +690,8 @@ private struct TopBarTabItem: View {
                         ? store.adaptiveTheme.activeTabText
                         : store.adaptiveTheme.inactiveTabText
                 )
+                .scaleEffect(isSelected ? 1.0 : 0.985)
+                .animation(.spring(response: 0.26, dampingFraction: 0.76), value: isSelected)
                 .lineLimit(1)
 
             Spacer(minLength: 0)
@@ -695,6 +722,8 @@ private struct TopBarTabItem: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.85)))
             }
         }
+        .scaleEffect(isSelected ? 1.06 : 0.95)
+        .animation(.spring(response: 0.26, dampingFraction: 0.72), value: isSelected)
         .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
         .frame(width: store.scaled(28), height: store.scaled(store.enableWindowBorder ? 27 : 26))
         .overlay(alignment: .bottomTrailing) {
@@ -722,6 +751,8 @@ private struct TopBarTabItem: View {
                 }
             }
             .frame(width: store.scaled(14), height: store.scaled(14))
+            .scaleEffect(isSelected ? 1.05 : 0.96)
+            .animation(.spring(response: 0.26, dampingFraction: 0.72), value: isSelected)
             .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
 
             Text(tab.displayTitle(isSelected: isSelected, showFullTitle: store.showFullTitleOnActiveTab))
@@ -731,6 +762,8 @@ private struct TopBarTabItem: View {
                         ? store.adaptiveTheme.activeTabText
                         : store.adaptiveTheme.inactiveTabText
                 )
+                .scaleEffect(isSelected ? 1.0 : 0.985)
+                .animation(.spring(response: 0.26, dampingFraction: 0.76), value: isSelected)
                 .lineLimit(1)
 
             Spacer(minLength: 0)
@@ -809,29 +842,13 @@ private struct TopBarTabItem: View {
 private struct TopBarPinnedTabItem: View {
     @ObservedObject var tab: LeanTab
     let isSelected: Bool
+    var namespace: Namespace.ID
     @ObservedObject var store: LeanStore
     let onSelect: () -> Void
     let onClose: () -> Void
 
     @State private var isHovered = false
     @State private var isDropTarget = false
-
-    private var tabBackground: Color {
-        if isSelected {
-            return store.adaptiveTheme.activeTabBackground
-        }
-        if isHovered {
-            return store.adaptiveTheme.iconHoverBackground
-        }
-        return Color.clear
-    }
-
-    private var tabBorder: Color {
-        if isSelected {
-            return store.adaptiveTheme.activeTabStroke
-        }
-        return Color.clear
-    }
 
     var body: some View {
         Button(action: onSelect) {
@@ -845,12 +862,26 @@ private struct TopBarPinnedTabItem: View {
                     TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 14)
                 }
             }
+            .scaleEffect(isSelected ? 1.06 : 0.95)
+            .animation(.spring(response: 0.26, dampingFraction: 0.72), value: isSelected)
             .frame(width: store.scaled(28), height: store.scaled(26))
-            .background(tabBackground, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(tabBorder, lineWidth: 0.75)
-            )
+            .background {
+                ZStack {
+                    if isHovered && !isSelected {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(store.adaptiveTheme.iconHoverBackground)
+                    }
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(store.adaptiveTheme.activeTabBackground)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 0.75)
+                            )
+                            .matchedGeometryEffect(id: "activeTopBarPinnedTabPill", in: namespace)
+                    }
+                }
+            }
             .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)

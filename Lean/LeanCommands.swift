@@ -96,6 +96,15 @@ struct LeanCommands: Commands {
                 .keyboardShortcut("-", modifiers: .command)
             Button("Actual Size") { store.resetZoom() }
                 .keyboardShortcut("0", modifiers: .command)
+
+            Divider()
+            // The Web Inspector, on the keys Chrome and Arc use (see Inspector.swift).
+            Button("Web Inspector") { store.toggleInspector() }
+                .keyboardShortcut("i", modifiers: [.command, .option])
+            Button("JavaScript Console") { store.showConsole() }
+                .keyboardShortcut("j", modifiers: [.command, .option])
+            Button("Inspect Element") { store.inspectElement() }
+                .keyboardShortcut("c", modifiers: [.command, .option])
         }
 
         CommandMenu("Tabs") {

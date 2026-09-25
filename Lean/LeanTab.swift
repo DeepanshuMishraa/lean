@@ -37,7 +37,21 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     @Published var isPinned: Bool = false
     @Published var isPlayingMedia: Bool = false
     @Published var isMuted: Bool = false
-    private var mediaPlayingFrames: [String: Bool] = [:]
+    /// The colour the page has declared for its own chrome, with
+    /// `<meta name="theme-color">` or the CSS `theme-color` media feature —
+    /// straight from WebKit, which already tracks it. Nil for a page that
+    /// hasn't declared one, or hasn't loaded yet.
+    @Published private(set) var themeColor: NSColor?
+    /// Last heartbeat per frame. Playing frames report every poll; a frame
+    /// that played briefly and then detached (ad iframe, SPA swap) can never
+    /// send its goodbye, so frames unheard from past the timeout are evicted
+    /// instead of holding the music icon on forever.
+    private var mediaPlayingFrames: [String: Date] = [:]
+    private var mediaPruneTimer: Timer?
+
+    deinit {
+        mediaPruneTimer?.invalidate()
+    }
 
     // MARK: - Split Tab Support
     @Published var splitTabs: [LeanTab] = []
@@ -83,6 +97,14 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     var onCloseTab: (() -> Void)?
     var onOpenURLInNewTab: ((URL) -> Void)?
     var onOpenSourceTab: ((String, String?) -> LeanTab?)?
+    /// Shift-clicked link, for a peek over the page. Set by the store.
+    var onPeekLink: ((URL) -> Void)?
+    /// A download that failed on its own (not cancelled). Set by the store.
+    var onDownloadFailed: (() -> Void)?
+    /// Peek tabs live outside the row: links inside one just go.
+    var isPeekTab = false
+    /// Shift-click peeks at links when Settings says so. Set by the store.
+    var peeksLinks = false
     var downloadManager: DownloadManager?
     var mediaPermissionStore: MediaPermissionStore?
     private var progressObserver: NSKeyValueObservation?
@@ -91,12 +113,38 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private var downloadProgressObservers: [ObjectIdentifier: NSKeyValueObservation] = [:]
     private var downloadLastSample: [UUID: (bytes: Int64, date: Date, speed: Double)] = [:]
     private var activeDownloadObjects: [UUID: WKDownload] = [:]
+    /// Downloads seen via `didBecome download:` but not yet assigned a
+    /// destination. Retained here (mirroring Search's `downloading` array)
+    /// so the `WKDownload` — whose delegate is weak — survives until
+    /// `decideDestinationUsing` runs, and so the tab counts as busy.
+    private var retainedDownloads: [WKDownload] = []
+    /// Item IDs with a completion watchdog armed (see
+    /// scheduleDownloadFinalizeWatchdog). Removed when the download ends
+    /// for real, so the watchdog can only fire while one is still active.
+    private var downloadWatchdogs: Set<UUID> = []
     private var zoomIndicatorWorkItem: DispatchWorkItem?
     private var passwordSuggestionHideWorkItem: DispatchWorkItem?
 
     func cancelActiveDownload(id: UUID) {
-        activeDownloadObjects[id]?.cancel()
+        if let download = activeDownloadObjects[id] {
+            forget(download)
+            download.cancel()
+        }
         activeDownloadObjects[id] = nil
+        downloadWatchdogs.remove(id)
+    }
+
+    /// Every download this tab has going, heard from until it ends — and
+    /// counted, so a tab still sending one to disk is never put to sleep.
+    private func keep(_ download: WKDownload) {
+        download.delegate = self
+        if !retainedDownloads.contains(where: { $0 === download }) {
+            retainedDownloads.append(download)
+        }
+    }
+
+    private func forget(_ download: WKDownload) {
+        retainedDownloads.removeAll(where: { $0 === download })
     }
 
     init(
@@ -159,6 +207,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             configuration.webExtensionController = BrowserExtensionManager.shared.controller
         }
         configuration.preferences.isElementFullscreenEnabled = true
+        // WebKit's "developer extras": Inspect Element in a page's
+        // right-click menu, and the Web Inspector the View menu opens.
+        WebInspector.enableDeveloperExtras(configuration.preferences)
+        // 120 Hz pages, when Settings asks: WebKit reads the flag as the
+        // page is made, so this has to happen before the view exists.
+        FrameRate.apply(to: configuration.preferences)
 
         // Register custom scrollbar script at document start so it styles before first paint!
         let scrollbarScript = WKUserScript(
@@ -227,9 +281,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.contextMenuHook = { [weak self] menu in
             self?.appendPageMenuItems(to: menu)
         }
-        // Enable full opaque hardware acceleration and layer backing
+        // Layer-backed for stage hosting. Never asynchronous: async layer
+        // backing on a WKWebView forces offscreen compositing and is what
+        // made scrolling jank (Search sets neither flag on its pages).
         webView.wantsLayer = true
-        webView.layer?.drawsAsynchronously = true
         if #available(macOS 12.0, *) {
             webView.underPageBackgroundColor = isDark ? NSColor.black : NSColor.white
         }
@@ -273,6 +328,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
                     guard let self else { return }
                     self.canGoForward = webView.canGoForward
                     self.onStateChange?()
+                }
+            },
+            webView.observe(\.themeColor, options: [.new]) { [weak self] webView, _ in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.themeColor = webView.themeColor
                 }
             }
         ]
@@ -482,6 +543,14 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         rebuildUserScripts()
         let script = PageScripts.smoothScrolling(enabled: enabled)
         webView.evaluateJavaScript(script) { _, _ in }
+    }
+
+    /// Re-apply the 120 Hz preference to an already-made page. WebKit reads
+    /// the flag as the page is made, so a new tab is sure to follow only
+    /// once reloaded; going up, it often takes at the next switch to it.
+    func applyHighFrameRate() {
+        guard let webView = storedWebView else { return }
+        FrameRate.apply(to: webView.configuration.preferences)
     }
 
     func applyPageFont(_ font: LeanFont, headingWeight: Int = 0, bodyWeight: Int = 0) {
@@ -756,6 +825,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         onCloseTab = nil
         onOpenURLInNewTab = nil
         onOpenSourceTab = nil
+        onPeekLink = nil
+        onDownloadFailed = nil
         guard let webView = storedWebView else { return }
         webView.contextMenuHook = nil
 
@@ -963,7 +1034,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         TabSleepConditions(
             isSelected: isSelected,
             isLoading: isLoading || webView.isLoading,
-            hasActiveDownload: !activeDownloadObjects.isEmpty,
+            hasActiveDownload: !activeDownloadObjects.isEmpty || !retainedDownloads.isEmpty,
             isPlayingMedia: isPlayingMedia,
             isCapturingMedia: webView.cameraCaptureState != .none || webView.microphoneCaptureState != .none,
             hasUnsavedFormInput: hasUnsavedFormInput,
@@ -1088,15 +1159,13 @@ extension LeanTab: WKScriptMessageHandler {
                let frameId = dict["id"] as? String,
                let playing = dict["isPlaying"] as? Bool {
                 if playing {
-                    mediaPlayingFrames[frameId] = true
+                    mediaPlayingFrames[frameId] = Date()
+                    scheduleMediaPrune()
                 } else {
                     mediaPlayingFrames.removeValue(forKey: frameId)
                 }
-                let anyPlaying = !mediaPlayingFrames.isEmpty
-                if self.isPlayingMedia != anyPlaying {
-                    self.isPlayingMedia = anyPlaying
-                }
-                if let muted = dict["isMuted"] as? Bool, anyPlaying, muted != self.isMuted {
+                refreshMediaState()
+                if let muted = dict["isMuted"] as? Bool, isPlayingMedia, muted != self.isMuted {
                     self.isMuted = muted
                 }
             }
@@ -1109,6 +1178,40 @@ extension LeanTab: WKScriptMessageHandler {
         }
         isLoading = false
         refreshState()
+    }
+
+    private func refreshMediaState() {
+        pruneSilentMediaFrames()
+        let anyPlaying = !mediaPlayingFrames.isEmpty
+        if self.isPlayingMedia != anyPlaying {
+            self.isPlayingMedia = anyPlaying
+        }
+    }
+
+    /// Playing frames heartbeat every poll (1.5s); evict frames unheard
+    /// from for twice that plus margin, so a detached frame cannot wedge
+    /// the indicator on. Runs only while something claims to play.
+    private func scheduleMediaPrune() {
+        guard mediaPruneTimer == nil, !mediaPlayingFrames.isEmpty else { return }
+        mediaPruneTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.pruneSilentMediaFrames()
+                let anyPlaying = !self.mediaPlayingFrames.isEmpty
+                if self.isPlayingMedia != anyPlaying {
+                    self.isPlayingMedia = anyPlaying
+                }
+                if self.mediaPlayingFrames.isEmpty {
+                    self.mediaPruneTimer?.invalidate()
+                    self.mediaPruneTimer = nil
+                }
+            }
+        }
+    }
+
+    private func pruneSilentMediaFrames() {
+        let cutoff = Date().addingTimeInterval(-4.0)
+        mediaPlayingFrames = mediaPlayingFrames.filter { $0.value > cutoff }
     }
 
     private func updatePasswordSuggestions(_ message: WKScriptMessage) {
@@ -1404,6 +1507,16 @@ extension LeanTab: WKNavigationDelegate {
         decidePolicyFor navigationAction: WKNavigationAction,
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
+        // "Download Image", "Download Linked File" from the page's own
+        // context menu, and a link with the `download` attribute all arrive
+        // as an ordinary-looking action with this one flag set. Answered
+        // with `.allow`, WebKit tries to load it as the next page — nowhere
+        // for that to go, so nothing happens and nothing says why.
+        // `.download` turns it into the `WKDownload` below.
+        guard !navigationAction.shouldPerformDownload else {
+            decisionHandler(.download)
+            return
+        }
         if navigationAction.targetFrame?.isMainFrame == true,
            let pendingLogin,
            let destination = navigationAction.request.url,
@@ -1414,6 +1527,18 @@ extension LeanTab: WKNavigationDelegate {
            ExternalLinkPolicy.shouldOpenExternally(url) {
             NSWorkspace.shared.open(url)
             decisionHandler(.cancel)
+            return
+        }
+        // Shift-click, when Settings says so: a peek at the link, over this
+        // page (see PeekPanel). Only from a tab in the row — within a peek,
+        // a link just goes.
+        if peeksLinks, !isPeekTab,
+           navigationAction.navigationType == .linkActivated,
+           let url = navigationAction.request.url,
+           let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+           navigationAction.modifierFlags.intersection([.shift, .command, .option, .control]) == .shift {
+            decisionHandler(.cancel)
+            onPeekLink?(url)
             return
         }
         if navigationAction.targetFrame?.isMainFrame == true,
@@ -1493,11 +1618,20 @@ extension LeanTab: WKNavigationDelegate {
         decidePolicyFor navigationResponse: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
+        // A redirect (3xx) has no content of its own and must be followed
+        // rather than downloaded — even when its headers claim a binary
+        // MIME type, as some servers do on their redirects.
+        if let http = navigationResponse.response as? HTTPURLResponse,
+           (300...399).contains(http.statusCode) {
+            decisionHandler(.allow)
+            return
+        }
         let disposition = (navigationResponse.response as? HTTPURLResponse)?
             .value(forHTTPHeaderField: "Content-Disposition")
         if DownloadPolicy.shouldDownload(
             contentDisposition: disposition,
-            mimeType: navigationResponse.response.mimeType
+            mimeType: navigationResponse.response.mimeType,
+            canShowMIMEType: navigationResponse.canShowMIMEType
         ) {
             decisionHandler(.download)
             return
@@ -1506,8 +1640,12 @@ extension LeanTab: WKNavigationDelegate {
         decisionHandler(.allow)
     }
 
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        keep(download)
+    }
+
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        download.delegate = self
+        keep(download)
     }
 }
 
@@ -1723,16 +1861,51 @@ extension LeanTab: WKDownloadDelegate {
             totalBytes: total > 0 ? total : Int64(-1),
             speedBytesPerSec: speed
         )
+        // If accounting says the bytes are all here, make sure the download
+        // cannot spin at 100% forever (see scheduleDownloadFinalizeWatchdog).
+        let effectiveTotal = total > 0 ? total : (downloadManager?.downloads.first(where: { $0.id == itemID })?.totalBytes ?? -1)
+        if effectiveTotal > 0, received >= effectiveTotal, let download = activeDownloadObjects[itemID] {
+            scheduleDownloadFinalizeWatchdog(itemID: itemID, download: download, totalBytes: effectiveTotal)
+        }
+    }
+
+    /// Downloads WebKit never finishes: transfer accounting complete, file
+    /// on disk, but `downloadDidFinish` lost (seen on some CDN video
+    /// responses stuck at 100%). Finalize from our own accounting rather
+    /// than spinning forever. Fires once per download; a no-op if the real
+    /// callback already handled it.
+    private func scheduleDownloadFinalizeWatchdog(itemID: UUID, download: WKDownload, totalBytes: Int64) {
+        guard downloadWatchdogs.insert(itemID).inserted else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            guard let self else { return }
+            self.downloadWatchdogs.remove(itemID)
+            guard self.activeDownloadObjects[itemID] != nil,
+                  let item = self.downloadManager?.downloads.first(where: { $0.id == itemID }),
+                  item.state == .downloading else { return }
+            let diskSize = (try? FileManager.default.attributesOfItem(atPath: item.destinationURL.path)[.size] as? Int64) ?? -1
+            guard totalBytes > 0, diskSize >= totalBytes else { return }
+            NSLog("Download %@ accounted complete but WebKit never finished it; finalizing", itemID.uuidString)
+            self.finalizeDownload(download, itemID: itemID)
+        }
     }
 
     func downloadDidFinish(_ download: WKDownload) {
+        forget(download)
         let key = ObjectIdentifier(download)
         let itemID = activeDownloadIDs[key]
         downloadProgressObservers[key]?.invalidate()
         downloadProgressObservers[key] = nil
         activeDownloadIDs[key] = nil
         guard let itemID else { return }
+        finalizeDownload(download, itemID: itemID)
+    }
+
+    /// Shared by the real finish callback and the watchdog: mark the
+    /// manager item complete with the on-disk byte count.
+    private func finalizeDownload(_ download: WKDownload, itemID: UUID) {
+        let key = ObjectIdentifier(download)
         activeDownloadObjects[itemID] = nil
+        downloadWatchdogs.remove(itemID)
         // Final byte count from disk beats progress accounting.
         if let item = downloadManager?.downloads.first(where: { $0.id == itemID }) {
             let diskSize = (try? FileManager.default.attributesOfItem(atPath: item.destinationURL.path)[.size] as? Int64) ?? nil
@@ -1750,6 +1923,7 @@ extension LeanTab: WKDownloadDelegate {
         didFailWithError error: Error,
         resumeData: Data?
     ) {
+        forget(download)
         let key = ObjectIdentifier(download)
         let itemID = activeDownloadIDs[key]
         downloadProgressObservers[key]?.invalidate()
@@ -1757,9 +1931,15 @@ extension LeanTab: WKDownloadDelegate {
         activeDownloadIDs[key] = nil
         guard let itemID else { return }
         activeDownloadObjects[itemID] = nil
+        downloadWatchdogs.remove(itemID)
         let cancelled = (error as NSError).code == NSURLErrorCancelled
         downloadManager?.failDownload(id: itemID, errorDescription: error.localizedDescription, cancelled: cancelled)
         downloadLastSample[itemID] = nil
+        // A failure nobody opens the panel for reads as "nothing happens".
+        // Show it — but never for a cancellation the user asked for.
+        if !cancelled {
+            onDownloadFailed?()
+        }
     }
 }
 

@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 // MARK: - Sidebar View for Vertical Tabs
 struct SidebarView: View {
     @ObservedObject var store: LeanStore
+    @Namespace private var sidebarTabSelectionNamespace
 
     private var sidebarBackground: Color {
         store.adaptiveTheme.isBorderEnabled
@@ -131,12 +132,14 @@ struct SidebarView: View {
                         SidebarPinnedTabItem(
                             tab: tab,
                             isSelected: tab.id == store.selectedID,
+                            namespace: sidebarTabSelectionNamespace,
                             store: store,
                             onSelect: { handleTabSelection(tab) },
                             onClose: { store.close(tab) }
                         )
                     }
                 }
+                .animation(.spring(response: 0.28, dampingFraction: 0.78), value: store.selectedID)
                 .padding(.horizontal, 10)
                 .padding(.bottom, 8)
             }
@@ -170,17 +173,19 @@ struct SidebarView: View {
 
             // 5. Vertical Tab Strip (Unpinned tabs)
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 4) {
+                VStack(spacing: 4) {
                     ForEach(store.unpinnedTabs) { tab in
                         SidebarTabItem(
                             tab: tab,
                             isSelected: tab.id == store.selectedID,
+                            namespace: sidebarTabSelectionNamespace,
                             store: store,
                             onSelect: { handleTabSelection(tab) },
                             onClose: { store.close(tab) }
                         )
                     }
                 }
+                .animation(.spring(response: 0.28, dampingFraction: 0.78), value: store.selectedID)
                 .padding(.horizontal, 8)
                 .padding(.bottom, 8)
             }
@@ -275,7 +280,9 @@ struct SidebarView: View {
         if tab.id == store.selectedID {
             NotificationCenter.default.post(name: .focusAddress, object: nil)
         } else {
-            store.switchToTab(id: tab.id)
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                store.switchToTab(id: tab.id)
+            }
         }
     }
 }
@@ -527,6 +534,7 @@ private struct SidebarAddressBar: View {
 struct SidebarTabItem: View {
     @ObservedObject var tab: LeanTab
     let isSelected: Bool
+    var namespace: Namespace.ID
     @ObservedObject var store: LeanStore
     let onSelect: () -> Void
     let onClose: () -> Void
@@ -558,20 +566,22 @@ struct SidebarTabItem: View {
         }
         .buttonStyle(.plain)
         .overlay { TabMiddleClick { onClose() } }
-        .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(
-                    isSelected
-                        ? store.adaptiveTheme.inactiveTabHoverBackground
-                        : (isHovered ? store.adaptiveTheme.inactiveTabBackground : Color.clear)
-                )
-                .overlay(
-                    isSelected
-                        ? RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
-                        : nil
-                )
-        )
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(isHovered ? store.adaptiveTheme.inactiveTabBackground : Color.clear)
+
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(store.adaptiveTheme.inactiveTabHoverBackground)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
+                        )
+                        .matchedGeometryEffect(id: "activeSidebarTabPill", in: namespace)
+                }
+            }
+        }
         .contentShape(Rectangle())
         .onDrag {
             store.draggingTabID = tab.id
@@ -701,37 +711,93 @@ struct SidebarTabItem: View {
 
     @ViewBuilder
     private var defaultSidebarContent: some View {
-        HStack(spacing: 8) {
-            ZStack {
+        switch store.tabDisplayMode {
+        case .hybrid:
+            HStack(spacing: 8) {
+                ZStack {
+                    if tab.isLoading {
+                        DotMatrixLoader(
+                            color: tabItemForeground,
+                            size: store.scaled(16)
+                        )
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                    } else {
+                        TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
+                            .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                    }
+                }
+                .frame(width: store.scaled(16), height: store.scaled(16))
+                .scaleEffect(isSelected ? 1.05 : 0.96)
+                .animation(.spring(response: 0.26, dampingFraction: 0.72), value: isSelected)
+                .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
+
+                Text(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
+                    .font(store.tabTitleFont(size: 13))
+                    .foregroundColor(tabItemForeground)
+                    .scaleEffect(isSelected ? 1.0 : 0.985)
+                    .animation(.spring(response: 0.26, dampingFraction: 0.76), value: isSelected)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 4)
+
+                if tab.isPlayingMedia {
+                    TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: false)
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                }
+
+                // Always reserve close-button width so hover doesn't push text.
+                Color.clear.frame(width: 18, height: 18)
+            }
+        case .iconOnly:
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                ZStack {
+                    if tab.isLoading {
+                        DotMatrixLoader(
+                            color: tabItemForeground,
+                            size: store.scaled(16)
+                        )
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                    } else {
+                        TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
+                            .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                    }
+                }
+                .frame(width: store.scaled(16), height: store.scaled(16))
+                .scaleEffect(isSelected ? 1.08 : 0.95)
+                .animation(.spring(response: 0.26, dampingFraction: 0.72), value: isSelected)
+                .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
+
+                Spacer(minLength: 0)
+            }
+        case .textOnly:
+            HStack(spacing: 8) {
                 if tab.isLoading {
                     DotMatrixLoader(
                         color: tabItemForeground,
-                        size: store.scaled(16)
+                        size: store.scaled(14)
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.85)))
-                } else {
-                    TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
+                }
+
+                Text(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
+                    .font(store.tabTitleFont(size: 13))
+                    .foregroundColor(tabItemForeground)
+                    .scaleEffect(isSelected ? 1.0 : 0.985)
+                    .animation(.spring(response: 0.26, dampingFraction: 0.76), value: isSelected)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 4)
+
+                if tab.isPlayingMedia {
+                    TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: false)
                         .transition(.opacity.combined(with: .scale(scale: 0.85)))
                 }
+
+                Color.clear.frame(width: 18, height: 18)
             }
-            .frame(width: store.scaled(16), height: store.scaled(16))
-            .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
-
-            Text(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
-                .font(store.tabTitleFont(size: 13))
-                .foregroundColor(tabItemForeground)
-                .lineLimit(1)
-                .truncationMode(.tail)
-
-            Spacer(minLength: 4)
-
-            if tab.isPlayingMedia {
-                TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: false)
-                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
-            }
-
-            // Always reserve close-button width so hover doesn't push text.
-            Color.clear.frame(width: 18, height: 18)
         }
     }
 
@@ -848,32 +914,13 @@ struct SidebarTabItem: View {
 private struct SidebarPinnedTabItem: View {
     @ObservedObject var tab: LeanTab
     let isSelected: Bool
+    var namespace: Namespace.ID
     @ObservedObject var store: LeanStore
     let onSelect: () -> Void
     let onClose: () -> Void
 
     @State private var isHovered = false
     @State private var isDropTarget = false
-
-    private var tabBackground: Color {
-        if isSelected {
-            return store.adaptiveTheme.activeTabBackground
-        }
-        if isHovered {
-            return store.isDarkMode ? Color.white.opacity(0.14) : Color.black.opacity(0.09)
-        }
-        return store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05)
-    }
-
-    private var tabBorder: Color {
-        if isSelected {
-            return store.adaptiveTheme.activeTabStroke
-        }
-        if isHovered {
-            return store.adaptiveTheme.activeTabStroke.opacity(0.35)
-        }
-        return store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04)
-    }
 
     var body: some View {
         Button(action: onSelect) {
@@ -887,13 +934,27 @@ private struct SidebarPinnedTabItem: View {
                     TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
                 }
             }
+            .scaleEffect(isSelected ? 1.06 : 0.95)
+            .animation(.spring(response: 0.26, dampingFraction: 0.72), value: isSelected)
             .frame(maxWidth: .infinity)
             .frame(height: store.scaled(38))
-            .background(tabBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(tabBorder, lineWidth: 0.75)
-            )
+            .background {
+                ZStack {
+                    if isHovered && !isSelected {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(store.isDarkMode ? Color.white.opacity(0.14) : Color.black.opacity(0.09))
+                    }
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(store.adaptiveTheme.activeTabBackground)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 0.75)
+                            )
+                            .matchedGeometryEffect(id: "activeSidebarPinnedTabPill", in: namespace)
+                    }
+                }
+            }
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)

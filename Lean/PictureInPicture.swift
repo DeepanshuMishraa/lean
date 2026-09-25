@@ -95,14 +95,16 @@ final class PictureInPicture {
         (page as? WKWebView)?.allowsMagnification = false
 
         // Reparenting the live web view forces a full relayout; suppress
-        // implicit animations so the lift doesn't stutter.
+        // implicit animations so the lift doesn't stutter. No synchronous
+        // layout pass here: forcing one on a heavy page (YouTube) blocks
+        // the tab switch for hundreds of milliseconds. The autoresizing
+        // mask plus the next layout pass settles it without the hitch.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         page.removeFromSuperview()
         page.frame = ground.bounds
         page.autoresizingMask = [.width, .height]
         ground.addSubview(page)
-        page.layoutSubtreeIfNeeded()
         CATransaction.commit()
 
         let controls = Controls(frame: ground.bounds)
@@ -121,6 +123,11 @@ final class PictureInPicture {
         self.controls = controls
 
         panel.contentView = ground
+        // Start invisible: reparenting kicks a full relayout at the new
+        // size, and the first composites mid-churn flash page chrome
+        // (YouTube's logo included). reveal() fades in once the isolated
+        // layout has settled, so the window opens onto video, not flicker.
+        panel.alphaValue = 0
         panel.orderFrontRegardless()
         self.panel = panel
 
@@ -148,6 +155,14 @@ final class PictureInPicture {
                 }
             }
         }
+    }
+
+    /// Fade in after the isolated layout has settled (see Isolate.settled).
+    /// A no-op once visible or after the window is gone, so a late probe
+    /// answer or the fallback timer can both call it safely.
+    func reveal() {
+        guard let panel, panel.alphaValue < 1 else { return }
+        panel.animator().alphaValue = 1
     }
 
     /// Puts the page down and closes. Whoever owns the page takes it back on
@@ -1052,6 +1067,11 @@ enum Isolate {
     /// hiding the body and turning it back on for the video alone leaves the
     /// player's own machinery running untouched — which is what keeps the
     /// stream alive where cutting the DOM about would kill it.
+    ///
+    /// Never moves DOM nodes: the video stays where its player put it, so a
+    /// React re-render, quality change, or ad break cannot orphan it, and
+    /// landing needs no saved parent to restore (a stale parent was what
+    /// left the page blank on return). Mirrors Search's Float.Isolate.
     static let on = """
     (function () {
       var videos = document.querySelectorAll('video');
@@ -1064,19 +1084,7 @@ enum Isolate {
       }
       if (!best) return 'none';
 
-      var parent = best.parentNode;
-      var next = best.nextSibling;
-      var wrapper = document.createElement('div');
-      wrapper.id = 'lean-picture-in-picture-wrapper';
-      Object.assign(wrapper.style, {
-        position: 'fixed', inset: '0', zIndex: '2147483647',
-        display: 'grid', placeItems: 'center', background: '#000',
-        overflow: 'hidden'
-      });
-      document.documentElement.appendChild(wrapper);
-      window.__leanPictureInPictureState = { video: best, parent: parent, next: next, wrapper: wrapper };
       best.setAttribute('data-lean-picture-in-picture', '');
-      wrapper.appendChild(best);
       var sheet = document.getElementById('lean-picture-in-picture');
       if (!sheet) {
         sheet = document.createElement('style');
@@ -1088,13 +1096,28 @@ enum Isolate {
         'background:#000 !important; overflow:hidden !important; margin:0 !important}',
         'html.lean-picture-in-picture-active body > * { visibility:hidden !important }',
         'html.lean-picture-in-picture-active [data-lean-picture-in-picture] {',
-        'visibility:visible !important; position:static !important;',
-        'display:block !important; box-sizing:border-box !important;',
-        'width:100% !important; height:100% !important;',
-        'min-width:0 !important; min-height:0 !important;',
-        'max-width:100% !important; max-height:100% !important;',
-        'margin:0 !important; object-fit:contain !important;',
-        'object-position:center !important}',
+        'visibility:visible !important; position:fixed !important;',
+        'left:0 !important; top:0 !important; right:0 !important; bottom:0 !important;',
+        'width:100vw !important; height:100vh !important;',
+        'max-width:none !important; max-height:none !important;',
+        // Players such as Netflix center the element with a translation.
+        // With our top/left at zero, that moves it out of the floating window.
+        'transform:none !important;',
+        'object-fit:contain !important; object-position:center !important;',
+        'z-index:2147483647 !important}',
+        // Netflix renders timed text after the video, in a layer of its own
+        // beside it or one level up. Keep it above the video without
+        // exposing the rest of the player.
+        'html.lean-picture-in-picture-active [data-lean-picture-in-picture] ~ .player-timedtext,',
+        'html.lean-picture-in-picture-active :has(> [data-lean-picture-in-picture]) > .player-timedtext,',
+        'html.lean-picture-in-picture-active :has([data-lean-picture-in-picture]) > .player-timedtext {',
+        'visibility:visible !important; z-index:2147483647 !important}',
+        // Fixed or not, the video is still cut to the box of any ancestor
+        // that clips — YouTube's player does — and in a window this small
+        // that box sits partly or wholly off screen, more so on a page that
+        // was scrolled. That was the black window.
+        'html.lean-picture-in-picture-active body :has([data-lean-picture-in-picture]) {',
+        'overflow:visible !important}',
         // The player's own controls would sit under ours, and two sets of
         // buttons on one small window is one set too many.
         'html.lean-picture-in-picture-active [data-lean-picture-in-picture]::-webkit-media-controls {',
@@ -1160,6 +1183,25 @@ enum Isolate {
         """
     }
 
+    /// True once the isolated layout has survived two frames with the
+    /// marked video still in the DOM at a real size — i.e. the resize
+    /// churn is over and revealing the window shows video, not flicker.
+    /// Returns a Promise, which WebKit resolves before answering.
+    static let settled = """
+    (function () {
+      return new Promise(function (resolve) {
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            var el = document.querySelector('[data-lean-picture-in-picture]');
+            if (!el) { resolve(false); return; }
+            var box = el.getBoundingClientRect();
+            resolve(box.width > 2 && box.height > 2);
+          });
+        });
+      });
+    })();
+    """
+
     /// How far through, whether it is running, current time, and duration.
     static let where_ = """
     (function () {
@@ -1203,17 +1245,10 @@ enum Isolate {
       document.documentElement.classList.remove('lean-picture-in-picture-active');
       var sheet = document.getElementById('lean-picture-in-picture');
       if (sheet) sheet.textContent = '';
-      var state = window.__leanPictureInPictureState;
-      if (state) {
-        if (state.parent && state.parent.isConnected) {
-          state.parent.insertBefore(state.video, state.next && state.next.parentNode === state.parent ? state.next : null);
-        } else {
-          document.body.appendChild(state.video);
-        }
-        state.wrapper.remove();
-        state.video.removeAttribute('data-lean-picture-in-picture');
-        window.__leanPictureInPictureState = null;
-      }
+      // No DOM nodes were moved on the way out, so there is nothing to put
+      // back — just take the mark off whatever still holds it.
+      var video = document.querySelector('[data-lean-picture-in-picture]');
+      if (video) video.removeAttribute('data-lean-picture-in-picture');
       return 'landed';
     })();
     """

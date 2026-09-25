@@ -43,7 +43,8 @@ enum DownloadPolicy {
     /// blank. Inline HTML/images/PDFs still render.
     static func shouldDownload(
         contentDisposition: String?,
-        mimeType: String?
+        mimeType: String?,
+        canShowMIMEType: Bool? = nil
     ) -> Bool {
         if let disposition = contentDisposition?.lowercased() {
             // Parse the disposition *type* (before ';') so an inline
@@ -56,6 +57,10 @@ enum DownloadPolicy {
         }
         if let mime = mimeType?.lowercased().trimmingCharacters(in: .whitespaces),
            mime == "application/octet-stream" {
+            return true
+        }
+        // Anything WebKit cannot show is something to keep instead.
+        if canShowMIMEType == false {
             return true
         }
         return false
@@ -82,10 +87,12 @@ final class MediaPermissionStore: ObservableObject {
 
     @Published private var decisions: [String: Bool] = [:]
     private let database: AppDatabase?
+    private let userDefaults: UserDefaults
     private static let storageKey = "mediaCapturePermissions_v1"
 
-    init(database: AppDatabase? = nil) {
+    init(database: AppDatabase? = nil, userDefaults: UserDefaults = .standard) {
         self.database = database
+        self.userDefaults = userDefaults
         if let database {
             switch database.value([String: Bool].self, forKey: Self.storageKey) {
             case .success(let saved):
@@ -93,6 +100,13 @@ final class MediaPermissionStore: ObservableObject {
             case .failure(let error):
                 NSLog("Could not read media permissions: %@", String(describing: error))
             }
+        }
+        // UserDefaults mirrors the database, as with the other persisted
+        // preferences: a decision must survive even when the database is
+        // unavailable, and the database wins when both exist.
+        if decisions.isEmpty,
+           let mirrored = userDefaults.dictionary(forKey: Self.storageKey) as? [String: Bool] {
+            decisions = mirrored
         }
     }
 
@@ -141,6 +155,7 @@ final class MediaPermissionStore: ObservableObject {
     }
 
     private func persist() {
+        userDefaults.set(decisions, forKey: Self.storageKey)
         guard let database else { return }
         if case .failure(let error) = database.set(decisions, forKey: Self.storageKey) {
             NSLog("Could not persist media permissions: %@", String(describing: error))

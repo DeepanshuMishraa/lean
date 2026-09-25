@@ -12,6 +12,20 @@ struct FontSettingsTests {
         #expect(!PageScripts.font(.system).contains("font-family"))
     }
 
+    @Test("Page font family yields to page icon fonts")
+    func pageFontYieldsToIconFonts() {
+        // The family rule must not be !important: a page rule with
+        // class-level specificity (Meet's Material Symbols et al.) has to
+        // win, or icon buttons render as raw text. Check the declaration
+        // itself, not the (still important) weight rules after it.
+        let script = PageScripts.font(.geistMono)
+        guard let range = script.range(of: "font-family:") else {
+            Issue.record("expected a font-family rule")
+            return
+        }
+        #expect(!script[range.upperBound...].prefix(120).contains("!important"))
+    }
+
     @Test("LeanFontWeight cases map correctly to numeric rawValues")
     func fontWeightNumericValues() {
         #expect(LeanFontWeight.ultraLight.rawValue == 100)

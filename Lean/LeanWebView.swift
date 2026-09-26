@@ -15,6 +15,19 @@ final class LeanWebView: WKWebView {
         contextMenuHook?(menu)
     }
 
+    /// Keep horizontal rubber-banding for swipe navigation, but do not bounce
+    /// past the page's top or bottom.
+    /// Doing this natively avoids the WebKit wheel-listener bug caused by
+    /// `overscroll-behavior-y: none`.
+    func configureScrolling() {
+        let set = NSSelectorFromString("_setRubberBandingEnabled:")
+        guard responds(to: set) else { return }
+        typealias Setter = @convention(c) (AnyObject, Selector, UInt) -> Void
+        let left: UInt = 1 << 0
+        let right: UInt = 1 << 2
+        unsafeBitCast(method(for: set), to: Setter.self)(self, set, left | right)
+    }
+
     // MARK: - keys the page didn't use
 
     /// The last key handed to the page. WebKit sends a key the page didn't

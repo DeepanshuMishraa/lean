@@ -4,6 +4,20 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.4] - 2026-09-27
+
+### Fixed
+
+- Tabs now switch their webpage on the first click or switcher selection,
+  instead of updating the active-tab indicator while leaving the previous
+  page visible
+- Download Image and Download Video in WebKit's native context menu now use
+  Lean's download manager, including standalone MP4 pages and blob-backed
+  videos
+- Page scrolling now uses native WebKit behavior: vertical bounce is disabled
+  without touching site CSS, and inactive password suggestions no
+  longer hit the Keychain or schedule UI work on every scroll frame
+
 ## [0.1.3] - 2026-09-26
 
 ### Added
@@ -43,18 +57,15 @@ update often — releases arrive through the built-in updater.
   Colour the tab bar from the page, off by default. Tints the strip with
   what the page itself declares with `theme-color` — no sampling, no
   guessing — staying inside the browser theme so the row stays legible,
-  and follows the active tab. The sidebar layout is unaffected (ported
-  from [Search #168](https://github.com/driceroland/Search/pull/168))
+  and follows the active tab. The sidebar layout is unaffected
 - Peek at a link with a shift-click: Settings → General, off by default.  The link opens in a panel over the page, which stays where it was
   underneath. Escape, ⌘W or a click beside it puts it away; keeping it
-  makes it a tab beside this one, loaded as it is (ported from Search
-  `46112d3`)
+  makes it a tab beside this one, loaded as it is
 - Web Inspector is always there, on Chrome's keys: View → Web Inspector
   (⌥⌘I), JavaScript Console (⌥⌘J), Inspect Element (⌥⌘C) — no Settings
-  switch any more (ported from Search `d409ad4`)
+  switch any more
 - No more "can't do that" beep when typing into editors that insert text
   themselves: keys the page didn't use are kept quiet, as in Safari
-  (ported from Search `cc8aa58`)
 - A download that fails opens the Downloads panel with the reason, instead
   of failing silently — cancellations stay quiet
 - Closing a split pane pops it out to the row as a standalone tab instead
@@ -69,8 +80,8 @@ update often — releases arrive through the built-in updater.
   Mail, Slack, PDFs and everywhere else open in the current or a new tab
 - Full browser-data import from Chrome, Arc, Dia, Helium, or Safari —
   bookmarks, history, saved passwords decrypted locally from each
-  browser's `Login Data` (same PBKDF2 + AES recipe Search uses,
-  including Helium's `Helium Storage Key` entry), and extensions where
+  browser's `Login Data` using Chromium's PBKDF2 + AES format, including
+  Helium's `Helium Storage Key` entry, and extensions where
   each one gets its own permission review before it runs
 - Arc sidebar tabs import straight from `StorableSidebar.json`
   (grant the `Arc/` folder itself, not `User Data`)

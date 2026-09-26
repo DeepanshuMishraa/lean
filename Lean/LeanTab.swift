@@ -316,6 +316,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
         webView.navigationDelegate = self
         webView.uiDelegate = self
+        webView.configureScrolling()
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
 
@@ -1348,15 +1349,18 @@ extension LeanTab: WKScriptMessageHandler {
     private func updatePasswordSuggestions(_ message: WKScriptMessage) {
         guard passwordSuggestionsEnabled, message.frameInfo.isMainFrame,
               message.webView === webView,
-              let origin = url ?? webView.url,
-              let scheme = origin.scheme?.lowercased(), scheme == "https" || scheme == "http",
-              case .success(let logins) = PasswordVault.forSite(origin),
-              !logins.isEmpty,
               let fields = message.body as? [String: Any],
               let rect = fields["rect"] as? [String: Double],
               let x = rect["x"], let y = rect["y"],
               let width = rect["width"], let height = rect["height"] else {
-            schedulePasswordSuggestionsHide()
+            if passwordSuggestionFrame != nil { schedulePasswordSuggestionsHide() }
+            return
+        }
+        guard let origin = url ?? webView.url,
+              let scheme = origin.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              case .success(let logins) = PasswordVault.forSite(origin),
+              !logins.isEmpty else {
+            if passwordSuggestionFrame != nil { schedulePasswordSuggestionsHide() }
             return
         }
         passwordSuggestionHideWorkItem?.cancel()

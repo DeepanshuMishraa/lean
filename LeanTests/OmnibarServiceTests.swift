@@ -109,4 +109,23 @@ struct OmnibarServiceTests {
         #expect(tabMatch?.primaryText == "Cloudflare Dashboard")
         #expect(tabMatch?.tabID == tabID)
     }
+
+    @Test("An IP address gets a single open-address row, no search row")
+    func ipAddressSingleRow() {
+        for query in ["100.109.113.4", "100.109.113.4:8000", "http://100.109.113.4/"] {
+            let suggestions = OmnibarService.shared.suggestions(for: query)
+            #expect(suggestions.count == 1, "for query: \(query)")
+            #expect(!suggestions[0].isSearch, "for query: \(query)")
+            #expect(suggestions[0].targetURL.host == "100.109.113.4", "for query: \(query)")
+        }
+    }
+
+    @Test("An IP address ignores poisoned history and search")
+    func ipAddressIgnoresHistory() {
+        let history = [(url: URL(string: "https://duckduckgo.com/?q=100.109.113.4")!, title: "100.109.113.4 at DuckDuckGo")]
+        let suggestions = OmnibarService.shared.suggestions(for: "100.109.113.4", history: history)
+
+        #expect(suggestions.count == 1)
+        #expect(suggestions[0].targetURL.absoluteString == "http://100.109.113.4")
+    }
 }

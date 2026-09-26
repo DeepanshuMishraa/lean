@@ -101,6 +101,18 @@ final class OmnibarService {
             )]
         }
 
+        // A raw IP address is never a search either: one row that opens it,
+        // no search-engine row. Domains and everything else keep the normal
+        // list below.
+        if let ipURL = AddressResolver.ipLiteralURL(from: trimmed) {
+            return [OmnibarSuggestion(
+                primaryText: ipURL.absoluteString,
+                secondaryText: "Open address",
+                isSearch: false,
+                targetURL: ipURL
+            )]
+        }
+
         // Suggest Lean Settings if query matches settings / lean
         if "settings".hasPrefix(lower) || "lean://settings".hasPrefix(lower) || lower == "lean" {
             results.append(OmnibarSuggestion(

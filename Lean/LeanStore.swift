@@ -1657,8 +1657,11 @@ final class LeanStore: ObservableObject {
             guard let self, let tab else { return }
             self.objectWillChange.send()
             // Coalesce: one debounced SQLite write instead of 2 per event.
-            // History only for settled (non-loading) states; session always.
-            if let tabURL = tab.url, !tab.isLoading {
+            // History only for settled (non-loading) states, and never for
+            // a failed navigation — the tab keeps the attempted address so
+            // the omnibar/reload/session still work, but nothing was
+            // committed to record. Session always.
+            if let tabURL = tab.url, !tab.isLoading, tab.pageError == nil {
                 self.pendingHistory = (tabURL, tab.title)
             }
             self.scheduleDebouncedPersist()
@@ -2023,20 +2026,43 @@ final class LeanStore: ObservableObject {
         return loaded.isEmpty ? tabs : loaded
     }
 
-    func startTabSwitcher(reverse: Bool = false) {
-        let validTabs = switcherTabs
-        guard !validTabs.isEmpty else { return }
+    /// Tab IDs captured the moment the switcher opened. Cycling and
+    /// committing resolve against this snapshot instead of a fresh filter,
+    /// so a tab opened, closed, or finished loading mid-gesture can't shift
+    /// the highlight onto the wrong tab or silently drop the commit — the
+    /// gesture that leaves the highlight on a tab always lands on it.
+    private var switcherSessionIDs: [LeanTab.ID] = []
 
-        // If thumbnail previews are enabled, capture snapshot asynchronously in background so switcher opens with 0ms lag
-        if enableThumbnailsInTabSwitcher, selectedTab?.snapshot == nil {
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.selectedTab?.snapshot == nil else { return }
-                self.selectedTab?.captureSnapshot()
-            }
+    /// Snapshot rows still open, in snapshot order.
+    private var switcherSessionTabs: [LeanTab] {
+        switcherSessionIDs.compactMap { id in tabs.first(where: { $0.id == id }) }
+    }
+
+    /// Rows the overlay shows: the open session while visible, so the
+    /// highlight and the rows can never disagree mid-gesture.
+    var switcherVisibleTabs: [LeanTab] {
+        if isTabSwitcherVisible {
+            let session = switcherSessionTabs
+            if !session.isEmpty { return session }
         }
+        return switcherTabs
+    }
 
+    func startTabSwitcher(reverse: Bool = false) {
         if !isTabSwitcherVisible {
+            let validTabs = switcherTabs
+            guard !validTabs.isEmpty else { return }
+
+            // If thumbnail previews are enabled, capture snapshot asynchronously in background so switcher opens with 0ms lag
+            if enableThumbnailsInTabSwitcher, selectedTab?.snapshot == nil {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.selectedTab?.snapshot == nil else { return }
+                    self.selectedTab?.captureSnapshot()
+                }
+            }
+
             isTabSwitcherVisible = true
+            switcherSessionIDs = validTabs.map(\.id)
             let currentIndex = validTabs.firstIndex(where: { $0.id == selectedID }) ?? 0
             let offset = reverse ? validTabs.count - 1 : 1
             switcherSelectedIndex = (currentIndex + offset) % validTabs.count
@@ -2046,26 +2072,39 @@ final class LeanStore: ObservableObject {
     }
 
     func cycleTabSwitcher(reverse: Bool = false) {
-        let validTabs = switcherTabs
-        guard !validTabs.isEmpty else { return }
-        let offset = reverse ? validTabs.count - 1 : 1
-        switcherSelectedIndex = (switcherSelectedIndex + offset) % validTabs.count
+        let session = switcherSessionTabs
+        guard !session.isEmpty else { return }
+        let offset = reverse ? session.count - 1 : 1
+        switcherSelectedIndex = (switcherSelectedIndex + offset) % session.count
     }
 
     func commitTabSwitcher() {
         guard isTabSwitcherVisible else { return }
         isTabSwitcherVisible = false
-        let validTabs = switcherTabs
-        if validTabs.indices.contains(switcherSelectedIndex) {
+        // Resolve against the open snapshot so the highlighted tab is the
+        // selected one even if the row changed mid-gesture. If that tab
+        // closed meanwhile, fall back to the live list, clamped, instead
+        // of silently staying put.
+        let session = switcherSessionTabs
+        switcherSessionIDs = []
+        if session.indices.contains(switcherSelectedIndex) {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
-                selectedID = validTabs[switcherSelectedIndex].id
+                selectedID = session[switcherSelectedIndex].id
             }
             saveSession()
+            return
         }
+        let live = switcherTabs
+        guard !live.isEmpty else { return }
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+            selectedID = live[min(switcherSelectedIndex, live.count - 1)].id
+        }
+        saveSession()
     }
 
     func cancelTabSwitcher() {
         isTabSwitcherVisible = false
+        switcherSessionIDs = []
     }
 
     // MARK: - Custom Shortcuts

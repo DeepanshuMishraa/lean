@@ -49,6 +49,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     /// The main-frame address the current navigation is headed to. Matches
     /// failures to the page (not subframes) in didFail/didFailProvisional.
     private var pendingMainFrameURL: URL?
+    /// The https address already retried over plain http (see
+    /// tryHTTPFallback). One retry per navigation — a second failure shows
+    /// the error page instead of looping.
+    private var httpFallbackAttemptedFor: String?
     private var mainDocumentMIMEType: String?
     /// Last heartbeat per frame. Playing frames report every poll; a frame
     /// that played briefly and then detached (ad iframe, SPA swap) can never
@@ -626,9 +630,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         }
     }
 
-    func load(_ url: URL) {
+    func load(_ url: URL, isHTTPFallbackRetry: Bool = false) {
         pendingNavigationID = UUID()
         let navigationID = pendingNavigationID
+        if !isHTTPFallbackRetry {
+            httpFallbackAttemptedFor = nil
+        }
         if isSleeping {
             isSleeping = false
             sleepingInteractionState = nil
@@ -1250,9 +1257,15 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private func refreshState() {
         title = webView.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             ?? webView.url?.host
+            ?? pageError?.url?.host
+            ?? url?.host
             ?? "New Tab"
         if !isPageSource {
-            url = webView.url
+            // After a failed navigation WebKit committed nothing, so
+            // webView.url is nil — but the attempted address must stay on
+            // the tab (omnibar, reload, session restore). History still
+            // skips it: the store never records while pageError is set.
+            url = webView.url ?? pageError?.url
         }
         onStateChange?()
     }
@@ -1636,6 +1649,7 @@ extension LeanTab: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation?, withError error: Error) {
+        if tryHTTPFallback(for: error) { return }
         pendingLogin = nil
         isLoading = false
         recordPageErrorIfMainFrame(error)
@@ -1646,6 +1660,7 @@ extension LeanTab: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation?, withError error: Error) {
+        if tryHTTPFallback(for: error) { return }
         pendingLogin = nil
         isLoading = false
         recordPageErrorIfMainFrame(error)
@@ -1664,6 +1679,46 @@ extension LeanTab: WKNavigationDelegate {
               let pageError = PageLoadError.from(error, for: failing) else { return }
         pendingMainFrameURL = nil
         self.pageError = pageError
+    }
+
+    /// Failures that mean "nothing speaks TLS here": refused, timed out,
+    /// dropped mid-handshake, or the handshake/cert itself failed. DNS
+    /// misses are excluded — plain http would not save those.
+    private static let httpFallbackErrorCodes: Set<Int> = [
+        NSURLErrorCannotConnectToHost,
+        NSURLErrorTimedOut,
+        NSURLErrorNetworkConnectionLost,
+        NSURLErrorSecureConnectionFailed,
+        NSURLErrorServerCertificateHasBadDate,
+        NSURLErrorServerCertificateUntrusted,
+        NSURLErrorServerCertificateHasUnknownRoot,
+        NSURLErrorServerCertificateNotYetValid,
+    ]
+
+    /// Retry a failed https main-frame navigation over plain http when the
+    /// host is a LAN box, dev server, or IP literal — those are usually
+    /// http-only, and the https attempt dies before any bytes flow. True
+    /// when the retry started (callers must skip the error page then).
+    private func tryHTTPFallback(for error: Error) -> Bool {
+        let ns = error as NSError
+        guard Self.httpFallbackErrorCodes.contains(ns.code) else { return false }
+        guard let failing = ns.userInfo[NSURLErrorFailingURLErrorKey] as? URL,
+              failing == pendingMainFrameURL || (pendingMainFrameURL == nil && failing == url),
+              failing.scheme?.lowercased() == "https",
+              let host = failing.host,
+              httpFallbackAttemptedFor != failing.absoluteString,
+              AddressResolver.isLocalHost(host) || AddressResolver.isIPv4Literal(host),
+              var components = URLComponents(url: failing, resolvingAgainstBaseURL: false)
+        else { return false }
+        components.scheme = "http"
+        // An explicit :443 belongs to the https attempt, not the server.
+        if components.port == 443 { components.port = nil }
+        guard let httpURL = components.url else { return false }
+        httpFallbackAttemptedFor = failing.absoluteString
+        pendingMainFrameURL = nil
+        pageError = nil
+        load(httpURL, isHTTPFallbackRetry: true)
+        return true
     }
 
     func webView(

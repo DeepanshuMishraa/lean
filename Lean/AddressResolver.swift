@@ -68,9 +68,10 @@ enum AddressResolver {
         guard !head.contains("@") else { return nil } // an email address, not a host
         let host = hostPart(of: String(head))
         guard looksLikeHost(host) else { return nil }
-        // A local server almost never has a certificate, so https there is a
-        // connection failure rather than a page.
-        return URL(string: (isLocalHost(host) ? "http://" : "https://") + value)
+        // A bare IP literal or a LAN/private host almost never has a public
+        // certificate, so https there is a connection failure rather than a
+        // page. Default those to http; public domains keep https.
+        return URL(string: (isLocalHost(host) || isIPv4Literal(host) ? "http://" : "https://") + value)
     }
 
     /// A local server address with something after the host (a port or a
@@ -89,6 +90,28 @@ enum AddressResolver {
         let head = bare.prefix { $0 != "/" && $0 != "?" && $0 != "#" }
         guard head.contains(":") else { return nil }
         guard isLocalHost(hostPart(of: String(head))) else { return nil }
+        return webURL(from: text)
+    }
+
+    /// An IP literal typed as an address (`100.109.113.4`,
+    /// `100.109.113.4:8000/path`, `[fd00::1]:3000`, or with an explicit
+    /// http(s) scheme): always navigation, never search — the loopback fast
+    /// path's sibling for raw addresses. Anything else returns nil so
+    /// domains and search text keep their normal rows.
+    static func ipLiteralURL(from value: String) -> URL? {
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !text.contains(" ") else { return nil }
+        let bare: String
+        if let split = text.range(of: "://") {
+            let scheme = text[..<split.lowerBound].lowercased()
+            guard scheme == "http" || scheme == "https" else { return nil }
+            bare = String(text[split.upperBound...])
+        } else {
+            bare = text
+        }
+        let head = bare.prefix { $0 != "/" && $0 != "?" && $0 != "#" }
+        let host = hostPart(of: String(head))
+        guard isIPv4Literal(host) || isIPv6Literal(host) else { return nil }
         return webURL(from: text)
     }
 
@@ -116,6 +139,9 @@ enum AddressResolver {
         let lower = host.lowercased()
         if lower == "localhost" { return true }
         if lower == "::1" || lower == "[::1]" { return true }
+        // A bracketed IPv6 literal (`[fd00::1]`, stripped to `fd00::1` by
+        // hostPart): always an address, never a search.
+        if host.contains(":") { return true }
 
         // Four numbers is an address on the local network as often as not.
         let numbers = host.split(separator: ".", omittingEmptySubsequences: false)
@@ -136,17 +162,82 @@ enum AddressResolver {
         return tld.count >= 2 && tld.allSatisfy { $0.isLetter }
     }
 
-    private static func isLocalHost(_ host: String) -> Bool {
+    /// Hosts on this machine or the local network. Internal so the tab
+    /// engine can offer plain-http retries for them.
+    static func isLocalHost(_ host: String) -> Bool {
         let lower = host.lowercased()
         if lower == "localhost" || lower.hasSuffix(".localhost") { return true }
         if lower == "::1" || lower == "[::1]" { return true }
         if lower == "0.0.0.0" { return true }
+        // Single-label names (`homelab`, `router`) and local-network
+        // suffixes never have public certificates. Bare single labels still
+        // go to search via looksLikeHost; this covers `name:port`,
+        // `name.local`, and explicit-scheme navigations consistently.
+        if isLocalSuffixHost(lower) { return true }
         let parts = lower.split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count == 4, parts.allSatisfy({ UInt8($0) != nil }) else { return false }
-        // Entire 127/8 loopback range, plus common LAN ranges — only inside
-        // the validated four-component IPv4 branch, so public hostnames such
-        // as 10.com or 192.168.com keep their public-domain behavior.
+        // Entire 127/8 loopback range, plus the private/LAN ranges — only
+        // inside the validated four-component IPv4 branch, so public
+        // hostnames such as 10.com or 192.168.com keep their public-domain
+        // behavior.
         if parts[0] == "127" { return true }
-        return lower.hasPrefix("192.168.") || lower.hasPrefix("10.")
+        if lower.hasPrefix("192.168.") || lower.hasPrefix("10.") { return true }
+        // 172.16.0.0/12 office and homelab range.
+        if parts[0] == "172", let second = UInt8(parts[1]), (16...31).contains(second) { return true }
+        // 100.64.0.0/10 carrier-grade NAT — also the Tailscale/ZeroTier
+        // range, so `100.109.113.4` is a LAN box, not the public web.
+        if parts[0] == "100", let second = UInt8(parts[1]), (64...127).contains(second) { return true }
+        // 169.254.0.0/16 link-local.
+        if parts[0] == "169", parts[1] == "254" { return true }
+        return false
+    }
+
+    /// Four decimal octets, e.g. `100.109.113.4` or `8.8.8.8`.
+    static func isIPv4Literal(_ host: String) -> Bool {
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        return parts.count == 4 && parts.allSatisfy({ UInt8($0) != nil })
+    }
+
+    /// A bare IPv6 address as produced by hostPart for bracketed input
+    /// (`[fd00::1]:3000` → `fd00::1`): hex, colons, and an optional
+    /// `%zone`, with at least two colons so `host:port` scraps never match.
+    static func isIPv6Literal(_ host: String) -> Bool {
+        let addr = host.split(separator: "%").first.map(String.init) ?? host
+        guard addr.filter({ $0 == ":" }).count >= 2 else { return false }
+        return !addr.isEmpty && addr.allSatisfy { $0.isHexDigit || $0 == ":" || $0 == "." }
+    }
+
+    /// Hosts that only ever exist on a local network.
+    private static func isLocalSuffixHost(_ lower: String) -> Bool {
+        // Bracketed IPv6 literals.
+        if lower.hasPrefix("[") && lower.hasSuffix("]") {
+            let inner = String(lower.dropFirst().dropLast())
+            return isLocalIPv6(inner)
+        }
+        if isLocalIPv6(lower) { return true }
+        // `.local` (mDNS/Bonjour), plus the common LAN-only suffixes.
+        let localSuffixes = [".local", ".lan", ".home", ".internal", ".intranet", ".corp", ".test", ".invalid"]
+        if localSuffixes.contains(where: { lower == String($0.dropFirst()) || lower.hasSuffix($0) }) { return true }
+        // A single label with no dots (`homelab`, `printer`) is a LAN name,
+        // not a public domain — unless it parses as something else, which
+        // callers decide via looksLikeHost.
+        if !lower.contains("."), !lower.contains(":"), !lower.isEmpty {
+            // `localhost` handled above; anything else single-label is local.
+            // Exclude pure version-like numbers already handled elsewhere.
+            return true
+        }
+        return false
+    }
+
+    /// IPv6 loopback, link-local (fe80::/10), and unique-local (fc00::/7).
+    private static func isLocalIPv6(_ host: String) -> Bool {
+        let lower = host.lowercased()
+        if lower == "::1" { return true }
+        // Strip any %zone identifier before matching the prefix.
+        let addr = lower.split(separator: "%").first.map(String.init) ?? lower
+        guard addr.contains(":") else { return false }
+        if addr.hasPrefix("fe8") || addr.hasPrefix("fe9") || addr.hasPrefix("fea") || addr.hasPrefix("feb") { return true }
+        if addr.hasPrefix("fc") || addr.hasPrefix("fd") { return true }
+        return false
     }
 }

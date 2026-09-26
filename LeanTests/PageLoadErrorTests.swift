@@ -88,8 +88,7 @@ struct PageLoadErrorTests {
 
     @MainActor
     @Test("A dead server produces an error page, not a blank tab")
-    func deadServerErrorPage() async throws {
-        let tab = LeanTab(
+    func deadServerErrorPage() async throws {        let tab = LeanTab(
             dataStore: .nonPersistent(),
             initialURL: nil,
             scrollbarStyle: .normal,
@@ -111,5 +110,102 @@ struct PageLoadErrorTests {
         let error = try #require(tab.pageError)
         #expect(error.url?.host == "127.0.0.1")
         #expect(!error.title.isEmpty)
+    }
+
+    @MainActor
+    @Test("A refused https loopback URL is retried over plain http")
+    func refusedHttpsFallsBackToHttp() async throws {
+        let tab = LeanTab(
+            dataStore: .nonPersistent(),
+            initialURL: nil,
+            scrollbarStyle: .normal,
+            adBlockingEnabled: false
+        )
+        let keepAlive = tab
+        let (port, fd) = Self.refusedLoopbackServer()
+        defer { if fd >= 0 { close(fd) } }
+        // Nothing speaks TLS on this port, but plain http answers refused
+        // too — the point is the error page names the http address, proving
+        // the retry happened instead of failing on https.
+        tab.load(URL(string: "https://127.0.0.1:\(port)/")!)
+        var ticks = 0
+        while tab.pageError == nil, ticks < 250 {
+            try await Task.sleep(for: .milliseconds(100))
+            ticks += 1
+            _ = keepAlive
+        }
+        let error = try #require(tab.pageError)
+        #expect(error.url?.scheme == "http")
+        #expect(error.url?.host == "127.0.0.1")
+    }
+
+    @MainActor
+    @Test("A failed navigation keeps the attempted address on the tab")
+    func failedNavigationKeepsURL() async throws {
+        let tab = LeanTab(
+            dataStore: .nonPersistent(),
+            initialURL: nil,
+            scrollbarStyle: .normal,
+            adBlockingEnabled: false
+        )
+        let keepAlive = tab
+        let (port, fd) = Self.refusedLoopbackServer()
+        defer { if fd >= 0 { close(fd) } }
+        let target = URL(string: "http://127.0.0.1:\(port)/")!
+        tab.load(target)
+        var ticks = 0
+        while tab.pageError == nil, ticks < 150 {
+            try await Task.sleep(for: .milliseconds(100))
+            ticks += 1
+            _ = keepAlive
+        }
+        _ = try #require(tab.pageError)
+        // The omnibar, reload, and session restore all read tab.url —
+        // a failure must not blank it.
+        #expect(tab.url == target)
+    }
+
+    @MainActor
+    @Test("Failed navigations stay out of history but keep the address")
+    func failedNavigationNotInHistory() async throws {
+        let (store, directory) = try makeIsolatedTestStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (port, fd) = Self.refusedLoopbackServer()
+        defer { if fd >= 0 { close(fd) } }
+        let target = URL(string: "http://127.0.0.1:\(port)/")!
+        store.newTab(url: target)
+        var ticks = 0
+        while store.selectedTab?.pageError == nil, ticks < 250 {
+            try await Task.sleep(for: .milliseconds(100))
+            ticks += 1
+        }
+        _ = try #require(store.selectedTab?.pageError)
+        store.flushPendingPersist()
+        #expect(store.historyItems.isEmpty)
+        #expect(store.selectedTab?.url == target)
+    }
+
+    @MainActor
+    @Test("An unresolvable https host keeps its https error page")
+    func dnsFailureStaysHttps() async throws {
+        let tab = LeanTab(
+            dataStore: .nonPersistent(),
+            initialURL: nil,
+            scrollbarStyle: .normal,
+            adBlockingEnabled: false
+        )
+        let keepAlive = tab
+        // `.invalid` never resolves: CannotFindHost is not a TLS failure,
+        // so no http retry — the page must describe the https address.
+        tab.load(URL(string: "https://nosuchhost.invalid/")!)
+        var ticks = 0
+        while tab.pageError == nil, ticks < 150 {
+            try await Task.sleep(for: .milliseconds(100))
+            ticks += 1
+            _ = keepAlive
+        }
+        let error = try #require(tab.pageError)
+        #expect(error.url?.scheme == "https")
+        #expect(error.title == "Server not found")
     }
 }

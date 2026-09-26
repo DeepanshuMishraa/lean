@@ -45,7 +45,7 @@ struct TabSwitcherView: View {
 
     // MARK: - Normal Tab Switcher List (Super-fast, minimal)
     private var normalTabList: some View {
-        let tabs = store.switcherTabs
+        let tabs = store.switcherVisibleTabs
         return LazyHStack(spacing: 6) {
             ForEach(0..<tabs.count, id: \.self) { index in
                 let tab = tabs[index]
@@ -66,7 +66,7 @@ struct TabSwitcherView: View {
 
     // MARK: - Thumbnail Card List (Rich visual previews)
     private var thumbnailCardList: some View {
-        let tabs = store.switcherTabs
+        let tabs = store.switcherVisibleTabs
         // Lazy: decoding every tab snapshot at once spiked memory/CPU with
         // many tabs open. Only visible cards materialize.
         return LazyHStack(spacing: 10) {

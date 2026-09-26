@@ -58,6 +58,16 @@
     </array>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <!-- A web browser must load whatever address the user types, including
+         plain-http boxes on the LAN, dev servers, and captive portals.
+         macOS blocks cleartext http to non-loopback hosts by default
+         (localhost alone is exempt), so without this every http-only host
+         fails at the OS level no matter what the tab requests. -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
     <key>NSCameraUsageDescription</key>
     <string>Lean needs camera access for video calls (e.g. Google Meet) when you choose to allow it per site.</string>
     <key>NSMicrophoneUsageDescription</key>

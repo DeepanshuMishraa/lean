@@ -66,5 +66,7 @@
          URL is provided at runtime by AppUpdater; see Lean/AppUpdater.swift. -->
     <key>SUPublicEDKey</key>
     <string>ZTkTwsY6NBoOXXzftDHmOdLyCnHzBQThSwAfJX/2PM8=</string>
+    <key>SUEnableInstallerLauncherService</key>
+    <true/>
 </dict>
 </plist>

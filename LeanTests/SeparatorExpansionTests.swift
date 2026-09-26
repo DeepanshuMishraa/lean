@@ -30,6 +30,16 @@ struct SeparatorExpansionTests {
         #expect(found[0].contains("[^a-zA-Z0-9_\\-.%]/banner"))
     }
 
+    @Test("Trailing separator-pipe anchors separator-then-end only")
+    func trailingSeparatorPipe() {
+        let result = AdBlockFilterConverter.convert("|https://ads.example^|")
+        let found = filters(in: result)
+        #expect(found.count == 1)
+        #expect(found[0].hasPrefix("^https://ads\\.example"))
+        #expect(found[0].hasSuffix("[^a-zA-Z0-9_\\-.%]$"))
+        #expect(!found[0].contains("$$"))
+    }
+
     @Test("Literal pipes are skipped, not mistranslated")
     func interiorPipeSkipped() {
         let result = AdBlockFilterConverter.convert("||ads.example/a|b")

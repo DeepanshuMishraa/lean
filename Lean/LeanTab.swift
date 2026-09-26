@@ -1144,8 +1144,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             return
         }
 
-        // Check cache immediately (zero latency)
-        if let cached = FaviconService.shared.cachedFavicon(for: targetURL) {
+        // Check cache immediately (zero latency), keyed like the loader so
+        // an explicit page icon never reads another icon's cached result.
+        if let cached = FaviconService.shared.cachedFavicon(for: targetURL, explicitURLString: explicitIconURL) {
             self.favicon = cached
             return
         }

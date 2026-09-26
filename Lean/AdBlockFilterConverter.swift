@@ -40,15 +40,18 @@ enum AdBlockFilterConverter {
             }
             for rule in converted {
                 let key = canonicalKey(for: rule)
-                guard seen.insert(key).inserted else {
+                if seen.contains(key) {
                     skipped += 1
                     continue
                 }
-                rules.append(rule)
-                if rules.count >= maxTotalRules {
-                    // Keep counting the rest as skipped without building more rules.
+                // Cap before retaining: rules and seen hold only what can
+                // actually be compiled, and keptCount stays honest.
+                guard rules.count < maxTotalRules else {
                     skipped += 1
+                    continue
                 }
+                seen.insert(key)
+                rules.append(rule)
             }
         }
 
@@ -422,7 +425,13 @@ enum AdBlockFilterConverter {
             work = String(work.dropLast())
         }
         guard !work.isEmpty else { return nil }
-        guard let bodies = wildcardToRegex(work) else { return nil }
+        guard var bodies = wildcardToRegex(work) else { return nil }
+        if anchoredEnd, work.hasSuffix("^"), bodies.count > 1 {
+            // Trailing `^|` means separator-then-end of URL: only the
+            // separator-class variant takes the `$` anchor. The bare-`$`
+            // twin would also match a bare host with no separator at all.
+            bodies = Array(bodies.prefix(1))
+        }
         return bodies.map { body in
             var result = body
             if anchoredStart {

@@ -45,6 +45,17 @@ struct PasswordVaultTests {
         #expect(PasswordVault.registrableHost("example.com.evil.com") == "evil.com")
     }
 
+    @Test("Multi-tenant suffixes keep tenants apart")
+    func tenantIsolation() {
+        #expect(PasswordVault.registrableHost("foo.github.io") == "foo.github.io")
+        #expect(PasswordVault.registrableHost("bar.github.io") == "bar.github.io")
+        #expect(PasswordVault.registrableHost("github.io") == "github.io")
+        let kept = SavedPassword(scheme: "https", host: "foo.github.io", port: nil, username: "alice", createdAt: nil)
+        #expect(PasswordVault.isOffered(kept, onHost: "foo.github.io", scheme: "https"))
+        #expect(!PasswordVault.isOffered(kept, onHost: "bar.github.io", scheme: "https"))
+        #expect(!PasswordVault.isOffered(kept, onHost: "github.io", scheme: "https"))
+    }
+
     @Test("Password origins reject non-web schemes")
     func rejectsNonWebOrigins() throws {
         #expect(PasswordVault.originString(for: try #require(URL(string: "file:///tmp/passwords"))) == nil)

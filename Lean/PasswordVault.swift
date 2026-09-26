@@ -169,8 +169,23 @@ enum PasswordVault {
     /// example.com for www.example.com and accounts.example.com; bbc.co.uk
     /// stays bbc.co.uk. The handful of two-part endings that matter here are
     /// listed; a full public suffix list would be a library for a corner.
+    ///
+    /// Multi-tenant suffixes (github.io, vercel.app, …) are the exception:
+    /// every subdomain there is a different site, so the full host is its
+    /// own registrable domain and tenants never share credentials.
+    private static let multiTenantSuffixes: Set<String> = [
+        "github.io", "gitlab.io", "vercel.app", "netlify.app", "herokuapp.com",
+        "azurewebsites.net", "cloudfront.net", "appspot.com", "blogspot.com",
+        "wordpress.com", "webflow.io", "glitch.me", "pages.dev", "workers.dev",
+        "fly.dev", "onrender.com", "supabase.co", "firebaseapp.com",
+    ]
+
     static func registrableHost(_ host: String) -> String {
-        let labels = host.lowercased().split(separator: ".").map(String.init)
+        let lower = host.lowercased()
+        for suffix in multiTenantSuffixes where lower == suffix || lower.hasSuffix("." + suffix) {
+            return lower
+        }
+        let labels = lower.split(separator: ".").map(String.init)
         guard labels.count > 2 else { return labels.joined(separator: ".") }
         let seconds: Set<String> = ["co", "com", "org", "net", "gov", "gouv", "ac", "edu", "asso", "or", "ne"]
         if seconds.contains(labels[labels.count - 2]), labels[labels.count - 1].count == 2 {

@@ -112,6 +112,23 @@ enum ContentBlocker {
     private static let lastFailedHashKey = "adBlockFiltersLastFailedHash"
     private static let lastFailedDateKey = "adBlockFiltersLastFailedDate"
     private static let failedRetryInterval: TimeInterval = 7 * 24 * 60 * 60
+    /// Chunk count of the last successful compile. A stored set smaller
+    /// than this is partial (crashed/interrupted compile) and worth
+    /// rebuilding even when the schema and cache look current.
+    private static let storedListCountKey = "adBlockFiltersStoredListCount"
+    /// Set when loading finds fewer lists than the last success wrote.
+    /// Served partially for interim coverage; refresh rebuilds.
+    private static var storedListsIncomplete = false
+
+    /// True when these exact texts failed compilation inside the backoff
+    /// window. Callers skip the attempt (keeping the offline fallback)
+    /// instead of spraying orphan files WebKit never cleans up.
+    private static func recentlyFailed(fingerprint: Int) -> Bool {
+        guard fingerprint == UserDefaults.standard.integer(forKey: lastFailedHashKey) else { return false }
+        let lastFailed = UserDefaults.standard.double(forKey: lastFailedDateKey)
+        guard lastFailed > 0 else { return false }
+        return Date().timeIntervalSince(Date(timeIntervalSince1970: lastFailed)) < failedRetryInterval
+    }
 
     /// Compiled rule lists, from WebKit's store or the offline fallback.
     /// Stored lists are always consulted first — a valid compile from any
@@ -134,9 +151,14 @@ enum ContentBlocker {
 
             let texts = loadCachedFilterTexts()
             if !texts.isEmpty {
-                let compiled = await compile(texts: Array(texts.values) + [curatedYouTubeFilters])
-                if !compiled.isEmpty {
-                    return compiled
+                // Ordered exactly like refreshNow's fingerprint input so a
+                // known-failing set is recognized, not recompiled.
+                let ordered = filterSources.compactMap { texts[$0.id] } + [curatedYouTubeFilters]
+                if !recentlyFailed(fingerprint: stableHash(ordered.joined(separator: "\n"))) {
+                    let compiled = await compile(texts: Array(texts.values) + [curatedYouTubeFilters])
+                    if !compiled.isEmpty {
+                        return compiled
+                    }
                 }
             }
             return await compile(texts: [fallbackFilterText, curatedYouTubeFilters])
@@ -160,7 +182,7 @@ enum ContentBlocker {
             defer { refreshTask = nil }
             // File reads (MBs of EasyList text) off the main thread.
             let schemaVersion = UserDefaults.standard.integer(forKey: schemaVersionKey)
-            if schemaVersion >= currentSchemaVersion {
+            if schemaVersion >= currentSchemaVersion, !storedListsIncomplete {
                 let cached = await Task.detached(priority: .utility) { loadCachedFilterTexts() }.value
                 let lastUpdated = lastUpdatedDate
                 if !cached.isEmpty,
@@ -349,6 +371,8 @@ enum ContentBlocker {
                 lists.append(list)
             }
         }
+        let expected = UserDefaults.standard.integer(forKey: storedListCountKey)
+        storedListsIncomplete = expected > 0 && lists.count < expected
         return lists
     }
 
@@ -385,6 +409,10 @@ enum ContentBlocker {
         // Drop stale chunks from a previously larger split.
         for index in compiled.count..<maxStoredLists {
             try? await store.removeContentRuleList(forIdentifier: "\(listIdentifierPrefix).\(index)")
+        }
+        if !compiled.isEmpty {
+            UserDefaults.standard.set(compiled.count, forKey: storedListCountKey)
+            storedListsIncomplete = false
         }
         return compiled
     }

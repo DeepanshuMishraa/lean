@@ -22,9 +22,18 @@ final class FaviconService {
         self.session = URLSession(configuration: config)
     }
 
-    func cachedFavicon(for url: URL?) -> NSImage? {
+    /// Cache key shared by reads, writes, and in-flight coalescing: the
+    /// host plus the resolved explicit icon. Different pages on one host
+    /// declare different icons; a host-only key would hand every waiter
+    /// the first answerer's icon and let winners overwrite each other.
+    private func key(host: String, url: URL?, explicitURLString: String?) -> String {
+        let explicit = explicitURLString.flatMap { URL(string: $0, relativeTo: url)?.absoluteString } ?? ""
+        return "\(host)|\(explicit)"
+    }
+
+    func cachedFavicon(for url: URL?, explicitURLString: String? = nil) -> NSImage? {
         guard let host = extractHost(from: url) else { return nil }
-        return cache.object(forKey: host as NSString)
+        return cache.object(forKey: key(host: host, url: url, explicitURLString: explicitURLString) as NSString)
     }
 
     func loadFavicon(for url: URL?, explicitURLString: String? = nil, completion: @escaping @MainActor @Sendable (NSImage?) -> Void) {
@@ -33,16 +42,12 @@ final class FaviconService {
             return
         }
 
-        if let cached = cache.object(forKey: host as NSString) {
+        let flightKey = key(host: host, url: url, explicitURLString: explicitURLString)
+        if let cached = cache.object(forKey: flightKey as NSString) {
             DispatchQueue.main.async { completion(cached) }
             return
         }
 
-        // Keyed by host plus the resolved explicit icon: different pages on
-        // one host declare different icons, and coalescing them would hand
-        // every waiter the first answerer's icon.
-        let explicitKey = explicitURLString.flatMap { URL(string: $0, relativeTo: url)?.absoluteString } ?? ""
-        let flightKey = "\(host)|\(explicitKey)"
         lock.lock()
         if inFlight[flightKey] != nil {
             inFlight[flightKey]?.append(completion)
@@ -60,7 +65,10 @@ final class FaviconService {
             self.lock.unlock()
             if let image {
                 let scaled = self.downscaled(image, to: 64)
-                self.cache.setObject(scaled, forKey: host as NSString)
+                // Cost-aware insertion: without a cost, totalCostLimit is
+                // dead and the cache is count-limited only.
+                let cost = Int(scaled.size.width * scaled.size.height * 4)
+                self.cache.setObject(scaled, forKey: flightKey as NSString, cost: cost)
                 for cb in callbacks { cb(scaled) }
             } else {
                 for cb in callbacks { cb(nil) }

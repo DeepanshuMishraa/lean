@@ -3,13 +3,17 @@ import Testing
 @testable import Lean
 
 struct PageLoadErrorTests {
-    /// A loopback port nothing listens on: bind an ephemeral port, read it
-    /// back, and close it. Connecting there refuses fast, with a port the
-    /// test owns instead of a fixed one.
-    nonisolated static func closedLoopbackPort() -> UInt16 {
+    /// A loopback port this test owns that refuses fast: bind an ephemeral
+    /// port, listen, and close every accepted connection without answering.
+    /// Merely holding a bound, non-listening socket hangs connects until
+    /// timeout on macOS instead of refusing, so the accept loop is what
+    /// makes the failure fast and deterministic. The caller closes `fd`
+    /// after asserting.
+    nonisolated static func refusedLoopbackServer() -> (port: UInt16, fd: Int32) {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
-        guard fd >= 0 else { return 9 }
-        defer { close(fd) }
+        guard fd >= 0 else { return (9, -1) }
+        var one: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, socklen_t(MemoryLayout<Int32>.size))
         var addr = sockaddr_in()
         addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         addr.sin_family = sa_family_t(AF_INET)
@@ -19,14 +23,26 @@ struct PageLoadErrorTests {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
-        }) == 0 else { return 9 }
+        }) == 0, listen(fd, 8) == 0 else { close(fd); return (9, -1) }
         var actual = sockaddr_in()
         var len = socklen_t(MemoryLayout<sockaddr_in>.size)
         withUnsafeMutablePointer(to: &actual) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { _ = getsockname(fd, $0, &len) }
         }
         let port = CFSwapInt16BigToHost(actual.sin_port)
-        return port == 0 ? 9 : port
+        guard port != 0 else { close(fd); return (9, -1) }
+        Thread.detachNewThread {
+            while true {
+                var client = sockaddr_in()
+                var clientLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+                let cfd = withUnsafeMutablePointer(to: &client) {
+                    $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { accept(fd, $0, &clientLen) }
+                }
+                if cfd < 0 { return }
+                close(cfd)
+            }
+        }
+        return (port, fd)
     }
 
     private func failure(code: Int, url: String = "http://localhost:3000/") -> (Error, URL) {
@@ -80,10 +96,11 @@ struct PageLoadErrorTests {
             adBlockingEnabled: false
         )
         let keepAlive = tab
-        // A port this test owns and closes: connecting there reliably
-        // refuses, without depending on the fixed discard port staying
-        // closed on every machine this suite runs on.
-        let port = Self.closedLoopbackPort()
+        // A port this test owns, refused fast by an accept-and-close loop:
+        // no dependency on the fixed discard port staying closed on every
+        // machine this suite runs on.
+        let (port, fd) = Self.refusedLoopbackServer()
+        defer { if fd >= 0 { close(fd) } }
         tab.load(URL(string: "http://127.0.0.1:\(port)/")!)
         var ticks = 0
         while tab.pageError == nil, ticks < 150 {

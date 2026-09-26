@@ -49,6 +49,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     /// The main-frame address the current navigation is headed to. Matches
     /// failures to the page (not subframes) in didFail/didFailProvisional.
     private var pendingMainFrameURL: URL?
+    private var mainDocumentMIMEType: String?
     /// Last heartbeat per frame. Playing frames report every poll; a frame
     /// that played briefly and then detached (ad iframe, SPA swap) can never
     /// send its goodbye, so frames unheard from past the timeout are evicted
@@ -719,12 +720,18 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     // MARK: - Page context menu
 
-    /// Latest link under a right-click, reported by the injected tracker.
+    /// Latest link and media under a right-click, reported by the injected tracker.
     private var lastContextLink: (url: URL, at: Date)?
+    private var lastContextMedia: (url: URL, kind: String, at: Date)?
 
     private var freshContextLinkURL: URL? {
         guard let last = lastContextLink, Date().timeIntervalSince(last.at) < 2 else { return nil }
         return last.url
+    }
+
+    private var freshContextMedia: (url: URL, kind: String)? {
+        guard let last = lastContextMedia, Date().timeIntervalSince(last.at) < 2 else { return nil }
+        return (last.url, last.kind)
     }
 
     private func appendPageMenuItems(to menu: NSMenu) {
@@ -733,6 +740,38 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         menu.items
             .filter { $0.target === self }
             .forEach { menu.removeItem($0) }
+
+        // WebKit's image/video download actions bypass WKNavigationDelegate
+        // on some sites. Retarget those items to the same WKDownload pipeline
+        // used by ordinary downloads. Standalone media documents do not expose
+        // a page element to our script, so their tab URL is the media URL.
+        let media = freshContextMedia
+        let directKind = mainDocumentMIMEType?.hasPrefix("video/") == true
+            ? "video"
+            : (mainDocumentMIMEType?.hasPrefix("image/") == true ? "image" : nil)
+        let contextKind = media?.kind ?? directKind
+        let contextURL = media?.url ?? (directKind == nil ? nil : webView.url)
+        var patchedMediaItem = false
+        for item in menu.items {
+            let title = item.title.lowercased()
+            guard title.contains("download") || title.contains("save") else { continue }
+            let itemKind = title.contains("video") ? "video" : (title.contains("image") ? "image" : nil)
+            guard itemKind == contextKind, let contextURL else { continue }
+            item.target = self
+            item.action = #selector(pageMenuDownloadMedia(_:))
+            item.representedObject = contextURL.absoluteString
+            patchedMediaItem = true
+        }
+        if !patchedMediaItem, let contextKind, let contextURL {
+            let download = NSMenuItem(
+                title: contextKind == "video" ? "Download Video" : "Download Image",
+                action: #selector(pageMenuDownloadMedia(_:)),
+                keyEquivalent: ""
+            )
+            download.target = self
+            download.representedObject = contextURL.absoluteString
+            menu.addItem(download)
+        }
 
         // WebKit already supplies Back/Forward/Reload — only add what it lacks.
         if let linkURL = freshContextLinkURL {
@@ -783,6 +822,39 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     @objc private func pageMenuShowSource() { showPageSource() }
     @objc private func pageMenuPrint() { printPage() }
     @objc private func pageMenuReload() { reload() }
+
+    @objc private func pageMenuDownloadMedia(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let url = URL(string: raw) else { return }
+        downloadContextMedia(at: url)
+    }
+
+    func downloadContextMedia(at url: URL) {
+        switch url.scheme?.lowercased() {
+        case "http", "https":
+            webView.startDownload(using: URLRequest(url: url)) { [weak self] download in
+                self?.keep(download)
+            }
+        case "blob":
+            guard let data = try? JSONEncoder().encode(url.absoluteString),
+                  let urlLiteral = String(data: data, encoding: .utf8) else { return }
+            let script = """
+            (() => {
+                const link = document.createElement('a');
+                link.href = \(urlLiteral);
+                link.download = 'video.mp4';
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+            })();
+            """
+            webView.evaluateJavaScript(script) { [weak self] _, error in
+                if error != nil { self?.onDownloadFailed?() }
+            }
+        default:
+            break
+        }
+    }
 
     @objc private func pageMenuFillSavedPassword() {
         guard passwordSuggestionsEnabled,
@@ -1204,12 +1276,12 @@ extension LeanTab: WKScriptMessageHandler {
             return
         }
         if message.name == PageScripts.contextMenuMessageName {
-            let raw = (message.body as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !raw.isEmpty, let url = URL(string: raw) {
-                lastContextLink = (url, Date())
-            } else {
-                lastContextLink = nil
-            }
+            let body = message.body as? [String: Any]
+            let link = (body?["link"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let mediaURL = (body?["mediaURL"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let mediaKind = body?["mediaKind"] as? String ?? ""
+            lastContextLink = link.isEmpty ? nil : URL(string: link).map { ($0, Date()) }
+            lastContextMedia = mediaURL.isEmpty ? nil : URL(string: mediaURL).map { ($0, mediaKind, Date()) }
             return
         }
         if message.name == PageScripts.mediaStateMessageName {
@@ -1722,6 +1794,9 @@ extension LeanTab: WKNavigationDelegate {
         decidePolicyFor navigationResponse: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
+        if navigationResponse.isForMainFrame {
+            mainDocumentMIMEType = navigationResponse.response.mimeType?.lowercased()
+        }
         // A redirect (3xx) has no content of its own and must be followed
         // rather than downloaded — even when its headers claim a binary
         // MIME type, as some servers do on their redirects.

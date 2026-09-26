@@ -8,20 +8,31 @@ enum PageScripts {
     static let middleClickMessageName = "leanMiddleClick"
     static let mediaStateMessageName = "leanMediaState"
 
-    /// Reports the anchor under every right-click (empty string for
-    /// non-links) so the native menu can offer "Open Link in New Tab".
-    /// Always posts, so a stale URL can never linger. All frames: links
-    /// often live in iframes.
+    /// Reports the link and downloadable media under every right-click.
+    /// Always posts, so stale context never leaks into a later menu. Runs in
+    /// every frame because links and media often live in embeds.
     static let contextMenuLinkTracker = """
     (function() {
         try {
             document.addEventListener('contextmenu', function(e) {
                 try {
-                    var url = '';
-                    var el = (e.target && e.target.closest) ? e.target.closest('a[href]') : null;
-                    if (el) { url = el.href || ''; }
+                    var link = (e.target && e.target.closest) ? e.target.closest('a[href]') : null;
+                    var media = (e.target && e.target.closest) ? e.target.closest('img, video') : null;
+                    var kind = media ? media.tagName.toLowerCase() : '';
+                    var candidates = media ? [media.src || '', media.currentSrc || ''] : [];
+                    if (kind === 'video') {
+                        var source = media.querySelector('source[src]');
+                        if (source) candidates.unshift(source.src || '');
+                    }
+                    var mediaURL = candidates.find(function(url) { return /^https?:/i.test(url); })
+                        || candidates.find(function(url) { return /^blob:/i.test(url); })
+                        || '';
                     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(contextMenuMessageName)) {
-                        window.webkit.messageHandlers.\(contextMenuMessageName).postMessage(url);
+                        window.webkit.messageHandlers.\(contextMenuMessageName).postMessage({
+                            link: link ? (link.href || '') : '',
+                            mediaURL: mediaURL,
+                            mediaKind: kind
+                        });
                     }
                 } catch (err) {}
             }, true);

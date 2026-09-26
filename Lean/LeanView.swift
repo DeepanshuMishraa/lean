@@ -545,7 +545,6 @@ struct LeanView: View {
                     // Web Page Loaded
                     ZStack(alignment: .topTrailing) {
                         WebView(tab: tab)
-                            .id(tab.id)
 
                         if store.showsFindBar {
                             floatingFindBar

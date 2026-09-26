@@ -54,6 +54,51 @@ struct VideoDownloadChainTests {
         let size = (try? FileManager.default.attributesOfItem(atPath: item.destinationURL.path)[.size] as? Int) ?? -1
         #expect(size == payload.count)
     }
+
+    @MainActor
+    @Test("Context-menu media download enters the tab download pipeline")
+    func contextMediaDownloadCompletes() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LeanContextDownloadTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let payload = Data(repeating: 0xCD, count: 64 * 1024)
+        let server = try LoopbackFileServer(payload: payload, disposition: "inline")
+        defer { server.stop() }
+
+        let tab = LeanTab(
+            dataStore: .nonPersistent(),
+            initialURL: nil,
+            scrollbarStyle: .normal,
+            adBlockingEnabled: false
+        )
+        let manager = DownloadManager(database: nil)
+        manager.downloadDirectory = dir.appendingPathComponent("out")
+        try FileManager.default.createDirectory(at: manager.downloadDirectory, withIntermediateDirectories: true)
+        tab.downloadManager = manager
+        tab.load(URL(string: "http://127.0.0.1:\(server.port)/clip.mp4")!)
+
+        let nativeItem = NSMenuItem(title: "Download Video", action: nil, keyEquivalent: "")
+        for _ in 0..<50 {
+            let menu = NSMenu()
+            menu.addItem(nativeItem)
+            tab.webView.contextMenuHook?(menu)
+            if nativeItem.target === tab { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        #expect(nativeItem.target === tab)
+        let action = try #require(nativeItem.action)
+        #expect(NSApp.sendAction(action, to: nativeItem.target, from: nativeItem))
+
+        for _ in 0..<100 {
+            if manager.downloads.first?.state == .completed { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let item = try #require(manager.downloads.first)
+        #expect(item.state == .completed)
+        let size = (try? FileManager.default.attributesOfItem(atPath: item.destinationURL.path)[.size] as? Int) ?? -1
+        #expect(size == payload.count)
+    }
 }
 
 /// Blocking loopback HTTP/1.0 server for one payload. Blocking I/O on a
@@ -63,7 +108,7 @@ final class LoopbackFileServer: Sendable {
     private let listenFD: Int32
     private let payload: Data
 
-    init(payload: Data) throws {
+    init(payload: Data, disposition: String = "attachment") throws {
         self.payload = payload
         let sock = socket(AF_INET, SOCK_STREAM, 0)
         guard sock >= 0 else { throw NSError(domain: "LeanDownloadTest", code: 2) }
@@ -90,8 +135,8 @@ final class LoopbackFileServer: Sendable {
         }
         self.listenFD = sock
         self.port = Int(CFSwapInt16BigToHost(actual.sin_port))
-        Thread.detachNewThread { [listenFD = sock, payload] in
-            Self.acceptLoop(fd: listenFD, payload: payload)
+        Thread.detachNewThread { [listenFD = sock, payload, disposition] in
+            Self.acceptLoop(fd: listenFD, payload: payload, disposition: disposition)
         }
     }
 
@@ -100,7 +145,7 @@ final class LoopbackFileServer: Sendable {
         close(listenFD)
     }
 
-    private static func acceptLoop(fd: Int32, payload: Data) {
+    private static func acceptLoop(fd: Int32, payload: Data, disposition: String) {
         while true {
             var client = sockaddr_in()
             var len = socklen_t(MemoryLayout<sockaddr_in>.size)
@@ -108,11 +153,11 @@ final class LoopbackFileServer: Sendable {
                 $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { accept(fd, $0, &len) }
             }
             if cfd < 0 { return }
-            handle(client: cfd, payload: payload)
+            handle(client: cfd, payload: payload, disposition: disposition)
         }
     }
 
-    private static func handle(client cfd: Int32, payload: Data) {
+    private static func handle(client cfd: Int32, payload: Data, disposition: String) {
         defer { close(cfd) }
         // Read until end of headers (blocking; client always sends).
         var request = Data()
@@ -123,7 +168,7 @@ final class LoopbackFileServer: Sendable {
             request.append(contentsOf: chunk.prefix(n))
             if request.range(of: Data("\r\n\r\n".utf8)) != nil { break }
         }
-        let head = "HTTP/1.0 200 OK\r\nContent-Type: video/mp4\r\nContent-Disposition: attachment; filename=\"clip.mp4\"\r\nContent-Length: \(payload.count)\r\nConnection: close\r\n\r\n"
+        let head = "HTTP/1.0 200 OK\r\nContent-Type: video/mp4\r\nContent-Disposition: \(disposition); filename=\"clip.mp4\"\r\nContent-Length: \(payload.count)\r\nConnection: close\r\n\r\n"
         sendAll(cfd, Array(head.utf8))
         sendAll(cfd, [UInt8](payload))
     }

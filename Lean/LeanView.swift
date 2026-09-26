@@ -130,16 +130,6 @@ struct LeanView: View {
         )
         .background(WindowConfigurator(store: store, isTopBarVisible: isTopBarVisible, isSidebarVisible: isSidebarEffectivelyVisible))
         .preferredColorScheme(store.colorScheme)
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: store.isOnboardingPresented)
-        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: isTopBarVisible)
-        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: isSidebarEffectivelyVisible)
-        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: store.isSidebarCollapsed)
-        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: cardLeadingPadding)
-        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.tabLayout)
-        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.enableZenMode)
-        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.enableWindowBorder)
-        .animation(.easeInOut(duration: 0.2), value: store.effectiveZenColor)
-        .animation(.spring(response: 0.24, dampingFraction: 0.8), value: store.windowBorderWidth)
         .onAppear {
             setupKeyMonitor()
         }
@@ -232,7 +222,17 @@ struct LeanView: View {
                 VStack(spacing: 0) {
                     // Top Bar - In Zen mode, disappears and reveals on hover
                     if isTopBarVisible {
-                        TopBarView(store: store)
+                        // Themed only while there is a tab to read a colour
+                        // from — a window caught between tabs draws the row
+                        // exactly as it always has.
+                        Group {
+                            if let tab = store.selectedTab {
+                                TopBarView(store: store)
+                                    .modifier(ThemeColorStrip(tab: tab, enabled: store.themedTabBar, window: store.themeColors.windowBackground))
+                            } else {
+                                TopBarView(store: store)
+                            }
+                        }
                             .onHover { hovering in
                                 if store.enableZenMode {
                                     setZenHoverState(isHoveringTop: hovering)
@@ -373,6 +373,12 @@ struct LeanView: View {
                 ))
                 .animation(.easeOut(duration: 0.12), value: store.isExtensionsPresented)
                 .zIndex(190)
+            }
+
+            // Link Preview / Peek Panel (Shift + Click)
+            if let page = store.peekTab {
+                PeekPanel(store: store, tab: page)
+                    .zIndex(185)
             }
 
             // Ctrl+Tab Thumbnail Switcher Overlay
@@ -516,6 +522,25 @@ struct LeanView: View {
                         .padding(.trailing, cardTrailingPadding)
                         .padding(.bottom, cardBottomPadding)
                         .padding(.top, cardTopPadding)
+                } else if let pageError = tab.pageError {
+                    // Failed navigation: an error page, not a blank tab.
+                    PageErrorView(store: store, tab: tab, error: pageError)
+                        .id(tab.id)
+                        .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
+                                .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
+                        )
+                        .shadow(
+                            color: store.adaptiveTheme.webCardShadow,
+                            radius: store.adaptiveTheme.webCardShadowRadius,
+                            x: 0,
+                            y: store.adaptiveTheme.isFrameLight ? 2 : 3
+                        )
+                        .padding(.leading, cardLeadingPadding)
+                        .padding(.trailing, cardTrailingPadding)
+                        .padding(.bottom, cardBottomPadding)
+                        .padding(.top, cardTopPadding)
                 } else if tab.url != nil || tab.isPageSource {
                     // Web Page Loaded
                     ZStack(alignment: .topTrailing) {
@@ -601,6 +626,7 @@ struct LeanView: View {
                 }
             }
         }
+        .animation(nil, value: store.selectedID)
     }
 
     private func setupKeyMonitor() {
@@ -750,6 +776,18 @@ struct LeanView: View {
 
         // Monitor keyDown for registered custom shortcuts and Escape
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // When link peek preview is active:
+            if store.peekTab != nil {
+                if event.keyCode == 53 {
+                    store.closePeek()
+                    return nil
+                }
+                if event.keyCode == 36 && event.modifierFlags.contains(.command) {
+                    store.keepPeek()
+                    return nil
+                }
+            }
+
             // Intercept Escape (keyCode 53) to close quick settings, inline url bar, bookmarks, floating omnibar, new tab omnibar, or tab switcher
             if event.keyCode == 53 {
                 if store.isBookmarkDialogPresented {
@@ -907,18 +945,97 @@ struct LeanView: View {
     }
 }
 
-private struct WebView: NSViewRepresentable {
+/// The one place a page is allowed to be. The tab's web view is lifted out
+/// of here into the floating window while its video plays elsewhere, and
+/// taken back here when it lands — no reload, no lost scroll position.
+/// Mirrors Search's StageView: a single `wanted` fact, reconciled on every
+/// layout, so a page taken by the floating window can never leave a tab
+/// holding nothing while believing it holds something (the blank page).
+///
+/// Internal so PeekPanel can host a peeked tab's page the same way.
+struct WebView: NSViewRepresentable {
     @ObservedObject var tab: LeanTab
 
-    func makeNSView(context: Context) -> WKWebView {
-        tab.webView.wantsLayer = true
-        tab.webView.layer?.drawsAsynchronously = true
-        return tab.webView
+    func makeNSView(context: Context) -> LeanStageView {
+        LeanStageView()
     }
 
-    func updateNSView(_ nsView: WKWebView, context: Context) {
-        nsView.wantsLayer = true
-        nsView.layer?.drawsAsynchronously = true
+    func updateNSView(_ view: LeanStageView, context: Context) {
+        tab.webView.wantsLayer = true
+        view.show(tab.webView)
+    }
+}
+
+/// Internal alongside WebView so PeekPanel can host a peeked tab's page.
+final class LeanStageView: NSView {
+    private weak var wanted: NSView?
+
+    override func layout() {
+        super.layout()
+        settle()
+    }
+
+    func show(_ page: NSView?) {
+        wanted = page
+        settle()
+    }
+
+    private func settle() {
+        // A video filling the screen lends its page to WebKit's own window.
+        // WebKit puts it back itself on the way out.
+        if let web = wanted as? WKWebView, web.fullscreenState != .notInFullscreen { return }
+
+        // Fast path: the page is already home and alone. This runs on every
+        // SwiftUI update of the stage (progress ticks included), so it must
+        // be pointer compares only — no _inspector round-trip, no re-add.
+        if let wanted, wanted.superview === self, subviews.count == 1 {
+            if wanted.frame != bounds { wanted.frame = bounds }
+            return
+        }
+
+        // Anything here that isn't wanted, out. Only ever what is actually
+        // ours: except the Web Inspector docked beside the page. WebKit puts
+        // it here, next to the web view, and shrinks the page to make room.
+        // Taken out on the next resize, it left the page shrunk beside
+        // nothing.
+        let docked = inspecting
+        for view in subviews where view !== wanted && !(docked && Self.isInspector(view)) {
+            view.removeFromSuperview()
+        }
+
+        guard let wanted, window != nil else { return }
+        if wanted.superview !== self {
+            // A web view can have only one superview, so taking it back is
+            // how it is taken back.
+            wanted.removeFromSuperview()
+            addSubview(wanted)
+            wanted.needsLayout = true
+            wanted.needsDisplay = true
+            wanted.layer?.setNeedsDisplay()
+        }
+        // With the inspector docked, WebKit lays the page and it out side by
+        // side as this view changes size; setting the page's frame here would
+        // cover the inspector.
+        if !(docked && subviews.contains(where: Self.isInspector)) {
+            wanted.frame = bounds
+        }
+    }
+
+    /// Whether the page on show has its Web Inspector up. WebKit answers only
+    /// through names outside its public framework, asked for before use (see
+    /// Inspector.swift).
+    private var inspecting: Bool {
+        guard let web = wanted as? WKWebView else { return false }
+        let get = NSSelectorFromString("_inspector")
+        guard web.responds(to: get), let inspector = web.perform(get)?.takeUnretainedValue() as? NSObject else { return false }
+        let visible = NSSelectorFromString("isVisible")
+        guard inspector.responds(to: visible) else { return false }
+        typealias Getter = @convention(c) (AnyObject, Selector) -> Bool
+        return unsafeBitCast(inspector.method(for: visible), to: Getter.self)(inspector, visible)
+    }
+
+    private static func isInspector(_ view: NSView) -> Bool {
+        String(describing: type(of: view)).hasPrefix("WKInspector")
     }
 }
 
@@ -1194,8 +1311,6 @@ private struct PageLoadingBar: View {
 
     @State private var isVisible = false
     @State private var displayProgress: Double = 0
-    @State private var shimmerPhase: CGFloat = -0.4
-    @State private var isShimmering = false
     @State private var showDelayElapsed = false
     @State private var showWorkItem: DispatchWorkItem?
     @State private var dismissWorkItem: DispatchWorkItem?
@@ -1217,44 +1332,19 @@ private struct PageLoadingBar: View {
             let totalWidth = geo.size.width
 
             if isVisible {
-                ZStack(alignment: .leading) {
-                    Color.clear.frame(height: barHeight)
-
-                    // Progress fill
-                    progressColor
-                        .frame(width: totalWidth * max(displayProgress, 0.02), height: barHeight)
-
-                    // Luminous shimmer sweep
-                    if isShimmering {
-                        LinearGradient(
-                            stops: [
-                                .init(color: .clear, location: 0),
-                                .init(color: progressColor.opacity(0.6), location: 0.4),
-                                .init(color: .white.opacity(isDark ? 0.5 : 0.7), location: 0.5),
-                                .init(color: progressColor.opacity(0.6), location: 0.6),
-                                .init(color: .clear, location: 1)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
+                // Plain fill, no shimmer sweep / mask / shadow: the sweep
+                // ran a 1.1s repeatForever + per-tick mask recompute + shadow
+                // for the whole duration of every load.
+                progressColor
+                    .frame(width: totalWidth * max(displayProgress, 0.02), height: barHeight)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .allowsHitTesting(false)
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.animation(.easeOut(duration: 0.15)),
+                            removal: .opacity.animation(.easeInOut(duration: 0.30))
                         )
-                        .frame(width: totalWidth * 0.35, height: barHeight)
-                        .offset(x: shimmerPhase * totalWidth)
-                        .mask(
-                            Rectangle()
-                                .frame(width: totalWidth * max(displayProgress, 0.02), height: barHeight)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        )
-                    }
-                }
-                .frame(height: barHeight)
-                .shadow(color: glowColor, radius: 4, x: 0, y: 2)
-                .allowsHitTesting(false)
-                .transition(
-                    .asymmetric(
-                        insertion: .opacity.animation(.easeOut(duration: 0.15)),
-                        removal: .opacity.animation(.easeInOut(duration: 0.30))
                     )
-                )
             }
         }
         .frame(height: isVisible ? barHeight : 0)
@@ -1270,9 +1360,11 @@ private struct PageLoadingBar: View {
             }
         }
         .onChange(of: progress) { _, newProgress in
-            // Only follow real progress while actively loading
+            // Only follow real progress while actively loading.
+            // Linear ease, no spring: a spring per progress tick never
+            // settled during loads and re-animated the whole window.
             guard isLoading else { return }
-            withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
+            withAnimation(.easeOut(duration: 0.12)) {
                 displayProgress = min(newProgress, 0.95)
             }
         }
@@ -1290,7 +1382,6 @@ private struct PageLoadingBar: View {
             withAnimation(.easeOut(duration: 0.12)) {
                 isVisible = true
             }
-            startShimmer()
         }
         showWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.10, execute: workItem)
@@ -1307,15 +1398,11 @@ private struct PageLoadingBar: View {
             return
         }
 
-        // Step 1: Snap the bar to 100% with a fast spring
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.80)) {
+        // Snap the bar to 100%, then fade out after the fill completes.
+        withAnimation(.easeOut(duration: 0.15)) {
             displayProgress = 1.0
         }
 
-        // Step 2: Stop shimmer
-        stopShimmer()
-
-        // Step 3: Fade out after the fill animation visually completes
         dismissWorkItem?.cancel()
         let workItem = DispatchWorkItem {
             withAnimation(.easeInOut(duration: 0.28)) {
@@ -1325,27 +1412,6 @@ private struct PageLoadingBar: View {
         }
         dismissWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
-    }
-
-    private func startShimmer() {
-        isShimmering = true
-        shimmerPhase = -0.4
-        withAnimation(
-            .linear(duration: 1.1)
-            .repeatForever(autoreverses: false)
-        ) {
-            shimmerPhase = 1.1
-        }
-    }
-
-    private func stopShimmer() {
-        withAnimation(.easeOut(duration: 0.25)) {
-            shimmerPhase = 1.1
-        }
-        // Remove shimmer layer after animation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            isShimmering = false
-        }
     }
 }
 
@@ -1637,7 +1703,7 @@ private struct SplitPaneView: View {
 
             InteractiveIconButton(
                 icon: .x,
-                helpText: "Close split pane",
+                helpText: "Remove pane from split",
                 size: 22,
                 iconSize: 9,
                 color: store.adaptiveTheme.secondaryText,

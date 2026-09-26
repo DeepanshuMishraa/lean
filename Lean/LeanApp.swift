@@ -43,8 +43,16 @@ struct LeanApp: App {
                     store.openURL(url)
                     NSApp.activate(ignoringOtherApps: true)
                 }
+                // View-level acceptance so an existing window receives links
+                // directly; the scene-level matcher below covers cold starts.
+                .handlesExternalEvents(preferring: [], allowing: ["http", "https"])
         }
         .windowStyle(.hiddenTitleBar)
+        // Links from other apps must land as a tab in an existing window,
+        // never as a new window next to it: declaring the schemes this
+        // scene handles makes SwiftUI route them to a window that's
+        // already there instead of opening one.
+        .handlesExternalEvents(matching: ["http", "https"])
         // No automatic window-background dragging: with a hidden title bar and
         // full-size content, a press-and-move on any tab background was claimed
         // as a window drag, so the whole window moved instead of the tab. The
@@ -57,7 +65,7 @@ struct LeanApp: App {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
-                store.saveSession()
+                store.flushPendingPersist()
             }
         }
     }

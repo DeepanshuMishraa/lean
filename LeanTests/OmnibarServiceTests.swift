@@ -32,6 +32,45 @@ struct OmnibarServiceTests {
         #expect(suggestions.first?.primaryText == "hello")
     }
 
+    @Test("Loopback with a port gets a single open-server row")
+    func loopbackPortSingleRow() {
+        let suggestions = OmnibarService.shared.suggestions(for: "localhost:3000")
+
+        #expect(suggestions.count == 1)
+        #expect(!suggestions[0].isSearch)
+        #expect(suggestions[0].targetURL.absoluteString == "http://localhost:3000")
+    }
+
+    @Test("Loopback with a port ignores poisoned history and search")
+    func loopbackPortIgnoresHistory() {
+        // A past search for the address must not outrank opening it.
+        let history = [(url: URL(string: "https://duckduckgo.com/?q=http%3A%2F%2Flocalhost%3A3000")!, title: "http://localhost:3000 at DuckDuckGo")]
+        let suggestions = OmnibarService.shared.suggestions(for: "localhost:3000", history: history)
+
+        #expect(suggestions.count == 1)
+        #expect(suggestions[0].targetURL.absoluteString == "http://localhost:3000")
+    }
+
+    @Test("Bare loopback navigates first even with history about it")
+    func bareLoopbackFirst() {
+        let history = [(url: URL(string: "https://duckduckgo.com/?q=localhost")!, title: "localhost at DuckDuckGo")]
+        let suggestions = OmnibarService.shared.suggestions(for: "localhost", history: history)
+
+        #expect(suggestions.count >= 2)
+        #expect(!suggestions[0].isSearch)
+        #expect(suggestions[0].targetURL.absoluteString == "http://localhost")
+        #expect(suggestions.last?.isSearch == true)
+    }
+
+    @Test("Search row uses the passed engine")
+    func searchRowEngine() {
+        let suggestions = OmnibarService.shared.suggestions(for: "hello", searchEngine: .duckDuckGo)
+        let search = suggestions.first { $0.isSearch }
+
+        #expect(search?.secondaryText == "DuckDuckGo")
+        #expect(search?.searchEngine == .duckDuckGo)
+    }
+
     @Test("Rejects empty query with no open tabs")
     func rejectsEmptyWithNoTabs() {
         let suggestions = OmnibarService.shared.suggestions(for: "   ")

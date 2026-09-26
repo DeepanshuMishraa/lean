@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Release entitlements for passkeys. NOT wired into project.yml:
+    the restricted key below is refused without the matching Developer ID
+    provisioning profile, which Apple grants to browsers on request, so
+    local and ad-hoc builds keep using Lean.entitlements.
+    To ship passkeys: request the `com.apple.developer.web-browser
+    .public-key-credential` entitlement from Apple, place the issued
+    `.provisionprofile` for com.dipxsy.lean beside the build, embed it,
+    sign every embedded component (including Sparkle) with the same
+    Developer ID identity, and sign with CODE_SIGN_ENTITLEMENTS pointing
+    at this file — keeping hardened runtime library validation on. -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+    <key>com.apple.security.print</key>
+    <true/>
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <!-- Passkeys, for any site. Only works with the matching Developer ID
+    provisioning profile embedded in the app: the two identifiers are how
+    macOS ties the app to that profile. Without them the restricted
+    entitlement is refused at install. -->
+    <key>com.apple.application-identifier</key>
+    <string>$(AppIdentifierPrefix)com.dipxsy.lean</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>$(DEVELOPMENT_TEAM)</string>
+    <key>com.apple.developer.web-browser.public-key-credential</key>
+    <true/>
+</dict>
+</plist>

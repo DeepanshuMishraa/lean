@@ -9,7 +9,9 @@ private enum NavigationTestError: Error {
 
 @MainActor
 private func waitUntil(_ condition: @escaping @MainActor () -> Bool) async throws {
-    for _ in 0..<100 {
+    // Generous budget: under full-suite parallel load, first tab loads wait
+    // behind real extension initialization and WebKit process warmup.
+    for _ in 0..<300 {
         if condition() { return }
         try await Task.sleep(nanoseconds: 20_000_000)
     }

@@ -4,6 +4,63 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.3] - 2026-09-26
+
+### Added
+
+- iCloud Passwords installs in one tap from Settings → Extensions (same
+  review as any extension) instead of hunting the Chrome Web Store —
+  Apple doesn't let anyone bundle it, so every browser fetches it there
+
+### Fixed
+
+- Links from other apps open as a tab in the existing window instead of
+  spawning a second window next to it (a new window still opens when
+  none exists, so links are never dropped)
+
+- Failed navigations show a proper error page instead of a blank tab:
+  server not found, connection refused (with a dev-server hint on
+  localhost), offline, timeouts, and private-connection errors each get
+  an explanation with Reload and Back — appearing immediately, not on
+  the next tab switch
+
+- Downloads stuck at 100% now finish: when the bytes are fully accounted
+  and on disk but WebKit never delivers its finish callback, the download
+  finalizes from its own accounting instead of spinning forever
+- Typing a loopback server address (`localhost:3000`, `127.0.0.1:8000`)
+  shows a single "Open local server" row — no history, no search row — so
+  Enter always opens the server, even with a past search for it. Bare
+  `localhost` still lists everything but navigates first
+- Custom page fonts no longer break icon fonts: the family override yields
+  to page-specified families, so Meet's buttons render as icons instead of
+  raw text ("mic", "call_end")
+- Camera/microphone answers are mirrored to UserDefaults as well as the
+  database, so a grant survives even when the database is unavailable
+
+### Added
+
+- The top tab strip can take its colour from the page: Settings → Tabs →
+  Colour the tab bar from the page, off by default. Tints the strip with
+  what the page itself declares with `theme-color` — no sampling, no
+  guessing — staying inside the browser theme so the row stays legible,
+  and follows the active tab. The sidebar layout is unaffected (ported
+  from [Search #168](https://github.com/driceroland/Search/pull/168))
+- Peek at a link with a shift-click: Settings → General, off by default.  The link opens in a panel over the page, which stays where it was
+  underneath. Escape, ⌘W or a click beside it puts it away; keeping it
+  makes it a tab beside this one, loaded as it is (ported from Search
+  `46112d3`)
+- Web Inspector is always there, on Chrome's keys: View → Web Inspector
+  (⌥⌘I), JavaScript Console (⌥⌘J), Inspect Element (⌥⌘C) — no Settings
+  switch any more (ported from Search `d409ad4`)
+- No more "can't do that" beep when typing into editors that insert text
+  themselves: keys the page didn't use are kept quiet, as in Safari
+  (ported from Search `cc8aa58`)
+- A download that fails opens the Downloads panel with the reason, instead
+  of failing silently — cancellations stay quiet
+- Closing a split pane pops it out to the row as a standalone tab instead
+  of closing it; the split collapses once one pane is left, keeping
+  everything open
+
 ## [0.1.2] - 2026-09-24
 
 ### Added

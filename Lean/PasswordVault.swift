@@ -42,6 +42,11 @@ enum PasswordVault {
 
     static let didChange = Notification.Name("LeanPasswordVaultDidChange")
     private static let label = "Lean"
+    /// Short-lived cache: every password-field focus and every right-click
+    /// was doing a full synchronous Keychain dump + decode + sort on the
+    /// main thread. Cache for 15s; writes invalidate immediately.
+    private static var allCache: (logins: [SavedPassword], at: Date)?
+    private static let cacheTTL: TimeInterval = 15
 
     static func normalizedHost(_ host: String) -> String? {
         let host = host.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -100,6 +105,9 @@ enum PasswordVault {
     }
 
     static func all() -> Result<[SavedPassword], VaultError> {
+        if let cache = allCache, Date().timeIntervalSince(cache.at) < cacheTTL {
+            return .success(cache.logins)
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassInternetPassword,
             kSecAttrLabel as String: label,
@@ -108,7 +116,12 @@ enum PasswordVault {
         ]
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return .success([]) }
+        if status == errSecItemNotFound {
+            // Cache the empty vault too: without it every focus and
+            // right-click repeats the synchronous Keychain round-trip.
+            allCache = ([], Date())
+            return .success([])
+        }
         guard status == errSecSuccess else { return .failure(.keychain(status)) }
         let attributes = result as? [[String: Any]] ?? []
         let logins = attributes.compactMap { item -> SavedPassword? in
@@ -138,7 +151,9 @@ enum PasswordVault {
                 lastUsed: lastUsed
             )
         }
-        return .success(logins.sorted { ($0.origin, $0.username) < ($1.origin, $1.username) })
+        let sorted = logins.sorted { ($0.origin, $0.username) < ($1.origin, $1.username) }
+        allCache = (sorted, Date())
+        return .success(sorted)
     }
 
     static func matchesOrigin(_ login: SavedPassword, _ origin: URL) -> Bool {
@@ -154,14 +169,42 @@ enum PasswordVault {
     /// example.com for www.example.com and accounts.example.com; bbc.co.uk
     /// stays bbc.co.uk. The handful of two-part endings that matter here are
     /// listed; a full public suffix list would be a library for a corner.
+    ///
+    /// Multi-tenant suffixes (github.io, vercel.app, …) are the exception:
+    /// every subdomain there is a different site, so the full host is its
+    /// own registrable domain and tenants never share credentials.
+    private static let multiTenantSuffixes: Set<String> = [
+        "github.io", "gitlab.io", "vercel.app", "netlify.app", "herokuapp.com",
+        "azurewebsites.net", "cloudfront.net", "appspot.com", "blogspot.com",
+        "wordpress.com", "webflow.io", "glitch.me", "pages.dev", "workers.dev",
+        "fly.dev", "onrender.com", "supabase.co", "firebaseapp.com",
+    ]
+
     static func registrableHost(_ host: String) -> String {
-        let labels = host.lowercased().split(separator: ".").map(String.init)
+        let lower = host.lowercased()
+        for suffix in multiTenantSuffixes where lower == suffix || lower.hasSuffix("." + suffix) {
+            return lower
+        }
+        // Amazon-style regional hosts (alice.s3.us-west-2.amazonaws.com):
+        // every label path is a different tenant, same as above.
+        if lower == "amazonaws.com" || lower.hasSuffix(".amazonaws.com") {
+            return lower
+        }
+        let labels = lower.split(separator: ".").map(String.init)
         guard labels.count > 2 else { return labels.joined(separator: ".") }
         let seconds: Set<String> = ["co", "com", "org", "net", "gov", "gouv", "ac", "edu", "asso", "or", "ne"]
         if seconds.contains(labels[labels.count - 2]), labels[labels.count - 1].count == 2 {
             return labels.suffix(3).joined(separator: ".")
         }
         return labels.suffix(2).joined(separator: ".")
+    }
+
+    /// Whether a kept login may be offered on a page: the same registrable
+    /// site, and the same scheme — an http page is offered only what was
+    /// kept from http, never a password saved over https.
+    static func isOffered(_ login: SavedPassword, onHost host: String, scheme: String) -> Bool {
+        guard login.scheme == scheme else { return false }
+        return login.host == host || registrableHost(login.host) == registrableHost(host)
     }
 
     /// Logins kept for the site behind an origin: the exact host first, then
@@ -173,11 +216,9 @@ enum PasswordVault {
     static func forSite(_ origin: URL) -> Result<[SavedPassword], VaultError> {
         guard let normalized = normalizedOrigin(origin) else { return .failure(.invalidOrigin) }
         return all().map { logins in
-            let site = registrableHost(normalized.host)
-            let exact = logins.filter { $0.host == normalized.host }
-            let wider = logins.filter {
-                $0.host != normalized.host && registrableHost($0.host) == site
-            }
+            let offered = logins.filter { isOffered($0, onHost: normalized.host, scheme: normalized.scheme) }
+            let exact = offered.filter { $0.host == normalized.host }
+            let wider = offered.filter { $0.host != normalized.host }
             return (exact + wider).sorted {
                 let exactLHS = $0.host == normalized.host
                 let exactRHS = $1.host == normalized.host
@@ -196,6 +237,7 @@ enum PasswordVault {
             kSecAttrComment as String: String(Date().timeIntervalSince1970),
         ]
         SecItemUpdate(identity(login) as CFDictionary, update as CFDictionary)
+        allCache = nil
     }
 
     static func save(origin: URL, username: String, password: String) -> Result<Void, VaultError> {
@@ -217,6 +259,7 @@ enum PasswordVault {
         // 1. Our own item, if present.
         var status = SecItemUpdate(identity(login) as CFDictionary, update as CFDictionary)
         if status == errSecSuccess {
+            allCache = nil
             NotificationCenter.default.post(name: didChange, object: nil)
             return .success(())
         }
@@ -233,6 +276,7 @@ enum PasswordVault {
         ]
         status = SecItemUpdate(broad as CFDictionary, update as CFDictionary)
         if status == errSecSuccess {
+            allCache = nil
             NotificationCenter.default.post(name: didChange, object: nil)
             return .success(())
         }
@@ -243,6 +287,7 @@ enum PasswordVault {
         add[kSecAttrComment as String] = stamp
         status = SecItemAdd(add as CFDictionary, nil)
         if status == errSecSuccess {
+            allCache = nil
             NotificationCenter.default.post(name: didChange, object: nil)
             return .success(())
         }
@@ -251,6 +296,7 @@ enum PasswordVault {
         SecItemDelete(broad as CFDictionary)
         status = SecItemAdd(add as CFDictionary, nil)
         guard status == errSecSuccess else { return .failure(.keychain(status)) }
+        allCache = nil
         NotificationCenter.default.post(name: didChange, object: nil)
         return .success(())
     }
@@ -295,6 +341,7 @@ enum PasswordVault {
         } else if status != errSecSuccess {
             return .failure(.keychain(status))
         }
+        allCache = nil
         NotificationCenter.default.post(name: didChange, object: nil)
         return .success(())
     }

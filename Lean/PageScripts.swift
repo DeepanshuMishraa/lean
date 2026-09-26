@@ -68,17 +68,22 @@ enum PageScripts {
                     var isPlaying = mediaElements.some(function(el) {
                         return !el.paused && !el.ended && el.readyState > 1;
                     });
-                    var audioContexts = window.__leanAudioContexts || [];
-                    var webAudio = audioContexts.some(function(ref) {
-                        var ctx = ref && ref.deref && ref.deref();
-                        return ctx && ctx.state === 'running';
-                    });
-                    var active = isPlaying || webAudio;
+                    // A running AudioContext is not sound: players (YouTube
+                    // included) keep one alive long after the last audible
+                    // sample, and treating it as playing stuck the tab's
+                    // music icon on with nothing to hear. Only elements
+                    // count here.
+                    var active = isPlaying;
                     var muted = mediaElements.length > 0 && mediaElements.every(function(el) {
                         return el.muted || el.volume === 0;
                     });
 
-                    if (lastState === null || lastState.isPlaying !== active || lastState.isMuted !== muted) {
+                    var changed = lastState === null || lastState.isPlaying !== active || lastState.isMuted !== muted;
+                    // While playing, every poll reports in (a heartbeat), not
+                    // just on change: a frame that played briefly and then
+                    // detached can never send its goodbye, so the native
+                    // side evicts frames it stops hearing from.
+                    if (changed || active) {
                         lastState = { isPlaying: active, isMuted: muted };
                         if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(mediaStateMessageName)) {
                             window.webkit.messageHandlers.\(mediaStateMessageName).postMessage({
@@ -260,7 +265,12 @@ enum PageScripts {
         var rules: [String] = []
 
         if font != .system {
-            rules.append("html body, html body *:not(svg):not(svg *) { font-family: \(font.cssFamily) !important; }")
+            // Deliberately NOT !important: a page rule with any class-level
+            // specificity (icon ligature fonts — Meet's Material Symbols,
+            // Font Awesome — live on classes) must win over this, or icon
+            // buttons render as raw text ("mic", "call_end"). Body text,
+            // which only inherits its stack, still takes this rule.
+            rules.append("html body, html body *:not(svg):not(svg *) { font-family: \(font.cssFamily); }")
         }
 
         if headingWeight > 0 {
@@ -285,9 +295,18 @@ enum PageScripts {
                 style.id = 'lean-custom-font-style';
                 (document.head || document.documentElement).appendChild(style);
             }
-            style.textContent = "\(css)";
+            style.textContent = "\(PageScripts.jsString(css))";
         })();
         """
+    }
+
+    /// Encodes text as a JavaScript double-quoted string literal: the CSS
+    /// carries family names that may hold backslashes or quotes.
+    static func jsString(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\r", with: "")
     }
 
     static func scrollbar(_ style: ScrollbarStyle) -> String {
@@ -340,26 +359,6 @@ enum PageScripts {
         """
     }
 
-    static func smoothScrolling(enabled: Bool) -> String {
-        let css = enabled ? "html { scroll-behavior: smooth !important; }" : ""
-        return """
-        (function() {
-            function apply() {
-                var style = document.getElementById('lean-native-smooth-scroll-style');
-                if (!style) {
-                    style = document.createElement('style');
-                    style.id = 'lean-native-smooth-scroll-style';
-                    (document.head || document.documentElement).appendChild(style);
-                }
-                style.textContent = "\(css)";
-            }
-            apply();
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', apply, { once: true });
-            }
-        })();
-        """
-    }
     static func youtubeAds(enabled: Bool) -> String {
         if !enabled {
             return "void 0;"

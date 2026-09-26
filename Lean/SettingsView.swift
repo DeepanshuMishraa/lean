@@ -721,6 +721,20 @@ private struct GeneralSection: View {
             .animation(.spring(response: 0.26, dampingFraction: 0.82), value: store.enableZenMode)
             .animation(.spring(response: 0.26, dampingFraction: 0.82), value: store.enableWindowBorder)
 
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Links", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+
+                SettingsGroup(isDark: store.isDarkMode) {
+                    CustomToggleRow(
+                        title: "Peek at a link with a shift-click",
+                        subtitle: "Opens the link in a panel over the page instead of following it. Escape, ⌘W or a click beside it puts it away; keeping it makes it a tab.",
+                        isOn: $store.peeksLinks,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
+                }
+            }
+
             SettingsGroup(isDark: store.isDarkMode) {
                 CustomToggleRow(
                     title: "Automatically check for updates",
@@ -1078,11 +1092,51 @@ private struct ToolbarInteractiveChip: View {
 }
 
 // MARK: - 3. Appearance Section
+enum FontSelectionTarget: String, Identifiable {
+    case leanUI = "Lean UI"
+    case webPages = "Web Pages"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .leanUI: return "Lean UI Font"
+        case .webPages: return "Web Pages Font"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .leanUI: return "Choose a typeface for tabs, omnibar, menus, and browser controls"
+        case .webPages: return "Choose a typeface override for readable webpage articles and body text"
+        }
+    }
+}
+
 private struct AppearanceSection: View {
     @ObservedObject var store: LeanStore
     @EnvironmentObject private var dropdownState: DropdownMenuState
+    @State private var activeFontTarget: FontSelectionTarget? = nil
 
     var body: some View {
+        Group {
+            if let target = activeFontTarget {
+                InstalledFontsStackView(
+                    target: target,
+                    store: store,
+                    onBack: {
+                        withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                            activeFontTarget = nil
+                        }
+                    }
+                )
+            } else {
+                mainAppearanceContent
+            }
+        }
+    }
+
+    private var mainAppearanceContent: some View {
         VStack(alignment: .leading, spacing: 20) {
             // Theme Selector
             VStack(alignment: .leading, spacing: 8) {
@@ -1154,7 +1208,12 @@ private struct AppearanceSection: View {
                         isDark: store.isDarkMode,
                         pickerId: "fontPicker_leanUI",
                         headingWeight: store.uiHeadingWeight,
-                        bodyWeight: store.uiBodyWeight
+                        bodyWeight: store.uiBodyWeight,
+                        onShowAllFonts: {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                                activeFontTarget = .leanUI
+                            }
+                        }
                     )
 
                     SettingsRowDivider(isDark: store.isDarkMode)
@@ -1193,10 +1252,14 @@ private struct AppearanceSection: View {
                         isDark: store.isDarkMode,
                         pickerId: "fontPicker_webPages",
                         headingWeight: store.uiHeadingWeight,
-                        bodyWeight: store.uiBodyWeight
+                        bodyWeight: store.uiBodyWeight,
+                        onShowAllFonts: {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                                activeFontTarget = .webPages
+                            }
+                        }
                     )
                 }
-                .zIndex(dropdownState.activeId?.starts(with: "fontPicker_") == true ? 100 : 1)
 
                 // Typography Live Preview Card
                 VStack(alignment: .leading, spacing: 8) {
@@ -1229,6 +1292,346 @@ private struct AppearanceSection: View {
             }
             .zIndex(dropdownState.activeId?.starts(with: "fontPicker_") == true ? 100 : 1)
         }
+    }
+}
+
+// MARK: - Installed Fonts Stack Screen
+private struct FontPresetPill: View {
+    let title: String
+    let isSelected: Bool
+    let isDark: Bool
+    let font: Font
+    let action: () -> Void
+
+    private var backgroundColor: Color {
+        if isSelected {
+            return isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.07)
+        } else {
+            return isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.035)
+        }
+    }
+
+    private var strokeColor: Color {
+        if isSelected {
+            return isDark ? Color.white.opacity(0.2) : Color.black.opacity(0.15)
+        } else {
+            return isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06)
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if isSelected {
+                    LeanIcon.check.bold
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 10, height: 10)
+                        .foregroundColor(isDark ? Color.white : Color.black)
+                }
+                Text(title)
+                    .font(font)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(strokeColor, lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct InstalledFontsStackView: View {
+    let target: FontSelectionTarget
+    @ObservedObject var store: LeanStore
+    let onBack: () -> Void
+
+    @State private var searchQuery = ""
+    @State private var isBackHovered = false
+    @State private var availableFamilies: [String] = []
+
+    private var currentSelection: LeanFont {
+        switch target {
+        case .leanUI: return store.leanUIFont
+        case .webPages: return store.webPageFont
+        }
+    }
+
+    private var secondaryText: Color {
+        store.isDarkMode ? Color(white: 0.50) : Color(white: 0.48)
+    }
+
+    private var filteredFamilies: [String] {
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if trimmed.isEmpty {
+            return availableFamilies
+        }
+        return availableFamilies.filter { $0.lowercased().contains(trimmed) }
+    }
+
+    private func selectFontFamily(_ familyName: String) {
+        let font = LeanFont(rawValue: familyName)
+        switch target {
+        case .leanUI:
+            store.leanUIFont = font
+        case .webPages:
+            store.webPageFont = font
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header with Back button, Title & Count
+            HStack(spacing: 8) {
+                Button(action: onBack) {
+                    HStack(spacing: 5) {
+                        LeanIcon.caretLeft.bold
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 11, height: 11)
+                        Text("Appearance")
+                            .font(store.leanUIFont.font(size: 12.5, weight: .medium))
+                    }
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.8) : Color.black.opacity(0.75))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(
+                        isBackHovered ? (store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.055)) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    )
+                }
+                .buttonStyle(.plain)
+                .onHover { isBackHovered = $0 }
+
+                Spacer()
+
+                Text("\(availableFamilies.count) installed fonts")
+                    .font(store.leanUIFont.font(size: 11.5))
+                    .foregroundColor(secondaryText)
+            }
+            .padding(.bottom, -4)
+
+            // Title and description
+            VStack(alignment: .leading, spacing: 3) {
+                Text(target.title)
+                    .font(store.headingFont(size: 16))
+                    .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+
+                Text(target.subtitle)
+                    .font(store.leanUIFont.font(size: 11.5))
+                    .foregroundColor(secondaryText)
+            }
+
+            // Quick default shortcuts: Reset to Geist Sans
+            HStack(spacing: 8) {
+                FontPresetPill(
+                    title: "Default (Geist Sans)",
+                    isSelected: currentSelection == .geistSans,
+                    isDark: store.isDarkMode,
+                    font: store.leanUIFont.font(size: 11.5, weight: currentSelection == .geistSans ? .semibold : .medium),
+                    action: { selectFontFamily("Geist") }
+                )
+
+                FontPresetPill(
+                    title: "System Font",
+                    isSelected: currentSelection == .system,
+                    isDark: store.isDarkMode,
+                    font: store.leanUIFont.font(size: 11.5, weight: currentSelection == .system ? .semibold : .medium),
+                    action: { selectFontFamily("System") }
+                )
+            }
+
+            // Search Bar
+            HStack(spacing: 10) {
+                LeanIcon.magnifyingGlass.fill
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 14, height: 14)
+                    .foregroundColor(secondaryText)
+
+                TextField("Search installed fonts by name...", text: $searchQuery)
+                    .textFieldStyle(.plain)
+                    .font(store.leanUIFont.font(size: 13))
+
+                if !searchQuery.isEmpty {
+                    Button {
+                        searchQuery = ""
+                    } label: {
+                        LeanIcon.xCircle.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 14, height: 14)
+                            .foregroundColor(secondaryText)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear search")
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.035))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(store.isDarkMode ? Color.white.opacity(0.10) : Color.black.opacity(0.08), lineWidth: 1)
+            )
+
+            // Fonts List
+            if filteredFamilies.isEmpty {
+                SettingsGroup(isDark: store.isDarkMode) {
+                    VStack(spacing: 6) {
+                        Text(searchQuery.isEmpty ? "No fonts found" : "No matching fonts")
+                            .font(store.leanUIFont.font(size: 13, weight: .medium))
+                            .foregroundColor(store.isDarkMode ? Color.white.opacity(0.8) : Color.black.opacity(0.8))
+                        Text(searchQuery.isEmpty ? "Unable to query installed fonts" : "Try searching for a different typeface name")
+                            .font(store.leanUIFont.font(size: 11.5))
+                            .foregroundColor(secondaryText)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 32)
+                }
+            } else {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(filteredFamilies.enumerated()), id: \.element) { index, family in
+                        if index > 0 {
+                            SettingsRowDivider(isDark: store.isDarkMode)
+                        }
+                        InstalledFontRow(
+                            familyName: family,
+                            isSelected: isFontSelected(family),
+                            isDark: store.isDarkMode,
+                            uiFont: store.leanUIFont,
+                            onSelect: {
+                                withAnimation(.spring(response: 0.2, dampingFraction: 0.82)) {
+                                    selectFontFamily(family)
+                                }
+                            }
+                        )
+                    }
+                }
+                .background(
+                    store.isDarkMode ? Color.white.opacity(0.035) : Color.black.opacity(0.02),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.05), lineWidth: 0.75)
+                )
+            }
+        }
+        .onAppear {
+            loadFonts()
+        }
+    }
+
+    private func isFontSelected(_ family: String) -> Bool {
+        if currentSelection == .geistSans && family == "Geist" {
+            return true
+        }
+        if currentSelection == .system && family == "System" {
+            return true
+        }
+        return currentSelection.rawValue == family
+    }
+
+    private func loadFonts() {
+        let rawFamilies = NSFontManager.shared.availableFontFamilies
+        let cleaned = rawFamilies
+            .filter { !$0.hasPrefix(".") && !$0.isEmpty }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        availableFamilies = cleaned
+    }
+}
+
+private struct InstalledFontRow: View {
+    let familyName: String
+    let isSelected: Bool
+    let isDark: Bool
+    let uiFont: LeanFont
+    let onSelect: () -> Void
+
+    @State private var isHovered = false
+
+    private var textColor: Color {
+        isSelected
+            ? (isDark ? Color.white : Color.black)
+            : (isDark ? Color(white: 0.94) : Color(white: 0.12))
+    }
+
+    private var previewFont: Font {
+        if familyName == "System" {
+            return .system(size: 13, weight: .regular)
+        }
+        return .custom(familyName, size: 13)
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Text(familyName)
+                            .font(uiFont.font(size: 13, weight: isSelected ? .semibold : .medium))
+                            .foregroundColor(textColor)
+                            .lineLimit(1)
+
+                        if isSelected {
+                            Text("Active")
+                                .font(uiFont.font(size: 9.5, weight: .bold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1.5)
+                                .background(
+                                    isDark ? Color.white.opacity(0.16) : Color.black.opacity(0.09),
+                                    in: Capsule()
+                                )
+                                .foregroundColor(isDark ? Color.white : Color.black)
+                        }
+                    }
+
+                    Text("The quick brown fox jumps over the lazy dog · 0123456789")
+                        .font(previewFont)
+                        .foregroundColor(isDark ? Color.white.opacity(0.48) : Color.black.opacity(0.45))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                if isSelected {
+                    ZStack {
+                        Circle()
+                            .fill(isDark ? Color.white : Color.black)
+                            .frame(width: 18, height: 18)
+
+                        LeanIcon.check.bold
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 9, height: 9)
+                            .foregroundColor(isDark ? Color.black : Color.white)
+                    }
+                } else if isHovered {
+                    Text("Select")
+                        .font(uiFont.font(size: 11, weight: .medium))
+                        .foregroundColor(isDark ? Color.white.opacity(0.7) : Color.black.opacity(0.6))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06),
+                            in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        )
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                isHovered
+                    ? (isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                    : (isSelected ? (isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.02)) : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 
@@ -1287,6 +1690,22 @@ private struct TabsSection: View {
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont
                     )
+                }
+            }
+
+            if store.tabLayout == .top {
+                VStack(alignment: .leading, spacing: 8) {
+                    SettingsHeaderLabel("Tab bar theme", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+
+                    SettingsGroup(isDark: store.isDarkMode) {
+                        CustomToggleRow(
+                            title: "Colour the tab bar from the page",
+                            subtitle: "Tints the strip with the colour a page declares for itself with theme-color, and follows it from tab to tab. It stays inside the browser theme, so the row is always legible. A page that hasn't declared one leaves the strip as it looked before.",
+                            isOn: $store.themedTabBar,
+                            isDark: store.isDarkMode,
+                            uiFont: store.leanUIFont
+                        )
+                    }
                 }
             }
 
@@ -1538,9 +1957,9 @@ private struct BrowsingSection: View {
 
                 SettingsGroup(isDark: store.isDarkMode) {
                     CustomToggleRow(
-                        title: "Smooth scrolling",
-                        subtitle: "Fluid momentum physics for trackpad gestures and page navigation.",
-                        isOn: $store.smoothScrollingEnabled,
+                        title: "Pages at 120 Hz",
+                        subtitle: "Lets pages draw every frame on ProMotion displays. Off is Safari's default and cheaper on battery.",
+                        isOn: $store.highFrameRatePages,
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont
                     )
@@ -2759,6 +3178,16 @@ private struct PasswordManagerSection: View {
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont
                     )
+                    SettingsRowDivider(isDark: store.isDarkMode)
+                    CustomToggleRow(
+                        title: "Offer passkeys",
+                        subtitle: store.passkeysPossible
+                            ? "Touch ID or an iCloud passkey, on sites that offer one"
+                            : "Touch ID or an iCloud passkey, on sites that offer one — this build lacks Apple's browser entitlement, so if the Mac refuses a request the site falls back to its password",
+                        isOn: $store.passkeysEnabled,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
                 }
 
                 HStack(spacing: 6) {
@@ -3223,7 +3652,23 @@ private struct ExtensionsSettingsSection: View {
                         }
                         .disabled(manager.isInstallingFromStore || ChromeWebStoreInstaller.extensionID(from: storeLink) == nil)
                     }
-                    Text("Paste a Chrome Web Store URL or extension ID. Lean verifies the download before asking you to review its access.")
+                    if !manager.installed.contains(where: { $0.id == ChromeWebStoreInstaller.iCloudPasswordsID }) {
+                        HStack {
+                            Text("iCloud Passwords by Apple")
+                                .font(store.leanUIFont.font(size: 12.5))
+                                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.85) : Color.black.opacity(0.8))
+                            Spacer(minLength: 8)
+                            SettingsActionButton(manager.isInstallingFromStore ? "Downloading…" : "Install", isDark: store.isDarkMode, prominent: true, isLoading: manager.isInstallingFromStore) {
+                                Task {
+                                    if let review = await manager.prepareStoreInstallation(from: ChromeWebStoreInstaller.iCloudPasswordsID) {
+                                        pendingReview = review
+                                    }
+                                }
+                            }
+                            .disabled(manager.isInstallingFromStore)
+                        }
+                    }
+                    Text("Paste a Chrome Web Store URL or extension ID. Lean verifies the download before asking you to review its access. iCloud Passwords installs the same way, in one tap — pair it with Apple's code and it fills your iCloud Keychain.")
                         .font(store.leanUIFont.font(size: 11.5))
                         .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
                         .fixedSize(horizontal: false, vertical: true)

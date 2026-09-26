@@ -56,6 +56,20 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
 
     // MARK: - SPUUpdaterDelegate
 
+    /// Surfaces the real failure instead of Sparkle's generic Cancel-only
+    /// alert: domain, code, and underlying errors go to the log (diagnosable
+    /// from Console) and the alert carries the message.
+    func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        let nsError = error as NSError
+        NSLog(
+            "Lean update aborted: %@ (%@ %d) underlying: %@",
+            nsError.localizedDescription,
+            nsError.domain,
+            nsError.code,
+            String(describing: nsError.userInfo[NSUnderlyingErrorKey])
+        )
+    }
+
     func feedURLString(for updater: SPUUpdater) -> String? {
         #if arch(arm64)
         let arch = "arm64"

@@ -61,7 +61,13 @@ struct OmnibarView: View {
                     }
                     .onChange(of: geo.frame(in: .global)) { _, newFrame in
                         if isFloating {
-                            store.floatingPaletteFrame = newFrame
+                            let old = store.floatingPaletteFrame
+                            if abs(old.origin.x - newFrame.origin.x) > 1
+                                || abs(old.origin.y - newFrame.origin.y) > 1
+                                || abs(old.width - newFrame.width) > 1
+                                || abs(old.height - newFrame.height) > 1 {
+                                store.floatingPaletteFrame = newFrame
+                            }
                         }
                     }
             }
@@ -231,16 +237,10 @@ struct OmnibarView: View {
     }
 
     private func requestFieldFocus() {
+        // Single set: the FocusState binding + the acquirer's makeNSView
+        // cover window-key timing. The old triple-dispatch re-triggered
+        // layout passes per keystroke/open.
         isFieldFocused = true
-        DispatchQueue.main.async {
-            isFieldFocused = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            isFieldFocused = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            isFieldFocused = true
-        }
     }
 
     private func handleEscape() {
@@ -309,19 +309,20 @@ struct OmnibarView: View {
 private struct OmnibarFocusAcquirer: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
+        // One attempt: updateNSView + the FocusState binding handle the rest.
+        // Retrying 3x per appearance caused focus fights + extra layout.
         DispatchQueue.main.async {
-            focusTextField(near: view)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            focusTextField(near: view)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
             focusTextField(near: view)
         }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
+        // updateNSView runs on every SwiftUI update (per keystroke). Skip
+        // the hierarchy walk when a text field already has focus.
+        if let first = nsView.window?.firstResponder, first is NSTextField || first is NSTextView {
+            return
+        }
         DispatchQueue.main.async {
             focusTextField(near: nsView)
         }

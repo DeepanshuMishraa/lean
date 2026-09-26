@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Deliberately NO com.apple.security.app-sandbox key: this helper must
+    run unsandboxed so it can launch native messaging hosts (iCloud
+    Passwords' helper, 1Password's desktop bridge) that live outside Lean's
+    container. The main Lean app stays sandboxed; only manifest-registered
+    hosts for origins their manifest allows are ever launched (see
+    NativeHostService.swift). Do not add network or other entitlements here:
+    this service speaks stdio to hosts and XPC to Lean, nothing else. -->
+</dict>
+</plist>

@@ -2,3 +2,10 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 vendor/
+# Local build output (Xcode products, object files, dSYMs) — regenerable,
+# never commit. A blanket add swept 400+ MB of these in once.
+build/
+# Agent-tooling workspace (screenshots, task stores, requests) — local only.
+.pi/
+.DS_Store
+*.xcresult

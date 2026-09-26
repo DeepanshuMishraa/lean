@@ -14,7 +14,9 @@ import Foundation
 /// regex filters, ...) is skipped rather than broadened.
 enum AdBlockFilterConverter {
     static let maxRulesPerList = 40_000
-    static let maxTotalRules = 200_000
+    /// 8 lists × 40k: the most WebKit will attach. Trailing `^` expands one
+    /// filter line into two rules, so the cap must cover the expansion.
+    static let maxTotalRules = 320_000
 
     struct ConversionResult {
         var rules: [[String: Any]]
@@ -31,19 +33,25 @@ enum AdBlockFilterConverter {
         text.enumerateLines { line, _ in
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return }
-            guard let rule = convertLine(trimmed) else {
+            let converted = convertLine(trimmed)
+            guard !converted.isEmpty else {
                 skipped += 1
                 return
             }
-            let key = canonicalKey(for: rule)
-            guard seen.insert(key).inserted else {
-                skipped += 1
-                return
-            }
-            rules.append(rule)
-            if rules.count >= maxTotalRules {
-                // Keep counting the rest as skipped without building more rules.
-                skipped += 1
+            for rule in converted {
+                let key = canonicalKey(for: rule)
+                if seen.contains(key) {
+                    skipped += 1
+                    continue
+                }
+                // Cap before retaining: rules and seen hold only what can
+                // actually be compiled, and keptCount stays honest.
+                guard rules.count < maxTotalRules else {
+                    skipped += 1
+                    continue
+                }
+                seen.insert(key)
+                rules.append(rule)
             }
         }
 
@@ -71,16 +79,19 @@ enum AdBlockFilterConverter {
 
     // MARK: - Line dispatch
 
-    private static func convertLine(_ line: String) -> [String: Any]? {
+    private static func convertLine(_ line: String) -> [[String: Any]] {
         if line.hasPrefix("!") || line.hasPrefix("[Adblock") {
-            return nil
+            return []
         }
         if let hostsRule = convertHostsLine(line) {
-            return hostsRule
+            return [hostsRule]
         }
         // Cosmetic filters contain ## / #@# / #?# markers.
         if line.contains("#") {
-            return convertCosmetic(line)
+            if let rule = convertCosmetic(line) {
+                return [rule]
+            }
+            return []
         }
         return convertNetwork(line)
     }
@@ -93,7 +104,7 @@ enum AdBlockFilterConverter {
         guard ip == "127.0.0.1" || ip == "0.0.0.0" || ip == "::1" || ip == "::" else { return nil }
         let host = String(parts[1]).lowercased()
         guard !host.isEmpty, host != "localhost", host != "localhost.localdomain",
-              !host.hasPrefix("#"), host.contains(".") else { return nil }
+              !host.hasPrefix("#"), host.contains("."), !host.contains("|") else { return nil }
         return [
             "trigger": ["url-filter": "^https?://([^/]*\\.)?" + escapeRegex(host)],
             "action": ["type": "block"]
@@ -102,7 +113,7 @@ enum AdBlockFilterConverter {
 
     // MARK: - Network filters
 
-    private static func convertNetwork(_ line: String) -> [String: Any]? {
+    private static func convertNetwork(_ line: String) -> [[String: Any]] {
         var pattern = line
         var isException = false
         if pattern.hasPrefix("@@") {
@@ -112,7 +123,7 @@ enum AdBlockFilterConverter {
 
         // Regex-style filters (/.../) have no faithful WebKit translation.
         if pattern.hasPrefix("/") && pattern.count > 2 {
-            return nil
+            return []
         }
 
         let (barePattern, options) = splitOptions(pattern)
@@ -122,13 +133,13 @@ enum AdBlockFilterConverter {
         if barePattern == pattern,
            let dollar = pattern.lastIndex(of: "$"),
            pattern[pattern.index(after: dollar)...].contains("=") {
-            return nil
+            return []
         }
         pattern = barePattern
-        guard !pattern.isEmpty else { return nil }
+        guard !pattern.isEmpty else { return [] }
         // Network patterns never contain raw spaces or quotes.
         if pattern.contains(" ") || pattern.contains("'") || pattern.contains("\"") {
-            return nil
+            return []
         }
 
         // Options that change semantics beyond what WebKit can express -> skip.
@@ -146,16 +157,16 @@ enum AdBlockFilterConverter {
         for option in options {
             let name = option.name
             if unsupportedOptions.contains(name) {
-                return nil
+                return []
             }
             if name.hasPrefix("redirect") || name.hasPrefix("prevent-") || name.hasPrefix("uritransform") {
-                return nil
+                return []
             }
         }
 
         // `badfilter` negates another rule; without that pairing info, drop it.
         if options.contains(where: { $0.name == "badfilter" }) {
-            return nil
+            return []
         }
         // `$popup` alone blocks popups; combined with resource types WebKit can't scope. Keep simple case.
         let hasPopup = options.contains(where: { $0.name == "popup" || $0.name == "~popup" })
@@ -213,10 +224,10 @@ enum AdBlockFilterConverter {
                 for domain in domains {
                     if domain.hasPrefix("~") {
                         let clean = String(domain.dropFirst())
-                        guard isPlainDomain(clean) else { return nil }
+                        guard isPlainDomain(clean) else { return [] }
                         excludeDomains.append(clean.lowercased())
                     } else {
-                        guard isPlainDomain(domain) else { return nil }
+                        guard isPlainDomain(domain) else { return [] }
                         includeDomains.append(domain.lowercased())
                     }
                 }
@@ -226,18 +237,18 @@ enum AdBlockFilterConverter {
                 // Unknown positive options are only safe if they don't restrict
                 // matching in ways we'd silently drop.
                 if option.name.hasPrefix("~") {
-                    return nil
+                    return []
                 }
                 if isKnownHarmlessOption(option.name) {
                     continue
                 }
-                return nil
+                return []
             }
         }
 
         // WebKit triggers accept either if-domain or unless-domain, never both.
         if !includeDomains.isEmpty, !excludeDomains.isEmpty {
-            return nil
+            return []
         }
         if !includeDomains.isEmpty {
             ifDomain = Array(Set(includeDomains)).sorted().map { "*\($0)" }
@@ -248,36 +259,35 @@ enum AdBlockFilterConverter {
         // `$popup` combined with resource scoping can't be expressed; keep the
         // common bare `||x^$popup` / `$third-party,popup` shape as a popup rule.
         if hasPopup, !resourceTypes.isEmpty {
-            return nil
+            return []
         }
 
-        guard let urlFilter = networkURLFilter(from: pattern) else { return nil }
-        guard urlFilter.count <= 1024 else { return nil }
+        guard let urlFilters = networkURLFilter(from: pattern) else { return [] }
+        guard urlFilters.allSatisfy({ $0.count <= 1024 }) else { return [] }
 
-        var trigger: [String: Any] = ["url-filter": urlFilter]
-        if matchCase {
-            trigger["url-filter-is-case-sensitive"] = true
+        return urlFilters.map { urlFilter in
+            var trigger: [String: Any] = ["url-filter": urlFilter]
+            if matchCase {
+                trigger["url-filter-is-case-sensitive"] = true
+            }
+            if let loadType {
+                trigger["load-type"] = loadType
+            }
+            if let ifDomain {
+                trigger["if-domain"] = ifDomain
+            } else if let unlessDomain {
+                trigger["unless-domain"] = unlessDomain
+            }
+            if hasPopup, resourceTypes.isEmpty {
+                trigger["resource-type"] = ["popup"]
+            } else if !resourceTypes.isEmpty {
+                trigger["resource-type"] = Array(Set(resourceTypes)).sorted()
+            }
+            if isException {
+                return ["trigger": trigger, "action": ["type": "ignore-previous-rules"]]
+            }
+            return ["trigger": trigger, "action": ["type": "block"]]
         }
-        if let loadType {
-            trigger["load-type"] = loadType
-        }
-        if let ifDomain {
-            trigger["if-domain"] = ifDomain
-        } else if let unlessDomain {
-            trigger["unless-domain"] = unlessDomain
-        }
-        if hasPopup, resourceTypes.isEmpty {
-            trigger["resource-type"] = ["popup"]
-        } else if !resourceTypes.isEmpty {
-            trigger["resource-type"] = Array(Set(resourceTypes)).sorted()
-        }
-        // Keep third-party-ness explicit even when no other scoping exists.
-        _ = hasThirdPartyOption
-
-        if isException {
-            return ["trigger": trigger, "action": ["type": "ignore-previous-rules"]]
-        }
-        return ["trigger": trigger, "action": ["type": "block"]]
     }
 
     private struct FilterOption {
@@ -374,8 +384,9 @@ enum AdBlockFilterConverter {
         return true
     }
 
-    /// Convert an ABP network pattern to a WebKit `url-filter` regex.
-    private static func networkURLFilter(from pattern: String) -> String? {
+    /// Convert an ABP network pattern to WebKit `url-filter` regexes.
+    /// One pattern can yield two filters (see `wildcardToRegex`).
+    private static func networkURLFilter(from pattern: String) -> [String]? {
         var work = pattern
         var anchoredStart = false
         var anchoredEnd = false
@@ -393,17 +404,16 @@ enum AdBlockFilterConverter {
                 }
             }
             var host = String(work[..<hostEnd])
-            var rest = String(work[hostEnd...])
+            let rest = String(work[hostEnd...])
             host = host.trimmingCharacters(in: CharacterSet(charactersIn: "*"))
             guard !host.isEmpty else { return nil }
             guard isPlainDomain(host.lowercased()) || host.lowercased().contains(".") else { return nil }
-            if rest == "^" { rest = "" }
             let hostPart = "^https?://([^/]*\\.)?" + escapeRegex(host.lowercased())
             if rest.isEmpty {
-                return hostPart
+                return [hostPart]
             }
-            guard let restPart = wildcardToRegex(rest) else { return nil }
-            return hostPart + restPart
+            guard let rests = wildcardToRegex(rest) else { return nil }
+            return rests.map { hostPart + $0 }
         }
 
         if work.hasPrefix("|") {
@@ -415,35 +425,60 @@ enum AdBlockFilterConverter {
             work = String(work.dropLast())
         }
         guard !work.isEmpty else { return nil }
-        guard let body = wildcardToRegex(work) else { return nil }
-        var result = body
-        if anchoredStart {
-            result = "^" + result
+        guard var bodies = wildcardToRegex(work) else { return nil }
+        if anchoredEnd, work.hasSuffix("^"), bodies.count > 1 {
+            // Trailing `^|` means separator-then-end of URL: only the
+            // separator-class variant takes the `$` anchor. The bare-`$`
+            // twin would also match a bare host with no separator at all.
+            bodies = Array(bodies.prefix(1))
         }
-        if anchoredEnd {
-            result += "$"
+        return bodies.map { body in
+            var result = body
+            if anchoredStart {
+                result = "^" + result
+            }
+            if anchoredEnd {
+                result += "$"
+            }
+            return result
         }
-        return result
     }
 
-    /// Translate `*` (any run) and `^` (separator-or-end) to regex, escaping the rest.
-    private static func wildcardToRegex(_ pattern: String) -> String? {
-        var out = ""
-        out.reserveCapacity(pattern.count + 8)
-        for char in pattern {
+    /// Separator-or-end without alternation: WebKit's url-filter dialect
+    /// rejects `|` outright, so a trailing `^` expands to two variants —
+    /// a separator class and an end anchor. A mid-pattern `^` can only be
+    /// a separator. No groups are emitted.
+    private static let separatorClass = "[^a-zA-Z0-9_\\-.%]"
+
+    /// Translate `*` (any run) and `^` (separator-or-end) to regex, escaping
+    /// the rest. Returns one filter, or two when the pattern ends in `^`.
+    /// A literal `|` can be neither escaped (WebKit rejects `\|`) nor left
+    /// raw (it would read as alternation): patterns containing one are
+    /// skipped rather than mistranslated.
+    private static func wildcardToRegex(_ pattern: String) -> [String]? {
+        guard !pattern.contains("|") else { return nil }
+        var outs = [""]
+        let chars = Array(pattern)
+        for (index, char) in chars.enumerated() {
             switch char {
             case "*":
-                out += ".*"
+                for i in outs.indices { outs[i] += ".*" }
             case "^":
-                out += "(?:[^a-zA-Z0-9_\\-.%]|$)"
-            case ".", "?", "+", "[", "]", "(", ")", "{", "}", "$", "|", "\\":
-                out += "\\" + String(char)
+                if index == chars.count - 1 {
+                    let ended = outs.map { $0 + "$" }
+                    for i in outs.indices { outs[i] += separatorClass }
+                    outs += ended
+                } else {
+                    for i in outs.indices { outs[i] += separatorClass }
+                }
+            case ".", "?", "+", "[", "]", "(", ")", "{", "}", "$", "\\":
+                for i in outs.indices { outs[i] += "\\" + String(char) }
             default:
                 if char.isNewline { return nil }
-                out.append(char)
+                for i in outs.indices { outs[i].append(char) }
             }
         }
-        return out
+        return outs
     }
 
     private static func escapeRegex(_ value: String) -> String {

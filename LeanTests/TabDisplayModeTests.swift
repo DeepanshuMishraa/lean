@@ -468,11 +468,27 @@ struct TabDisplayModeTests {
         #expect(tab1.splitTabs.count == 4)
         #expect(store.tabs.contains(where: { $0.id == tab4.id }))
 
-        // 4. Close a pane in the 4-way split
+        // 4. Close a pane in the 4-way split: it pops out to the row,
+        // the tab itself stays open.
         let paneToClose = tab1.splitTabs[2]
         store.closeSplitPane(in: tab1, pane: paneToClose)
         #expect(tab1.splitTabs.count == 3)
         #expect(!tab1.splitTabs.contains(where: { $0.id == paneToClose.id }))
+        #expect(store.tabs.contains(where: { $0.id == paneToClose.id }))
+
+        // 4b. Closing down to one pane collapses the split, keeping every
+        // tab open — nothing is ever destroyed.
+        let openIDs = Set(store.tabs.map(\.id) + tab1.splitTabs.map(\.id))
+        let splitIDs = tab1.splitTabs.map(\.id)
+        while tab1.splitTabs.count > 1 {
+            store.closeSplitPane(in: tab1, pane: tab1.splitTabs.last!)
+        }
+        #expect(!tab1.isSplit)
+        #expect(tab1.splitTabs.isEmpty)
+        #expect(Set(store.tabs.map(\.id)) == openIDs)
+        for id in splitIDs {
+            #expect(store.tabs.contains(where: { $0.id == id }))
+        }
 
         // 5. Separate remaining split tabs back to top level
         store.separateSplitTabs(tab1)

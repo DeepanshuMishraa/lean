@@ -166,9 +166,10 @@ final class DownloadManager: ObservableObject {
             downloads[index].totalBytes = totalBytes
         }
         downloads[index].speedBytesPerSec = max(0, speedBytesPerSec)
-        if downloads[index].state != .downloading {
-            downloads[index].state = .downloading
-        }
+        // Never touch state here: beginDownload owns .downloading and
+        // finish/fail own the terminal states. A late KVO Task dispatched
+        // before observe-invalidation used to run after finalize and flip
+        // .completed back to .downloading — stuck at 100% forever.
         scheduleSave()
     }
 

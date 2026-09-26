@@ -4,6 +4,23 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.5] - 2026-09-27
+
+### Fixed
+
+- Plain-http sites on the LAN and private IPs (e.g. Tailscale addresses)
+  open again: bare IPs and local hosts default to http, https attempts to
+  them retry once over http, and the app permits cleartext loads
+- The Ctrl+Tab switcher always lands on the highlighted tab, even when tabs
+  move or close mid-gesture, instead of silently staying put
+- A failed navigation keeps its address in the omnibar (and tab title) so
+  Try Again and reload work, without recording failures in history
+
+### Changed
+
+- Typing an IP address in the omnibar shows a single Open-address row —
+  no search-engine row, no history clutter
+
 ## [0.1.4] - 2026-09-27
 
 ### Fixed

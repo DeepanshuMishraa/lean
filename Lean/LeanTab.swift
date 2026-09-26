@@ -97,6 +97,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private var pendingLogin: (origin: URL, username: String, password: String, submittedAt: Date)?
     private var restoreScrollPosition: CGPoint?
     private var policyHost: String?
+    /// Whether the compiled rule lists are currently attached to this tab's
+    /// configuration. Decided navigations gate on it only when it is false
+    /// or the blocking state just changed; otherwise the attached set
+    /// already matches and answering immediately costs no correctness.
+    private var contentRuleListsInstalled = false
 
     var isSettingsPage: Bool {
         guard let url = url else { return false }
@@ -212,6 +217,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     private func createWebView() -> LeanWebView {
+        // A fresh configuration has nothing attached yet.
+        contentRuleListsInstalled = false
         // The popup configuration was sanitized in init, but keeping the
         // configuration preserves its process pool for shared OAuth/SSO state.
         // Non-popup tabs share one process pool: fewer renderer processes,
@@ -417,6 +424,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
                     webView.configuration.userContentController.remove(ruleList)
                 }
             }
+            self.contentRuleListsInstalled = true
             completion?()
         }
     }
@@ -1124,6 +1132,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         removePasskeyHandler(from: controller)
         controller.removeAllUserScripts()
         controller.removeAllContentRuleLists()
+        contentRuleListsInstalled = false
         webView.removeFromSuperview()
         storedWebView = nil
         canGoBack = false
@@ -1629,12 +1638,19 @@ extension LeanTab: WKNavigationDelegate {
            let host = navigationAction.request.url?.host?.lowercased() {
             let wasBlocking = isBlockingEnabledForCurrentHost
             policyHost = host
-            if wasBlocking != isBlockingEnabledForCurrentHost {
+            let blockingChanged = wasBlocking != isBlockingEnabledForCurrentHost
+            if blockingChanged {
                 rebuildUserScripts(syncRuleLists: false)
             }
-            // Answer immediately: awaiting ContentBlocker.ruleLists() here
-            // stalled every link click/redirect on async work. Rule lists
-            // apply to subsequent loads; sync after the decision.
+            if blockingChanged || !contentRuleListsInstalled {
+                // This navigation's filtering depends on lists not yet
+                // installed: wait for them, then allow, or the click loads
+                // unfiltered. Otherwise the attached set already matches,
+                // so answer at once instead of stalling behind a cold
+                // rule-list compile; sync anyway for drift.
+                syncContentRuleLists { decisionHandler(.allow) }
+                return
+            }
             decisionHandler(.allow)
             syncContentRuleLists()
             return
@@ -2001,8 +2017,16 @@ extension LeanTab: WKDownloadDelegate {
     }
 
     /// Shared by the real finish callback and the watchdog: mark the
-    /// manager item complete with the on-disk byte count.
+    /// manager item complete with the on-disk byte count. Clears callback
+    /// tracking first (idempotent with didFinish/didFail, which must clear
+    /// it to resolve the item): the watchdog path never passed through
+    /// them, and a lingering observer or key mapping would let later
+    /// WebKit callbacks resolve or disturb the finalized item.
     private func finalizeDownload(_ download: WKDownload, itemID: UUID) {
+        let key = ObjectIdentifier(download)
+        downloadProgressObservers[key]?.invalidate()
+        downloadProgressObservers[key] = nil
+        activeDownloadIDs[key] = nil
         activeDownloadObjects[itemID] = nil
         downloadWatchdogs.remove(itemID)
         // Final byte count from disk beats progress accounting.

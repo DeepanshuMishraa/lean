@@ -1566,6 +1566,42 @@ private struct InstalledFontRow: View {
         return .custom(familyName, size: 13)
     }
 
+    private var backgroundColor: Color {
+        if isHovered {
+            return isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04)
+        }
+        if isSelected {
+            return isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.02)
+        }
+        return .clear
+    }
+
+    @ViewBuilder
+    private var accessory: some View {
+        if isSelected {
+            ZStack {
+                Circle()
+                    .fill(isDark ? Color.white : Color.black)
+                    .frame(width: 18, height: 18)
+
+                LeanIcon.check.bold
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 9, height: 9)
+                    .foregroundColor(isDark ? Color.black : Color.white)
+            }
+        } else if isHovered {
+            Text("Select")
+                .font(uiFont.font(size: 11, weight: .medium))
+                .foregroundColor(isDark ? Color.white.opacity(0.7) : Color.black.opacity(0.6))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(
+                    isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06),
+                    in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                )
+        }
+    }
+
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 14) {
@@ -1597,37 +1633,12 @@ private struct InstalledFontRow: View {
 
                 Spacer(minLength: 8)
 
-                if isSelected {
-                    ZStack {
-                        Circle()
-                            .fill(isDark ? Color.white : Color.black)
-                            .frame(width: 18, height: 18)
-
-                        LeanIcon.check.bold
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 9, height: 9)
-                            .foregroundColor(isDark ? Color.black : Color.white)
-                    }
-                } else if isHovered {
-                    Text("Select")
-                        .font(uiFont.font(size: 11, weight: .medium))
-                        .foregroundColor(isDark ? Color.white.opacity(0.7) : Color.black.opacity(0.6))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(
-                            isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06),
-                            in: RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        )
-                }
+                accessory
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                isHovered
-                    ? (isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
-                    : (isSelected ? (isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.02)) : Color.clear)
-            )
+            .background(backgroundColor)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

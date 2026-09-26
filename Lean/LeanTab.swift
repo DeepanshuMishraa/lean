@@ -483,8 +483,15 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     func applyPasskeysPreferences(enabled: Bool) {
         guard passkeysEnabled != enabled else { return }
         passkeysEnabled = enabled
-        if storedWebView != nil {
-            rebuildUserScripts()
+        guard storedWebView != nil else { return }
+        rebuildUserScripts()
+        // User scripts only run at document start, so a live page would
+        // keep answering with the old patch until its next navigation.
+        // Reload tabs showing a committed web page — the same tradeoff as
+        // toggling blocking for a host. Settings, source, and empty tabs
+        // have no page API to update and are left alone.
+        if url != nil, !isSettingsPage, !isPageSource {
+            reload()
         }
     }
 

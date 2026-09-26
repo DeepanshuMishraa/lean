@@ -56,6 +56,18 @@ struct PasswordVaultTests {
         #expect(!PasswordVault.isOffered(kept, onHost: "github.io", scheme: "https"))
     }
 
+    @Test("Regional S3 buckets stay distinct tenants")
+    func s3TenantIsolation() {
+        #expect(
+            PasswordVault.registrableHost("alice.s3.us-west-2.amazonaws.com")
+                == "alice.s3.us-west-2.amazonaws.com"
+        )
+        let kept = SavedPassword(scheme: "https", host: "alice.s3.us-west-2.amazonaws.com", port: nil, username: "alice", createdAt: nil)
+        #expect(PasswordVault.isOffered(kept, onHost: "alice.s3.us-west-2.amazonaws.com", scheme: "https"))
+        #expect(!PasswordVault.isOffered(kept, onHost: "bob.s3.us-west-2.amazonaws.com", scheme: "https"))
+        #expect(!PasswordVault.isOffered(kept, onHost: "alice.s3.us-east-1.amazonaws.com", scheme: "https"))
+    }
+
     @Test("Password origins reject non-web schemes")
     func rejectsNonWebOrigins() throws {
         #expect(PasswordVault.originString(for: try #require(URL(string: "file:///tmp/passwords"))) == nil)

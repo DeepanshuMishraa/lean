@@ -185,6 +185,11 @@ enum PasswordVault {
         for suffix in multiTenantSuffixes where lower == suffix || lower.hasSuffix("." + suffix) {
             return lower
         }
+        // Amazon-style regional hosts (alice.s3.us-west-2.amazonaws.com):
+        // every label path is a different tenant, same as above.
+        if lower == "amazonaws.com" || lower.hasSuffix(".amazonaws.com") {
+            return lower
+        }
         let labels = lower.split(separator: ".").map(String.init)
         guard labels.count > 2 else { return labels.joined(separator: ".") }
         let seconds: Set<String> = ["co", "com", "org", "net", "gov", "gouv", "ac", "edu", "asso", "or", "ne"]

@@ -4,7 +4,7 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
-## [Unreleased]
+## [0.1.3] - 2026-09-26
 
 ### Added
 

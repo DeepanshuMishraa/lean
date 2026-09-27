@@ -158,26 +158,71 @@ enum PageScripts {
             }
             return false;
         }
-        function report() {
-            var el = document.activeElement;
-            var rect = null;
-            if (isPasswordField(el) || looksLikeUsername(el)) {
-                var bounds = el.getBoundingClientRect();
-                if (bounds.width && bounds.height) rect = { x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height };
+        // The credential field being tracked, if any. Scroll/resize only do
+        // work while one is focused — otherwise scrolling never touches
+        // layout or the native bridge (see scheduleReport).
+        var activeField = null;
+        var lastKey = 'none';
+        function keyFor(rect) {
+            if (!rect) return 'none';
+            return Math.round(rect.x) + ',' + Math.round(rect.y) + ',' + Math.round(rect.width) + ',' + Math.round(rect.height);
+        }
+        function currentRect() {
+            if (!activeField || !document.contains(activeField)) {
+                activeField = null;
+                return null;
             }
+            var bounds = activeField.getBoundingClientRect();
+            if (!bounds.width || !bounds.height) return null;
+            return { x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height };
+        }
+        function report() {
+            var rect = currentRect();
+            var key = keyFor(rect);
+            // The overlay only moves when the rect actually changes: without
+            // this, every scroll frame posted a message across the bridge
+            // (plus a forced layout below), which made momentum scrolling on
+            // huge streaming pages stutter harder the longer the stream grew.
+            if (key === lastKey) return;
+            lastKey = key;
             try {
                 window.webkit.messageHandlers.\(passwordFieldMessageName).postMessage({ rect: rect });
             } catch (error) {}
         }
         var scheduled = false;
         function scheduleReport() {
+            // No credential field focused: stay off the scroll path entirely
+            // — no rAF, no layout query, no bridge traffic. Scroll (and nested
+            // scrollers like chat message lists) cost nothing then.
+            if (!activeField) return;
             if (scheduled) return;
             scheduled = true;
             requestAnimationFrame(function() { scheduled = false; report(); });
         }
         window.__leanPasswordFieldFocusReport = report;
-        document.addEventListener('focusin', report, true);
-        document.addEventListener('focusout', function() { setTimeout(report, 0); }, true);
+        document.addEventListener('focusin', function(e) {
+            var el = e.target;
+            if (isPasswordField(el) || looksLikeUsername(el)) {
+                activeField = el;
+            } else {
+                activeField = null;
+            }
+            report();
+        }, true);
+        document.addEventListener('focusout', function() {
+            // focusout runs before the next focusin: re-read after focus
+            // settles so a field-to-field hop reports the new rect instead
+            // of a hide flicker.
+            setTimeout(function() {
+                var el = document.activeElement;
+                if (isPasswordField(el) || looksLikeUsername(el)) {
+                    activeField = el;
+                } else {
+                    activeField = null;
+                }
+                report();
+            }, 0);
+        }, true);
         document.addEventListener('scroll', scheduleReport, true);
         window.addEventListener('resize', scheduleReport);
         report();

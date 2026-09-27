@@ -56,7 +56,9 @@ enum AddressResolver {
         if let components = URLComponents(string: value),
            let scheme = components.scheme?.lowercased(),
            ["http", "https", "lean"].contains(scheme),
-           components.host != nil {
+           let host = components.host, !host.isEmpty {
+            // An explicit scheme is never rewritten: http stays http, even
+            // for public domains that default to https when bare.
             return components.url
         }
 
@@ -122,6 +124,15 @@ enum AddressResolver {
             host = String(host.dropFirst().dropLast())
         }
         return isLocalHost(host)
+    }
+
+    /// Typed with an explicit web scheme (`http://…` or `https://…`):
+    /// navigation intent is unambiguous, so callers rank the direct
+    /// navigation first — an explicit `http` must never lose to a history
+    /// or search row and end up on `https`.
+    static func hasExplicitWebScheme(_ value: String) -> Bool {
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return text.hasPrefix("http://") || text.hasPrefix("https://")
     }
 
     /// Host before any port, tolerating bracketed IPv6 (`[::1]:3000`).

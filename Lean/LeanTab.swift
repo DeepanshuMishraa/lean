@@ -150,6 +150,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private var downloadWatchdogs: Set<UUID> = []
     private var zoomIndicatorWorkItem: DispatchWorkItem?
     private var passwordSuggestionHideWorkItem: DispatchWorkItem?
+    /// Dedup key for the last shown password-suggestion rect (see
+    /// updatePasswordSuggestions): identical reports skip the Keychain read.
+    private var lastPasswordSuggestionKey: String?
 
     func cancelActiveDownload(id: UUID) {
         if let download = activeDownloadObjects[id] {
@@ -1366,16 +1369,28 @@ extension LeanTab: WKScriptMessageHandler {
               let rect = fields["rect"] as? [String: Double],
               let x = rect["x"], let y = rect["y"],
               let width = rect["width"], let height = rect["height"] else {
+            lastPasswordSuggestionKey = nil
             if passwordSuggestionFrame != nil { schedulePasswordSuggestionsHide() }
             return
         }
         guard let origin = url ?? webView.url,
-              let scheme = origin.scheme?.lowercased(), scheme == "https" || scheme == "http",
-              case .success(let logins) = PasswordVault.forSite(origin),
-              !logins.isEmpty else {
+              let scheme = origin.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
+            lastPasswordSuggestionKey = nil
             if passwordSuggestionFrame != nil { schedulePasswordSuggestionsHide() }
             return
         }
+        // The page now only reports when the rect changes, but re-injection
+        // (SPA navigations) can replay the same rect: skip the synchronous
+        // Keychain read and the republish when nothing actually moved.
+        let key = "\(origin.absoluteString)|\(Int(x))|\(Int(y))|\(Int(width))|\(Int(height))"
+        guard key != lastPasswordSuggestionKey else { return }
+        guard case .success(let logins) = PasswordVault.forSite(origin),
+              !logins.isEmpty else {
+            lastPasswordSuggestionKey = nil
+            if passwordSuggestionFrame != nil { schedulePasswordSuggestionsHide() }
+            return
+        }
+        lastPasswordSuggestionKey = key
         passwordSuggestionHideWorkItem?.cancel()
         savedPasswordSuggestions = logins
         passwordSuggestionFrame = CGRect(x: x, y: y, width: width, height: height).applying(
@@ -1393,6 +1408,7 @@ extension LeanTab: WKScriptMessageHandler {
     private func hidePasswordSuggestions() {
         passwordSuggestionHideWorkItem?.cancel()
         passwordSuggestionHideWorkItem = nil
+        lastPasswordSuggestionKey = nil
         passwordSuggestionFrame = nil
         savedPasswordSuggestions = []
     }
@@ -1910,6 +1926,39 @@ extension LeanTab: WKUIDelegate {
     /// previously stalled the `postMessage` handshake and left dead tabs.
     func webViewDidClose(_ webView: WKWebView) {
         onCloseTab?()
+    }
+
+    /// File uploads (`<input type=file>`, photo/file attach buttons).
+    /// WebKit has no built-in panel on macOS: without this method every
+    /// file dialog is silently treated as Cancel, so attach buttons appear
+    /// to do nothing and no Finder window ever opens. Presenting our own
+    /// NSOpenPanel goes through the Powerbox, which is already covered by
+    /// the `user-selected.read-write` entitlement — no new entitlement needed.
+    func webView(
+        _ webView: WKWebView,
+        runOpenPanelWith parameters: WKOpenPanelParameters,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping ([URL]?) -> Void
+    ) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = !parameters.allowsDirectories
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canCreateDirectories = false
+        panel.message = "Choose a file to upload"
+        let finish: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK else {
+                completionHandler(nil)
+                return
+            }
+            completionHandler(panel.urls)
+        }
+        if let window = webView.window {
+            panel.beginSheetModal(for: window, completionHandler: finish)
+        } else {
+            // Background tab with no window yet: app-modal, non-blocking.
+            panel.begin(completionHandler: finish)
+        }
     }
 
     func webView(

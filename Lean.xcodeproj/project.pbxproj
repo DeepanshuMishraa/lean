@@ -96,6 +96,7 @@
 		D9B80274D69A28208394038F /* ThemeColorStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6558AEC1506E53C0FDE8F78 /* ThemeColorStrip.swift */; };
 		DB4831CB6B88926C41A5D902 /* NavigationControlsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E07226B7BD97E945B43B227 /* NavigationControlsTests.swift */; };
 		DB7B0BE3C10C7112DDB594AC /* NativeHostService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39FC7F01364675372F09FA78 /* NativeHostService.swift */; };
+		E12BE9E3BA6B9E859D505B69 /* PasswordFieldFocusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCA46DB5CD6B67D6C42DF7CE /* PasswordFieldFocusTests.swift */; };
 		E1A400A728F5D1E7C524901B /* NativeMessagingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0371D997E37DB00E2768A894 /* NativeMessagingTests.swift */; };
 		E1E4B3801476B9C153DE67AA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 35F2D4FF87DECD9F462CD726 /* Sparkle */; };
 		E2C6EA7816694867748F48BE /* BrowserDataImporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC61B1685D1750DF9724EE64 /* BrowserDataImporterTests.swift */; };
@@ -221,6 +222,7 @@
 		B68D79B10CF72FD177F0AC81 /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
 		BA97354673D3289795AA33C7 /* SettingsControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsControls.swift; sourceTree = "<group>"; };
 		BC61B1685D1750DF9724EE64 /* BrowserDataImporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserDataImporterTests.swift; sourceTree = "<group>"; };
+		BCA46DB5CD6B67D6C42DF7CE /* PasswordFieldFocusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordFieldFocusTests.swift; sourceTree = "<group>"; };
 		BE299D40B9F2B4D61F3D41AD /* OmnibarService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmnibarService.swift; sourceTree = "<group>"; };
 		C59A22C06416C42970660C92 /* NativeMessagingCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMessagingCore.swift; sourceTree = "<group>"; };
 		C5A52B464DE485174355D358 /* AdBlockFilterConverterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdBlockFilterConverterTests.swift; sourceTree = "<group>"; };
@@ -425,6 +427,7 @@
 				E026CDD622E2E63875106C93 /* PageLoadErrorTests.swift */,
 				5F223D3E0E5D21A9B6965446 /* PageLoadingTests.swift */,
 				09338594D97F5FCF9CC635AF /* PasskeysTests.swift */,
+				BCA46DB5CD6B67D6C42DF7CE /* PasswordFieldFocusTests.swift */,
 				2601F84C6FDEB3F58E4C912F /* PasswordVaultTests.swift */,
 				F4568DDDF6A7FD8960679B19 /* SeparatorExpansionTests.swift */,
 				B53E2D1FDEBA2B433144566B /* SettingsPopoverHistoryTests.swift */,
@@ -627,6 +630,7 @@
 				84F0386C0659929C73624EE0 /* PageLoadErrorTests.swift in Sources */,
 				4D642F93D1BCE6BACD83B656 /* PageLoadingTests.swift in Sources */,
 				76ED0D22ACB855955962975B /* PasskeysTests.swift in Sources */,
+				E12BE9E3BA6B9E859D505B69 /* PasswordFieldFocusTests.swift in Sources */,
 				A91B0FF57EFB4487C52766CC /* PasswordVaultTests.swift in Sources */,
 				7C1C4C6681626A2086648A1B /* SeparatorExpansionTests.swift in Sources */,
 				67450D98E0FF73EAC1CF3B35 /* SettingsPopoverHistoryTests.swift in Sources */,

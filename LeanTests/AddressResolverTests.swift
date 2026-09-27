@@ -117,4 +117,36 @@ struct AddressResolverTests {
         #expect(AddressResolver.ipLiteralURL(from: "localhost:3000") == nil)
         #expect(AddressResolver.ipLiteralURL(from: "") == nil)
     }
+
+    @Test("Explicit schemes are never rewritten")
+    func explicitSchemesPreserved() {
+        #expect(AddressResolver.webURL(from: "http://example.com")?.absoluteString == "http://example.com")
+        #expect(AddressResolver.webURL(from: "http://example.com:8080/path?q=1")?.absoluteString == "http://example.com:8080/path?q=1")
+        #expect(AddressResolver.webURL(from: "HTTP://EXAMPLE.COM")?.scheme?.lowercased() == "http")
+        #expect(AddressResolver.webURL(from: "HTTP://EXAMPLE.COM")?.host?.lowercased() == "example.com")
+        #expect(AddressResolver.resolve("http://example.com")?.absoluteString == "http://example.com")
+        #expect(AddressResolver.webURL(from: "https://example.com")?.absoluteString == "https://example.com")
+        #expect(AddressResolver.resolve("https://example.com")?.absoluteString == "https://example.com")
+        // Bare domains still default to https.
+        #expect(AddressResolver.resolve("example.com")?.absoluteString == "https://example.com")
+    }
+
+    @Test("A bare scheme without a host falls through to search")
+    func bareSchemeSearches() {
+        #expect(AddressResolver.webURL(from: "http://") == nil)
+        #expect(AddressResolver.webURL(from: "https://") == nil)
+        let searched = AddressResolver.resolve("http://")
+        #expect(searched?.host == "www.google.com")
+        #expect(searched?.absoluteString.contains("q=http") == true)
+    }
+
+    @Test("Explicit scheme detection")
+    func explicitSchemeDetection() {
+        #expect(AddressResolver.hasExplicitWebScheme("http://example.com"))
+        #expect(AddressResolver.hasExplicitWebScheme("  HTTPS://example.com  "))
+        #expect(AddressResolver.hasExplicitWebScheme("HTTP://localhost:3000"))
+        #expect(!AddressResolver.hasExplicitWebScheme("example.com"))
+        #expect(!AddressResolver.hasExplicitWebScheme("localhost:3000"))
+        #expect(!AddressResolver.hasExplicitWebScheme("minimal mac browser"))
+    }
 }

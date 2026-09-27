@@ -157,9 +157,14 @@ final class OmnibarService {
         }
         // A bare loopback address navigates on Enter even with history
         // about it (e.g. a past search for it): it goes first, the rest
-        // still shows.
+        // still shows. Same for any explicitly-schemed address: typing
+        // `http://example.com` is unambiguous navigation intent, so the
+        // direct row outranks history and search — an explicit `http`
+        // must never lose to a row that lands on `https`.
         let loopbackFirst = directMatch.map { AddressResolver.isLoopbackURL($0.targetURL) } ?? false
-        if loopbackFirst, let directMatch {
+        let explicitFirst = directMatch != nil && AddressResolver.hasExplicitWebScheme(trimmed)
+        let directFirst = loopbackFirst || explicitFirst
+        if directFirst, let directMatch {
             results.append(directMatch)
         }
 
@@ -195,8 +200,8 @@ final class OmnibarService {
         }
 
         // 4. Fallback for domain-like input is computed above (2.); a
-        // non-loopback direct navigation goes here, after history.
-        if !loopbackFirst, let directMatch {
+        // non-loopback, non-explicit direct navigation goes here, after history.
+        if !directFirst, let directMatch {
             results.append(directMatch)
         }
 

@@ -128,4 +128,37 @@ struct OmnibarServiceTests {
         #expect(suggestions.count == 1)
         #expect(suggestions[0].targetURL.absoluteString == "http://100.109.113.4")
     }
+
+    @Test("Explicit http navigates first and stays http")
+    func explicitHttpNavigatesFirst() {
+        let suggestions = OmnibarService.shared.suggestions(for: "http://example.com")
+
+        #expect(suggestions.count >= 2)
+        #expect(suggestions.first?.isSearch == false)
+        #expect(suggestions.first?.targetURL.scheme == "http")
+        #expect(suggestions.first?.targetURL.absoluteString == "http://example.com")
+    }
+
+    @Test("Explicit http outranks poisoned history")
+    func explicitHttpOutranksHistory() {
+        // A past search for the address, plus an https page on the same
+        // host, must not shadow the explicit http navigation on Enter.
+        let history = [
+            (url: URL(string: "https://duckduckgo.com/?q=http%3A%2F%2Fexample.com")!, title: "http://example.com at DuckDuckGo"),
+            (url: URL(string: "https://example.com/login")!, title: "Example Login"),
+        ]
+        let suggestions = OmnibarService.shared.suggestions(for: "http://example.com", history: history)
+
+        #expect(suggestions.first?.isSearch == false)
+        #expect(suggestions.first?.targetURL.scheme == "http")
+        #expect(suggestions.first?.targetURL.absoluteString == "http://example.com")
+    }
+
+    @Test("Explicit https navigates first and stays https")
+    func explicitHttpsNavigatesFirst() {
+        let suggestions = OmnibarService.shared.suggestions(for: "https://example.com/path")
+
+        #expect(suggestions.first?.isSearch == false)
+        #expect(suggestions.first?.targetURL.absoluteString == "https://example.com/path")
+    }
 }

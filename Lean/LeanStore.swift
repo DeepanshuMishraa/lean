@@ -2063,9 +2063,7 @@ final class LeanStore: ObservableObject {
 
             isTabSwitcherVisible = true
             switcherSessionIDs = validTabs.map(\.id)
-            let currentIndex = validTabs.firstIndex(where: { $0.id == selectedID }) ?? 0
-            let offset = reverse ? validTabs.count - 1 : 1
-            switcherSelectedIndex = (currentIndex + offset) % validTabs.count
+            switcherSelectedIndex = validTabs.firstIndex(where: { $0.id == selectedID }) ?? 0
         } else {
             cycleTabSwitcher(reverse: reverse)
         }

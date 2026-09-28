@@ -13,9 +13,9 @@ struct TabSwitcherSessionTests {
         return (store, directory, created)
     }
 
-    @Test("Commit selects the highlighted tab")
+    @Test("Opening highlights the current tab, then advances")
     @MainActor
-    func commitSelectsNext() throws {
+    func openingHighlightsCurrentTab() throws {
         let (store, directory, tabs) = try makeStore(with: [
             "https://a.example/", "https://b.example/", "https://c.example/",
         ])
@@ -23,20 +23,24 @@ struct TabSwitcherSessionTests {
 
         store.startTabSwitcher()
         #expect(store.isTabSwitcherVisible)
+        #expect(store.switcherSelectedIndex == 0)
+        store.startTabSwitcher()
         #expect(store.switcherSelectedIndex == 1)
         store.commitTabSwitcher()
         #expect(!store.isTabSwitcherVisible)
         #expect(store.selectedID == tabs[1].id)
     }
 
-    @Test("Reverse start highlights the previous tab")
+    @Test("Reverse opening highlights the current tab, then moves back")
     @MainActor
-    func reverseStart() throws {
+    func reverseOpeningHighlightsCurrentTab() throws {
         let (store, directory, tabs) = try makeStore(with: [
             "https://a.example/", "https://b.example/", "https://c.example/",
         ])
         defer { try? FileManager.default.removeItem(at: directory) }
 
+        store.startTabSwitcher(reverse: true)
+        #expect(store.switcherSelectedIndex == 0)
         store.startTabSwitcher(reverse: true)
         #expect(store.switcherSelectedIndex == 2)
         store.commitTabSwitcher()
@@ -52,6 +56,7 @@ struct TabSwitcherSessionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         // Highlight B…
+        store.startTabSwitcher()
         store.startTabSwitcher()
         #expect(store.switcherVisibleTabs[store.switcherSelectedIndex].id == tabs[1].id)
         // …then move B to the end before releasing.
@@ -70,6 +75,7 @@ struct TabSwitcherSessionTests {
         ])
         defer { try? FileManager.default.removeItem(at: directory) }
 
+        store.startTabSwitcher()
         store.startTabSwitcher() // highlights B
         store.close(tabs[1])
         store.commitTabSwitcher()

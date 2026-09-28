@@ -4,6 +4,15 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.6] - 2026-09-28
+
+### Fixed
+
+- The tab switcher now opens with the current tab selected before repeated
+  shortcut presses cycle through other tabs
+- Horizontal tabs switch their webpage on the first click instead of only
+  moving the active-tab indicator
+
 ## [0.1.5] - 2026-09-27
 
 ### Fixed

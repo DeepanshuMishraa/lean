@@ -121,7 +121,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     var onStateChange: (() -> Void)?
     var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
     var onCloseTab: (() -> Void)?
-    var onOpenURLInNewTab: ((URL) -> Void)?
+    var onOpenURLInNewTab: ((URL, Bool) -> Void)?
     var onOpenSourceTab: ((String, String?) -> LeanTab?)?
     /// Shift-clicked link, for a peek over the page. Set by the store.
     var onPeekLink: ((URL) -> Void)?
@@ -687,12 +687,24 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
     func reload() {
         if isSleeping, let url { load(url); return }
+        if pageError != nil || webView.url == nil || webView.isLoading {
+            let target = url ?? webView.url
+            webView.stopLoading()
+            if let target { load(target) }
+            return
+        }
         isLoading = true
         onStateChange?()
         webView.reload()
     }
     func reloadFromOrigin() {
         if isSleeping, let url { load(url); return }
+        if pageError != nil || webView.url == nil || webView.isLoading {
+            let target = url ?? webView.url
+            webView.stopLoading()
+            if let target { load(target) }
+            return
+        }
         isLoading = true
         onStateChange?()
         webView.reloadFromOrigin()
@@ -827,7 +839,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         if ExternalLinkPolicy.shouldOpenExternally(url) {
             NSWorkspace.shared.open(url)
         } else {
-            onOpenURLInNewTab?(url)
+            onOpenURLInNewTab?(url, true)
         }
     }
     @objc private func pageMenuShowSource() { showPageSource() }
@@ -1748,11 +1760,6 @@ extension LeanTab: WKNavigationDelegate {
         // with `.allow`, WebKit tries to load it as the next page — nowhere
         // for that to go, so nothing happens and nothing says why.
         // `.download` turns it into the `WKDownload` below.
-        if let url = navigationAction.request.url,
-           let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
-           navigationAction.targetFrame?.isMainFrame == true {
-            pendingMainFrameURL = url
-        }
         guard !navigationAction.shouldPerformDownload else {
             decisionHandler(.download)
             return
@@ -1769,6 +1776,15 @@ extension LeanTab: WKNavigationDelegate {
             decisionHandler(.cancel)
             return
         }
+        if navigationAction.navigationType == .linkActivated,
+           navigationAction.modifierFlags.contains(.command),
+           navigationAction.targetFrame?.isMainFrame != false,
+           let url = navigationAction.request.url,
+           let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
+            decisionHandler(.cancel)
+            onOpenURLInNewTab?(url, navigationAction.modifierFlags.contains(.shift))
+            return
+        }
         // Shift-click, when Settings says so: a peek at the link, over this
         // page (see PeekPanel). Only from a tab in the row — within a peek,
         // a link just goes.
@@ -1780,6 +1796,11 @@ extension LeanTab: WKNavigationDelegate {
             decisionHandler(.cancel)
             onPeekLink?(url)
             return
+        }
+        if let url = navigationAction.request.url,
+           let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+           navigationAction.targetFrame?.isMainFrame == true {
+            pendingMainFrameURL = url
         }
         if navigationAction.targetFrame?.isMainFrame == true,
            let host = navigationAction.request.url?.host?.lowercased() {
@@ -1917,6 +1938,12 @@ extension LeanTab: WKUIDelegate {
         let url = navigationAction.request.url ?? URL(string: "about:blank")!
         if ExternalLinkPolicy.shouldOpenExternally(url) {
             NSWorkspace.shared.open(url)
+            return nil
+        }
+        if navigationAction.navigationType == .linkActivated,
+           navigationAction.modifierFlags.contains(.command),
+           let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
+            onOpenURLInNewTab?(url, navigationAction.modifierFlags.contains(.shift))
             return nil
         }
         return onOpenNewTab?(url, configuration)

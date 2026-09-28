@@ -1693,8 +1693,8 @@ final class LeanStore: ObservableObject {
         tab.onOpenSourceTab = { [weak self] title, html in
             self?.openPageSource(title: title, html: html)
         }
-        tab.onOpenURLInNewTab = { [weak self] url in
-            self?.newTab(url: url)
+        tab.onOpenURLInNewTab = { [weak self] url, select in
+            self?.newTab(url: url, select: select)
         }
     }
 

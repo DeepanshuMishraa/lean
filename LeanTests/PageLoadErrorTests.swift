@@ -166,6 +166,28 @@ struct PageLoadErrorTests {
     }
 
     @MainActor
+    @Test("Reload retries the attempted address after a provisional failure")
+    func reloadFailedNavigation() async throws {
+        let tab = LeanTab(dataStore: .nonPersistent(), initialURL: nil, adBlockingEnabled: false)
+        let (port, fd) = Self.refusedLoopbackServer()
+        defer { if fd >= 0 { close(fd) } }
+        let target = try #require(URL(string: "http://127.0.0.1:\(port)/"))
+        tab.load(target)
+        for _ in 0..<150 where tab.pageError == nil {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        _ = try #require(tab.pageError)
+        #expect(tab.webView.url == nil)
+        tab.reload()
+        #expect(tab.pageError == nil)
+        #expect(tab.url == target)
+        for _ in 0..<150 where tab.pageError == nil {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        #expect(tab.pageError?.url == target)
+    }
+
+    @MainActor
     @Test("Failed navigations stay out of history but keep the address")
     func failedNavigationNotInHistory() async throws {
         let (store, directory) = try makeIsolatedTestStore()

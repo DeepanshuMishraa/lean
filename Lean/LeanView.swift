@@ -975,6 +975,11 @@ final class LeanStageView: NSView {
         settle()
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        settle()
+    }
+
     func show(_ page: NSView?) {
         wanted = page
         settle()

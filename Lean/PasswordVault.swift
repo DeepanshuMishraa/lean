@@ -191,6 +191,17 @@ enum PasswordVault {
             return lower
         }
         let labels = lower.split(separator: ".").map(String.init)
+        // The system's public-suffix list knows every shared-hosting suffix
+        // (web.app, ngrok.io, myshopify.com, …) the hand-kept list above
+        // cannot: the registrable domain is one label above the suffix.
+        if let isSuffix = Passkeys.publicSuffix {
+            for index in labels.indices {
+                if isSuffix(labels[index...].joined(separator: ".") as CFString) {
+                    return index == 0 ? lower : labels[(index - 1)...].joined(separator: ".")
+                }
+            }
+            return lower
+        }
         guard labels.count > 2 else { return labels.joined(separator: ".") }
         let seconds: Set<String> = ["co", "com", "org", "net", "gov", "gouv", "ac", "edu", "asso", "or", "ne"]
         if seconds.contains(labels[labels.count - 2]), labels[labels.count - 1].count == 2 {

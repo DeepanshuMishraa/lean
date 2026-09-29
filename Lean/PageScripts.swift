@@ -71,6 +71,7 @@ enum PageScripts {
         try {
             var frameId = Math.random().toString(36).substring(2);
             var timer = null;
+            var poll = null;
             var lastState = null;
 
             function check() {
@@ -88,6 +89,11 @@ enum PageScripts {
                     var muted = mediaElements.length > 0 && mediaElements.every(function(el) {
                         return el.muted || el.volume === 0;
                     });
+
+                    // Poll only while something plays (heartbeat + end
+                    // detection); idle frames run no timer at all.
+                    if (active && !poll) poll = setInterval(check, 1500);
+                    else if (!active && poll) { clearInterval(poll); poll = null; }
 
                     var changed = lastState === null || lastState.isPlaying !== active || lastState.isMuted !== muted;
                     // While playing, every poll reports in (a heartbeat), not
@@ -116,8 +122,6 @@ enum PageScripts {
             events.forEach(function(evt) {
                 window.addEventListener(evt, scheduleCheck, true);
             });
-
-            setInterval(check, 1500);
 
             if (document.readyState === 'complete') {
                 scheduleCheck();
@@ -750,11 +754,20 @@ enum PageScripts {
                         }
                         try { window.__leanYtSkipTimer = setInterval(tame, 120); } catch (e) {}
                         try {
+                            // One pass per frame: a busy page fires
+                            // mutations by the thousand, and the 120ms
+                            // timer already backstops this.
+                            var tameQueued = false;
                             var obs = new MutationObserver(function() {
-                                try {
-                                    if (!window.__leanYtAdsEnabled) return;
-                                    tame();
-                                } catch (e) {}
+                                if (tameQueued) return;
+                                tameQueued = true;
+                                requestAnimationFrame(function() {
+                                    tameQueued = false;
+                                    try {
+                                        if (!window.__leanYtAdsEnabled) return;
+                                        tame();
+                                    } catch (e) {}
+                                });
                             });
                             obs.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
                             window.__leanYtSkipObserver = obs;
@@ -794,7 +807,15 @@ enum PageScripts {
                                 }
                             };
                             hookVideos();
-                            var bodyObs = new MutationObserver(function() { try { hookVideos(); } catch (e) {} });
+                            var hookQueued = false;
+                            var bodyObs = new MutationObserver(function() {
+                                if (hookQueued) return;
+                                hookQueued = true;
+                                requestAnimationFrame(function() {
+                                    hookQueued = false;
+                                    try { hookVideos(); } catch (e) {}
+                                });
+                            });
                             bodyObs.observe(document.documentElement, { childList: true, subtree: true });
                             window.__leanYtVideoObserver = bodyObs;
                         } catch (e) {}

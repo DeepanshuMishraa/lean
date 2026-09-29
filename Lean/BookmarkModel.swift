@@ -23,7 +23,7 @@ public struct BookmarkItem: Codable, Identifiable, Hashable, Sendable {
 
     public var host: String {
         guard let host = url.host?.lowercased() else { return url.absoluteString }
-        return host.replacingOccurrences(of: "www.", with: "")
+        return (host.hasPrefix("www.") ? String(host.dropFirst(4)) : host)
     }
 }
 

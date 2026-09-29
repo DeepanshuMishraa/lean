@@ -8,6 +8,7 @@ struct LeanView: View {
     @ObservedObject var updater: AppUpdater
     @State private var findQuery = ""
     @State private var hasSetupKeyMonitor = false
+    @State private var keyMonitors: [Any?] = []
 
     @State private var isZenTopBarRevealed = false
     @State private var hideTopBarWorkItem: DispatchWorkItem?
@@ -122,6 +123,7 @@ struct LeanView: View {
             }
         }
         .environment(\.browserUIScale, store.browserUIScale)
+        .environment(\.liquidGlassEnabled, store.liquidGlassEnabled)
         .ignoresSafeArea(.all)
         .background(
             store.enableWindowBorder
@@ -132,6 +134,13 @@ struct LeanView: View {
         .preferredColorScheme(store.colorScheme)
         .onAppear {
             setupKeyMonitor()
+        }
+        .onDisappear {
+            // Monitors are app-wide: a closed window must not keep (or
+            // double up) its shortcut handling.
+            keyMonitors.compactMap { $0 }.forEach(NSEvent.removeMonitor)
+            keyMonitors.removeAll()
+            hasSetupKeyMonitor = false
         }
         .onReceive(NotificationCenter.default.publisher(for: .focusAddress)) { _ in
             if store.selectedTab?.url != nil {
@@ -146,6 +155,7 @@ struct LeanView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            store.settleStaleTabSwitcher()
             if store.isInlineURLEditing {
                 store.dismissInlineURLEditing()
             }
@@ -635,7 +645,10 @@ struct LeanView: View {
 
         // Monitor mouse clicks when quick settings, inline URL bar, or floating omnibar is open:
         // Only clicking outside the active region collapses / closes it!
-        NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { event in
+        keyMonitors.append(NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { event in
+            // Runs before the click reaches any view: a switcher left open by
+            // a missed key release must not swallow this click.
+            store.settleStaleTabSwitcher()
             guard let window = event.window ?? NSApp.keyWindow else { return event }
 
             // Convert AppKit window coordinates (origin bottom-left) to SwiftUI global coordinates (origin top-left)
@@ -772,10 +785,13 @@ struct LeanView: View {
                 store.dismissFloatingOmnibar()
                 return event
             }
-        }
+        })
 
         // Monitor keyDown for registered custom shortcuts and Escape
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        keyMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // Tab pressed again with the switcher open cycles it; anything
+            // else first checks the switcher is not stale.
+            if event.keyCode != 48 { store.settleStaleTabSwitcher() }
             // When link peek preview is active:
             if store.peekTab != nil {
                 if event.keyCode == 53 {
@@ -879,15 +895,13 @@ struct LeanView: View {
                 }
             }
             return event
-        }
+        })
 
         // Monitor flagsChanged to detect release of Control key
-        NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
-            if store.isTabSwitcherVisible && !event.modifierFlags.contains(.control) {
-                store.commitTabSwitcher()
-            }
+        keyMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
+            store.settleStaleTabSwitcher()
             return event
-        }
+        })
     }
 
     private var floatingFindBar: some View {
@@ -964,6 +978,13 @@ struct WebView: NSViewRepresentable {
         tab.webView.wantsLayer = true
         view.show(tab.webView)
     }
+
+    /// A stage on its way out must let go of the page: while it still
+    /// "wants" it, its next layout pulls the page back from the stage that
+    /// replaced it, leaving the newly selected tab showing nothing.
+    static func dismantleNSView(_ view: LeanStageView, coordinator: ()) {
+        view.show(nil)
+    }
 }
 
 /// Internal alongside WebView so PeekPanel can host a peeked tab's page.
@@ -974,6 +995,13 @@ final class LeanStageView: NSView {
         super.layout()
         settle()
     }
+
+    // WebKit hands keys the page did not use up the responder chain, and the
+    // window answers with the system beep (right arrow on a video, say). The
+    // stage is the page's superview, so ending the chain here keeps it quiet.
+    override func keyDown(with event: NSEvent) {}
+    override func doCommand(by selector: Selector) {}
+    override func noResponder(for eventSelector: Selector) {}
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -1195,6 +1223,7 @@ private struct WindowConfigurator: NSViewRepresentable {
     private func configure(view: NSView) {
         guard let window = view.window else { return }
         window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = store.liquidGlassEnabled ? .none : .automatic
         window.titleVisibility = .hidden
         window.styleMask.insert(.fullSizeContentView)
         // Never use window-wide background dragging: with fullSizeContentView

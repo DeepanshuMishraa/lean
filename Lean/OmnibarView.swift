@@ -198,15 +198,20 @@ struct OmnibarView: View {
     }
 
     // MARK: - Styling Helpers
+    @ViewBuilder
     private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: showSuggestions ? 16 : 12, style: .continuous)
-            .fill(store.themeColors.omnibarBackground)
+        if store.liquidGlassEnabled, #available(macOS 26, *) {
+            Color.clear.glassEffect(in: .rect(cornerRadius: showSuggestions ? 16 : 12))
+        } else {
+            RoundedRectangle(cornerRadius: showSuggestions ? 16 : 12, style: .continuous)
+                .fill(store.themeColors.omnibarBackground)
+        }
     }
 
     private var cardBorder: some View {
         RoundedRectangle(cornerRadius: showSuggestions ? 16 : 12, style: .continuous)
             .stroke(
-                store.themeColors.omnibarBorder,
+                store.liquidGlassEnabled ? Color.clear : store.themeColors.omnibarBorder,
                 lineWidth: 1
             )
     }

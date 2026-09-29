@@ -3,6 +3,14 @@ import SwiftUI
 // MARK: - Bespoke Downloads Popover (same card language as Quick Settings)
 struct DownloadsPopover: View {
     @ObservedObject var store: LeanStore
+    /// Observed directly: progress ticks redraw only the views showing
+    /// downloads, not every view that observes the store.
+    @ObservedObject private var downloadManager: DownloadManager
+
+    init(store: LeanStore) {
+        self.store = store
+        self.downloadManager = store.downloadManager
+    }
     @State private var isFooterHovered = false
     @State private var isClearHovered = false
 

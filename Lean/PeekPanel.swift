@@ -146,7 +146,7 @@ private struct PeekHeaderBar: View {
 
     private var displayHost: String {
         guard let host = tab.url?.host?.lowercased() else { return "" }
-        let clean = host.replacingOccurrences(of: "www.", with: "")
+        let clean = (host.hasPrefix("www.") ? String(host.dropFirst(4)) : host)
         if let path = tab.url?.path, path != "/", !path.isEmpty {
             return clean + path
         }

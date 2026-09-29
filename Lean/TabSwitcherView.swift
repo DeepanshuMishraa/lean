@@ -1,24 +1,58 @@
 import SwiftUI
 
+private struct SwitcherRowWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
 struct TabSwitcherView: View {
     @ObservedObject var store: LeanStore
+    @State private var rowWidth: CGFloat = 0
 
     var body: some View {
+        GeometryReader { geometry in
+            switcher(maxWidth: max(240, geometry.size.width - 60))
+        }
+    }
+
+    /// Sized to its tabs, and to the window at most: past that the row
+    /// scrolls and follows the highlight. The width is measured from the row
+    /// itself, so the panel hugs its content instead of stretching.
+    private func fitted<Row: View>(maxWidth: CGFloat, row: Row) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                row.background(
+                    GeometryReader { geometry in
+                        Color.clear.preference(key: SwitcherRowWidthKey.self, value: geometry.size.width)
+                    }
+                )
+            }
+            .frame(width: min(rowWidth, maxWidth))
+            .opacity(rowWidth > 0 ? 1 : 0)
+            .onPreferenceChange(SwitcherRowWidthKey.self) { rowWidth = $0 }
+            .onChange(of: store.switcherSelectedIndex) { _, index in
+                let tabs = store.switcherVisibleTabs
+                guard tabs.indices.contains(index) else { return }
+                proxy.scrollTo(tabs[index].id, anchor: .center)
+            }
+        }
+    }
+
+    private func switcher(maxWidth: CGFloat) -> some View {
         ZStack {
             // Completely transparent hit-test backdrop so clicking outside closes it without dimming the window
+            // Layout only. It must not take clicks: a switcher that stays up
+            // by mistake would swallow the next click on a tab or toolbar.
             Color.clear
-                .contentShape(Rectangle())
                 .ignoresSafeArea()
-                .onTapGesture {
-                    store.cancelTabSwitcher()
-                }
+                .allowsHitTesting(false)
 
             Group {
                 if store.enableThumbnailsInTabSwitcher {
-                    thumbnailCardList
+                    fitted(maxWidth: maxWidth - 20, row: thumbnailCardList)
                         .padding(10)
                 } else {
-                    normalTabList
+                    fitted(maxWidth: maxWidth - 16, row: normalTabList)
                         .padding(8)
                 }
             }
@@ -38,7 +72,7 @@ struct TabSwitcherView: View {
                     )
             )
             .shadow(color: Color.black.opacity(0.24), radius: 18, x: 0, y: 8)
-            .fixedSize()
+            .fixedSize(horizontal: false, vertical: true)
             .animation(.spring(response: 0.14, dampingFraction: 0.9), value: store.switcherSelectedIndex)
         }
     }
@@ -46,9 +80,8 @@ struct TabSwitcherView: View {
     // MARK: - Normal Tab Switcher List (Super-fast, minimal)
     private var normalTabList: some View {
         let tabs = store.switcherVisibleTabs
-        return LazyHStack(spacing: 6) {
-            ForEach(0..<tabs.count, id: \.self) { index in
-                let tab = tabs[index]
+        return HStack(spacing: 6) {
+            ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
                 NormalTabItem(
                     tab: tab,
                     isSelected: index == store.switcherSelectedIndex,
@@ -56,6 +89,7 @@ struct TabSwitcherView: View {
                     uiFont: store.tabTitleTypeface,
                     headingWeight: store.uiHeadingWeight
                 )
+                .id(tab.id)
                 .onTapGesture {
                     store.switcherSelectedIndex = index
                     store.commitTabSwitcher()
@@ -67,11 +101,8 @@ struct TabSwitcherView: View {
     // MARK: - Thumbnail Card List (Rich visual previews)
     private var thumbnailCardList: some View {
         let tabs = store.switcherVisibleTabs
-        // Lazy: decoding every tab snapshot at once spiked memory/CPU with
-        // many tabs open. Only visible cards materialize.
-        return LazyHStack(spacing: 10) {
-            ForEach(0..<tabs.count, id: \.self) { index in
-                let tab = tabs[index]
+        return HStack(spacing: 8) {
+            ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
                 TabThumbnailCard(
                     tab: tab,
                     isSelected: index == store.switcherSelectedIndex,
@@ -79,6 +110,7 @@ struct TabSwitcherView: View {
                     uiFont: store.tabTitleTypeface,
                     headingWeight: store.uiHeadingWeight
                 )
+                .id(tab.id)
                 .onTapGesture {
                     store.switcherSelectedIndex = index
                     store.commitTabSwitcher()
@@ -164,8 +196,8 @@ struct TabThumbnailCard: View {
         VStack(spacing: 0) {
             // Top Preview Thumbnail
             thumbnailPreview
-                .frame(width: 196, height: 118)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .frame(width: 148, height: 90)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .padding(6)
 
             // Bottom Title & Favicon Bar
@@ -179,11 +211,11 @@ struct TabThumbnailCard: View {
 
                 Spacer(minLength: 4)
             }
-            .padding(.horizontal, 10)
-            .frame(height: 32)
-            .padding(.bottom, 4)
+            .padding(.horizontal, 8)
+            .frame(height: 26)
+            .padding(.bottom, 2)
         }
-        .frame(width: 208, height: 160)
+        .frame(width: 160, height: 132)
         .background(
             cardBackground,
             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -215,7 +247,7 @@ struct TabThumbnailCard: View {
                 Image(nsImage: snapshot)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: 196, height: 118)
+                    .frame(width: 148, height: 90)
                     .clipped()
             } else if tab.url == nil {
                 // Clean New Tab Preview

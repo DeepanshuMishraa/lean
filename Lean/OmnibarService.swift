@@ -172,7 +172,7 @@ final class OmnibarService {
         // Precompute normalized open-tab hosts once: was O(H*T) with
         // per-item lowercased()+replacingOccurrences inside the filter.
         let openHosts: Set<String> = Set(openTabs.compactMap {
-            $0.url.host?.lowercased().replacingOccurrences(of: "www.", with: "")
+            $0.url.host?.lowercased().droppingWWWPrefix
         })
         let openURLStrings = Set(openTabs.map(\.url))
         let historyMatches = history.filter { item in
@@ -183,7 +183,7 @@ final class OmnibarService {
                 : (host.contains(lower) || title.contains(lower))
             guard matchesQuery else { return false }
 
-            let itemHost = item.url.host?.lowercased().replacingOccurrences(of: "www.", with: "") ?? ""
+            let itemHost = item.url.host?.lowercased().droppingWWWPrefix ?? ""
             guard openHosts.contains(itemHost) else { return true }
             // Same host is open: hide exact dupes and homepages, keep rest.
             if openURLStrings.contains(item.url) { return false }
@@ -220,4 +220,8 @@ final class OmnibarService {
 
         return results
     }
+}
+
+private extension String {
+    var droppingWWWPrefix: String { hasPrefix("www.") ? String(dropFirst(4)) : self }
 }

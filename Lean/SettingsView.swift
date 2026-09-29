@@ -1168,6 +1168,17 @@ private struct AppearanceSection: View {
                 )
 
                 SettingsGroup(isDark: store.isDarkMode) {
+                    if #available(macOS 26, *) {
+                        CustomToggleRow(
+                            title: "Liquid Glass",
+                            subtitle: "Use macOS glass for browser controls. Follows the system Liquid Glass slider.",
+                            isOn: $store.liquidGlassEnabled,
+                            isDark: store.isDarkMode,
+                            uiFont: store.leanUIFont
+                        )
+                        SettingsRowDivider(isDark: store.isDarkMode)
+                    }
+
                     SettingsSliderRow(
                         title: "Interface size",
                         subtitle: "Scales browser controls, icons, tabs, sidebars, and browser text",
@@ -2642,6 +2653,14 @@ private struct KeycapBadge: View {
 // MARK: - Downloads Section
 private struct DownloadsSection: View {
     @ObservedObject var store: LeanStore
+    /// Observed directly: progress ticks redraw only the views showing
+    /// downloads, not every view that observes the store.
+    @ObservedObject private var downloadManager: DownloadManager
+
+    init(store: LeanStore) {
+        self.store = store
+        self.downloadManager = store.downloadManager
+    }
     @State private var searchText = ""
 
     private var filteredItems: [DownloadItem] {

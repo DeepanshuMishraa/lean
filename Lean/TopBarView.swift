@@ -34,13 +34,13 @@ struct TopBarView: View {
                         }
                         .padding(2)
                         .background(
-                            store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04),
+                            store.liquidGlassEnabled ? Color.clear : (store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04)),
                             in: RoundedRectangle(cornerRadius: 7, style: .continuous)
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 7, style: .continuous)
                                 .stroke(
-                                    store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06),
+                                    store.liquidGlassEnabled ? Color.clear : (store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06)),
                                     lineWidth: 0.75
                                 )
                         )
@@ -285,11 +285,11 @@ struct TopBarView: View {
             Spacer().frame(width: 12)
         }
         .frame(height: store.scaled(store.enableWindowBorder ? 34 : 36))
-        .background(
-            store.enableWindowBorder
-                ? AnyView(Color.clear)
-                : AnyView(store.themeColors.topBarBackground)
-        )
+        .background {
+            if !store.enableWindowBorder {
+                store.themeColors.topBarBackground
+            }
+        }
         // NOTE: no onTapGesture here on purpose. A tap gesture covering the
         // whole bar competes with every toolbar/tab Button inside it, forcing
         // double/triple clicks or pixel-hunting. Dismissing inline URL editing
@@ -378,23 +378,27 @@ private struct TopBarTabItem: View {
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : store.adaptiveTheme.inactiveTabBackground)
+                    .fill(isSelected && store.liquidGlassEnabled ? Color.clear : (isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : store.adaptiveTheme.inactiveTabBackground))
 
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(store.adaptiveTheme.activeTabBackground)
-                        .overlay(
-                            store.enableWindowBorder
-                                ? RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
-                                : nil
-                        )
-                        .shadow(
-                            color: store.enableWindowBorder ? store.adaptiveTheme.activeTabShadow : Color.clear,
-                            radius: store.adaptiveTheme.isFrameLight ? 2 : 4,
-                            x: 0,
-                            y: 1
-                        )
+                    if store.liquidGlassEnabled, #available(macOS 26, *) {
+                        Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
+                    } else {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(store.adaptiveTheme.activeTabBackground)
+                            .overlay(
+                                store.enableWindowBorder
+                                    ? RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
+                                    : nil
+                            )
+                            .shadow(
+                                color: store.enableWindowBorder ? store.adaptiveTheme.activeTabShadow : Color.clear,
+                                radius: store.adaptiveTheme.isFrameLight ? 2 : 4,
+                                x: 0,
+                                y: 1
+                            )
+                    }
                 }
             }
         }
@@ -869,12 +873,16 @@ private struct TopBarPinnedTabItem: View {
                             .fill(store.adaptiveTheme.iconHoverBackground)
                     }
                     if isSelected {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(store.adaptiveTheme.activeTabBackground)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 0.75)
-                            )
+                        if store.liquidGlassEnabled, #available(macOS 26, *) {
+                            Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 6))
+                        } else {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(store.adaptiveTheme.activeTabBackground)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 0.75)
+                                )
+                        }
                     }
                 }
             }
@@ -1298,6 +1306,7 @@ struct InlineSuggestionRow: View {
 
 struct InteractiveIconButton: View {
     @Environment(\.browserUIScale) private var browserUIScale
+    @Environment(\.liquidGlassEnabled) private var liquidGlassEnabled
 
     let icon: LeanIcon
     let helpText: String
@@ -1343,10 +1352,14 @@ struct InteractiveIconButton: View {
                 .frame(width: iconSize * browserUIScale, height: iconSize * browserUIScale)
                 .foregroundColor(foregroundColor)
                 .frame(width: size * browserUIScale, height: size * browserUIScale)
-                .background(
-                    backgroundColor,
-                    in: RoundedRectangle(cornerRadius: 5, style: .continuous)
-                )
+                .background {
+                    if liquidGlassEnabled && isHovered && isEnabled, #available(macOS 26, *) {
+                        Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 5))
+                    } else {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(backgroundColor)
+                    }
+                }
                 .contentShape(Rectangle())
                 // Stable hit area: never grow on hover. Only a subtle press
                 // shrink while held, so mouseUp always lands inside bounds.
@@ -1594,6 +1607,14 @@ struct DownloadsButtonFrameKey: PreferenceKey {
 // MARK: - Downloads Toolbar Button (sits beside the theme icon)
 struct DownloadToolbarButton: View {
     @ObservedObject var store: LeanStore
+    /// Observed directly: progress ticks redraw only the views showing
+    /// downloads, not every view that observes the store.
+    @ObservedObject private var downloadManager: DownloadManager
+
+    init(store: LeanStore) {
+        self.store = store
+        self.downloadManager = store.downloadManager
+    }
     @Environment(\.browserUIScale) private var browserUIScale
 
     @State private var isHovered = false

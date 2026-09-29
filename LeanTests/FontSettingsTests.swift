@@ -65,6 +65,22 @@ struct FontSettingsTests {
         #expect(store.uiBodyWeight == .light)
     }
 
+    @Test("Liquid Glass preference survives a database reopen")
+    @MainActor
+    func liquidGlassPersistsAcrossRestarts() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("Lean.sqlite3")
+
+        let first = LeanStore(database: try AppDatabase(url: url))
+        first.liquidGlassEnabled = true
+
+        let second = LeanStore(database: try AppDatabase(url: url))
+        #expect(second.liquidGlassEnabled)
+    }
+
     @Test("Heading and body font weights survive a database reopen")
     @MainActor
     func fontWeightsPersistAcrossRestarts() throws {

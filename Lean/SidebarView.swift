@@ -271,7 +271,13 @@ struct SidebarView: View {
             .padding(.bottom, store.scaled(4))
         }
         .frame(width: store.scaled(256))
-        .background(sidebarBackground)
+        .background {
+            if store.liquidGlassEnabled, #available(macOS 26, *) {
+                Color.clear.glassEffect(in: .rect(cornerRadius: store.adaptiveTheme.cardCornerRadius))
+            } else {
+                sidebarBackground
+            }
+        }
     }
 
     private func handleTabSelection(_ tab: LeanTab) {
@@ -339,18 +345,23 @@ private struct SidebarAddressBar: View {
             }
     }
 
+    @ViewBuilder
     private var barBackground: some View {
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(store.adaptiveTheme.inlineURLBarBackground)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(
-                        isFocused
-                            ? store.adaptiveTheme.activeTabStroke
-                            : store.adaptiveTheme.inlineURLBarStroke,
-                        lineWidth: 1
-                    )
-            )
+        if store.liquidGlassEnabled, #available(macOS 26, *) {
+            Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(store.adaptiveTheme.inlineURLBarBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(
+                            isFocused
+                                ? store.adaptiveTheme.activeTabStroke
+                                : store.adaptiveTheme.inlineURLBarStroke,
+                            lineWidth: 1
+                        )
+                )
+        }
     }
 
     @ViewBuilder
@@ -567,15 +578,19 @@ struct SidebarTabItem: View {
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : Color.clear)
+                    .fill(isSelected && store.liquidGlassEnabled ? Color.clear : (isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : Color.clear))
 
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(store.adaptiveTheme.activeTabBackground)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
-                        )
+                    if store.liquidGlassEnabled, #available(macOS 26, *) {
+                        Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 9))
+                    } else {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(store.adaptiveTheme.activeTabBackground)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
+                            )
+                    }
                 }
             }
         }
@@ -941,12 +956,16 @@ private struct SidebarPinnedTabItem: View {
                             .fill(store.isDarkMode ? Color.white.opacity(0.14) : Color.black.opacity(0.09))
                     }
                     if isSelected {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(store.adaptiveTheme.activeTabBackground)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 0.75)
-                            )
+                        if store.liquidGlassEnabled, #available(macOS 26, *) {
+                            Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
+                        } else {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(store.adaptiveTheme.activeTabBackground)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 0.75)
+                                )
+                        }
                     }
                 }
             }

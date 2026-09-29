@@ -219,7 +219,12 @@ final class DownloadManager: ObservableObject {
 
     func uniqueDestination(for suggestedFilename: String) -> URL {
         let base = Self.ensureExists(downloadDirectory) ?? Self.ensureExists(Self.defaultDownloadsDirectory()) ?? downloadDirectory
-        let safe = suggestedFilename.isEmpty ? "download" : suggestedFilename
+        // The name comes from the server: keep only its last component so a
+        // crafted "../" name cannot escape the downloads folder.
+        let leaf = (suggestedFilename as NSString).lastPathComponent
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: ":", with: "_")
+        let safe = (leaf.isEmpty || leaf == "." || leaf == "..") ? "download" : leaf
         var destination = base.appendingPathComponent(safe)
         var counter = 1
         let name = (safe as NSString).deletingPathExtension

@@ -20,7 +20,7 @@ struct BookmarkConfirmationDialog: View {
 
     private var hostDisplay: String {
         guard let url = store.dialogBookmarkURL, let host = url.host?.lowercased() else { return "" }
-        return host.replacingOccurrences(of: "www.", with: "")
+        return (host.hasPrefix("www.") ? String(host.dropFirst(4)) : host)
     }
 
     private var nameFieldFill: Color {

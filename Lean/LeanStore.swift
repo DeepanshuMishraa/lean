@@ -8,10 +8,19 @@ private struct BrowserUIScaleEnvironmentKey: EnvironmentKey {
     static let defaultValue: CGFloat = 1
 }
 
+private struct LiquidGlassEnvironmentKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
     var browserUIScale: CGFloat {
         get { self[BrowserUIScaleEnvironmentKey.self] }
         set { self[BrowserUIScaleEnvironmentKey.self] = newValue }
+    }
+
+    var liquidGlassEnabled: Bool {
+        get { self[LiquidGlassEnvironmentKey.self] }
+        set { self[LiquidGlassEnvironmentKey.self] = newValue }
     }
 }
 
@@ -272,6 +281,10 @@ final class LeanStore: ObservableObject {
             persist(theme.rawValue, forKey: Self.themeKey)
             updateAllTabsTheme()
         }
+    }
+
+    @Published var liquidGlassEnabled: Bool {
+        didSet { persist(liquidGlassEnabled, forKey: Self.liquidGlassKey) }
     }
 
     @Published var scrollbarStyle: ScrollbarStyle {
@@ -579,6 +592,9 @@ final class LeanStore: ObservableObject {
             ?? UserDefaults.standard.string(forKey: Self.themeKey)
             ?? AppTheme.light.rawValue
         self.theme = AppTheme(rawValue: savedTheme) ?? .light
+        self.liquidGlassEnabled = databaseValue(self.database, Bool.self, forKey: Self.liquidGlassKey)
+            ?? UserDefaults.standard.object(forKey: Self.liquidGlassKey) as? Bool
+            ?? false
 
         // Load saved scrollbar style (default to normal)
         let savedScrollbar = databaseValue(self.database, String.self, forKey: Self.scrollbarKey)
@@ -742,9 +758,6 @@ final class LeanStore: ObservableObject {
         ContentBlocker.refreshIfNeeded()
         configureMemoryPressureHandling()
         loadCustomShortcuts()
-        downloadManager.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &cancellables)
 
         let savedSession = databaseValue(self.database, BrowserSession.self, forKey: Self.sessionStateKey)
         let legacySessionURLs = databaseValue(self.database, [String].self, forKey: Self.sessionKey)
@@ -1083,8 +1096,10 @@ final class LeanStore: ObservableObject {
                 self.showPictureInPicture(for: tab)
             }
         }
-        if let previous, tabs.contains(where: { $0.id == previous }) {
+        if let previous, let left = tabs.first(where: { $0.id == previous }) {
             inactiveSince[previous] = Date()
+            // Its page is still attached now: freshest thumbnail for the switcher.
+            if enableThumbnailsInTabSwitcher, left.hasWebView, !left.isSleeping { left.captureSnapshot() }
         }
         if let current {
             inactiveSince[current] = nil
@@ -1652,10 +1667,24 @@ final class LeanStore: ObservableObject {
         return tab
     }
 
+    private var tabsChangePending = false
+
+    /// Tabs report state 6-10x per load; one redraw per run-loop turn is
+    /// enough, instead of one full-UI invalidation per report.
+    private func notifyTabsChanged() {
+        guard !tabsChangePending else { return }
+        tabsChangePending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.tabsChangePending = false
+            self.objectWillChange.send()
+        }
+    }
+
     private func wireTab(_ tab: LeanTab) {
         tab.onStateChange = { [weak self, weak tab] in
             guard let self, let tab else { return }
-            self.objectWillChange.send()
+            self.notifyTabsChanged()
             // Coalesce: one debounced SQLite write instead of 2 per event.
             // History only for settled (non-loading) states, and never for
             // a failed navigation — the tab keeps the attempted address so
@@ -1969,6 +1998,9 @@ final class LeanStore: ObservableObject {
         saveSession()
         DispatchQueue.main.async { [weak self] in
             guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
+            // If the page is still not on screen after the switch (the stage
+            // updated before it could attach it), one more render attaches it.
+            if tab.webView.window == nil, tab.url != nil || tab.isPageSource { self.objectWillChange.send() }
             tab.webView.window?.makeFirstResponder(tab.webView)
         }
     }
@@ -2053,14 +2085,15 @@ final class LeanStore: ObservableObject {
             let validTabs = switcherTabs
             guard !validTabs.isEmpty else { return }
 
-            // If thumbnail previews are enabled, capture snapshot asynchronously in background so switcher opens with 0ms lag
-            if enableThumbnailsInTabSwitcher, selectedTab?.snapshot == nil {
-                DispatchQueue.main.async { [weak self] in
-                    guard let self, self.selectedTab?.snapshot == nil else { return }
-                    self.selectedTab?.captureSnapshot()
-                }
+            // Refresh the current tab's thumbnail every time: it was last
+            // captured shortly after load, so it is stale (or blank) by now.
+            // Async, so the switcher still opens with no lag.
+            if enableThumbnailsInTabSwitcher {
+                selectedTab?.captureSnapshot()
             }
 
+            let held = NSEvent.modifierFlags.intersection(Self.switcherModifierMask)
+            switcherModifiers = held.isEmpty ? .control : held
             isTabSwitcherVisible = true
             switcherSessionIDs = validTabs.map(\.id)
             switcherSelectedIndex = validTabs.firstIndex(where: { $0.id == selectedID }) ?? 0
@@ -2098,6 +2131,21 @@ final class LeanStore: ObservableObject {
             selectedID = live[min(switcherSelectedIndex, live.count - 1)].id
         }
         saveSession()
+    }
+
+    private static let switcherModifierMask: NSEvent.ModifierFlags = [.control, .command, .option]
+    /// The modifiers held when the switcher opened; letting go of any of
+    /// them commits the highlighted tab.
+    private var switcherModifiers: NSEvent.ModifierFlags = .control
+
+    /// Commits when the modifiers that opened the switcher are no longer
+    /// held. The release normally arrives as a flagsChanged event, but it is
+    /// lost when it happens while another window or app is active — and a
+    /// switcher left open that way covers the window and eats the next click.
+    func settleStaleTabSwitcher() {
+        guard isTabSwitcherVisible else { return }
+        let held = NSEvent.modifierFlags.intersection(Self.switcherModifierMask)
+        if !held.isSuperset(of: switcherModifiers) { commitTabSwitcher() }
     }
 
     func cancelTabSwitcher() {
@@ -2143,6 +2191,7 @@ final class LeanStore: ObservableObject {
         persist(searchEngine.rawValue, forKey: Self.searchEngineKey)
         persist(adBlockingEnabled, forKey: Self.adBlockingKey)
         persist(theme.rawValue, forKey: Self.themeKey)
+        persist(liquidGlassEnabled, forKey: Self.liquidGlassKey)
         persist(scrollbarStyle.rawValue, forKey: Self.scrollbarKey)
         persist(tabDisplayMode.rawValue, forKey: Self.tabDisplayModeKey)
         persist(tabLayout.rawValue, forKey: Self.tabLayoutKey)
@@ -2192,6 +2241,7 @@ final class LeanStore: ObservableObject {
     private static let autoSleepAfterMinutesKey = "autoSleepAfterMinutes"
     private static let adBlockingExcludedHostsKey = "adBlockingExcludedHosts_v1"
     private static let themeKey = "appTheme"
+    private static let liquidGlassKey = "liquidGlassEnabled"
     private static let scrollbarKey = "scrollbarStyle"
     private static let tabDisplayModeKey = "tabDisplayMode"
     private static let tabLayoutKey = "tabLayout"

@@ -83,14 +83,35 @@ final class FaviconService {
                     return
                 }
 
-                // 2. Fallback to Google High-Res Favicon CDN
-                self.fetchFromCDN(host: host, finish: finish)
+                // 2. Fallback to the site's own /favicon.ico, then the CDN
+                self.fetchSiteIcon(host: host, scheme: url?.scheme, finish: finish)
             }
             return
         }
 
-        // 2. Fetch directly from Google High-Res Favicon CDN
-        fetchFromCDN(host: host, finish: finish)
+        // 2. The site's own icon, then the CDN.
+        fetchSiteIcon(host: host, scheme: url?.scheme, finish: finish)
+    }
+
+    /// /favicon.ico from the site itself. Only when that misses does the
+    /// host go to Google's icon service — and never for LAN or local hosts,
+    /// whose names must not leave the machine.
+    private func fetchSiteIcon(host: String, scheme: String?, finish: @escaping @MainActor @Sendable (NSImage?) -> Void) {
+        let local = AddressResolver.isLocalHost(host)
+        let useScheme = scheme?.lowercased() == "http" ? "http" : "https"
+        guard let iconURL = URL(string: "\(useScheme)://\(host)/favicon.ico") else {
+            fetchFromCDN(host: host, finish: finish)
+            return
+        }
+        fetchImage(from: iconURL) { image in
+            if let image {
+                Task { @MainActor in finish(image) }
+            } else if local {
+                Task { @MainActor in finish(nil) }
+            } else {
+                self.fetchFromCDN(host: host, finish: finish)
+            }
+        }
     }
 
     private func fetchFromCDN(host: String, finish: @escaping @MainActor @Sendable (NSImage?) -> Void) {
@@ -133,6 +154,6 @@ final class FaviconService {
 
     private func extractHost(from url: URL?) -> String? {
         guard let host = url?.host?.lowercased() else { return nil }
-        return host.replacingOccurrences(of: "www.", with: "")
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 }

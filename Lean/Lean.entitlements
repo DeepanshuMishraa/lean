@@ -6,8 +6,6 @@
     <true/>
     <key>com.apple.security.network.client</key>
     <true/>
-    <key>com.apple.security.network.server</key>
-    <true/>
     <!-- Sparkle updater XPC services (sandboxed app support) -->
     <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
     <array>

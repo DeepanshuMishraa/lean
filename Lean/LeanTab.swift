@@ -242,6 +242,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             configuration.webExtensionController = BrowserExtensionManager.shared.controller
         }
         configuration.preferences.isElementFullscreenEnabled = true
+        // Only user gestures may open windows: no popup spam or pop-unders.
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         // WebKit's "developer extras": Inspect Element in a page's
         // right-click menu, and the Web Inspector the View menu opens.
         WebInspector.enableDeveloperExtras(configuration.preferences)
@@ -294,7 +296,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         addPasswordSuggestionScript(to: configuration.userContentController)
         addPasskeyScripts(to: configuration.userContentController)
         configuration.userContentController.addUserScript(
-            WKUserScript(source: PageScripts.middleClickClosePage, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+            WKUserScript(source: PageScripts.middleClickClosePage, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: LeanWeb.world)
         )
 
         let webView = LeanWebView(frame: .zero, configuration: configuration)
@@ -303,7 +305,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.add(self, name: PageScripts.contextMenuMessageName)
         webView.configuration.userContentController.add(self, name: PageScripts.passwordFormMessageName)
         webView.configuration.userContentController.add(self, name: PageScripts.passwordFieldMessageName)
-        webView.configuration.userContentController.add(self, name: PageScripts.middleClickMessageName)
+        // Lean's own world: a page cannot post this message itself.
+        webView.configuration.userContentController.add(self, contentWorld: LeanWeb.world, name: PageScripts.middleClickMessageName)
         webView.configuration.userContentController.add(self, name: PageScripts.mediaStateMessageName)
         addPasskeyHandler(to: webView.configuration.userContentController)
         webView.contextMenuHook = { [weak self] menu in
@@ -573,7 +576,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         addPasswordSuggestionScript(to: webView.configuration.userContentController)
         addPasskeyScripts(to: webView.configuration.userContentController)
         webView.configuration.userContentController.addUserScript(
-            WKUserScript(source: PageScripts.middleClickClosePage, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+            WKUserScript(source: PageScripts.middleClickClosePage, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: LeanWeb.world)
         )
 
         if syncRuleLists { syncContentRuleLists() }
@@ -615,7 +618,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         } else {
             // Show clean short name / domain
             guard let url else { return "New Tab" }
-            if let host = url.host?.lowercased().replacingOccurrences(of: "www.", with: "") {
+            if let host = url.host?.lowercased().droppingWWW {
                 if host == "officecommun.com" { return "Office Commun" }
                 if host == "x.com" || host == "twitter.com" { return "X" }
                 if host == "youtube.com" { return "YouTube" }
@@ -837,11 +840,30 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         guard let raw = sender.representedObject as? String,
               let url = URL(string: raw) else { return }
         if ExternalLinkPolicy.shouldOpenExternally(url) {
-            NSWorkspace.shared.open(url)
+            openExternally(url, userInitiated: true)
         } else {
             onOpenURLInNewTab?(url, true)
         }
     }
+    /// Hands a non-web link to macOS. A click opens it; anything else (script,
+    /// redirect, iframe) must be confirmed first so a page cannot launch apps
+    /// on its own. Native OAuth callbacks still work after one confirmation.
+    private func openExternally(_ url: URL, userInitiated: Bool) {
+        guard !userInitiated else {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        guard let window = sheetWindow, let scheme = url.scheme else { return }
+        let alert = NSAlert()
+        alert.messageText = "Open another app?"
+        alert.informativeText = "\(webView.url?.host ?? "This page") wants to open a \(scheme): link. Only allow this if you expected it."
+        alert.addButton(withTitle: "Open")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn { NSWorkspace.shared.open(url) }
+        }
+    }
+
     @objc private func pageMenuShowSource() { showPageSource() }
     @objc private func pageMenuPrint() { printPage() }
     @objc private func pageMenuReload() { reload() }
@@ -962,6 +984,13 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         onOpenSourceTab = nil
         onPeekLink = nil
         onDownloadFailed = nil
+        // The download's delegate is this tab: once it is gone nothing would
+        // ever resolve the item, leaving it "downloading" forever. Cancel
+        // them so the manager records the outcome.
+        for id in Array(activeDownloadObjects.keys) {
+            cancelActiveDownload(id: id)
+            downloadManager?.cancelDownload(id: id)
+        }
         guard let webView = storedWebView else { return }
         webView.contextMenuHook = nil
 
@@ -1001,7 +1030,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.contextMenuMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.passwordFormMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.passwordFieldMessageName)
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.middleClickMessageName)
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.middleClickMessageName, contentWorld: LeanWeb.world)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.mediaStateMessageName)
         removePasskeyHandler(from: webView.configuration.userContentController)
         webView.configuration.userContentController.removeAllUserScripts()
@@ -1222,7 +1251,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         controller.removeScriptMessageHandler(forName: PageScripts.contextMenuMessageName)
         controller.removeScriptMessageHandler(forName: PageScripts.passwordFormMessageName)
         controller.removeScriptMessageHandler(forName: PageScripts.passwordFieldMessageName)
-        controller.removeScriptMessageHandler(forName: PageScripts.middleClickMessageName)
+        controller.removeScriptMessageHandler(forName: PageScripts.middleClickMessageName, contentWorld: LeanWeb.world)
         controller.removeScriptMessageHandler(forName: PageScripts.mediaStateMessageName)
         removePasskeyHandler(from: controller)
         controller.removeAllUserScripts()
@@ -1710,21 +1739,18 @@ extension LeanTab: WKNavigationDelegate {
     }
 
     /// Failures that mean "nothing speaks TLS here": refused, timed out,
-    /// dropped mid-handshake, or the handshake/cert itself failed. DNS
-    /// misses are excluded — plain http would not save those.
+    /// dropped, or the handshake failed. Certificate errors are excluded on
+    /// purpose: downgrading them would hand a TLS-breaking attacker
+    /// plaintext. DNS misses are excluded too.
     private static let httpFallbackErrorCodes: Set<Int> = [
         NSURLErrorCannotConnectToHost,
         NSURLErrorTimedOut,
         NSURLErrorNetworkConnectionLost,
         NSURLErrorSecureConnectionFailed,
-        NSURLErrorServerCertificateHasBadDate,
-        NSURLErrorServerCertificateUntrusted,
-        NSURLErrorServerCertificateHasUnknownRoot,
-        NSURLErrorServerCertificateNotYetValid,
     ]
 
     /// Retry a failed https main-frame navigation over plain http when the
-    /// host is a LAN box, dev server, or IP literal — those are usually
+    /// host is a LAN box or dev server (never a public address) — those are usually
     /// http-only, and the https attempt dies before any bytes flow. True
     /// when the retry started (callers must skip the error page then).
     private func tryHTTPFallback(for error: Error) -> Bool {
@@ -1735,7 +1761,7 @@ extension LeanTab: WKNavigationDelegate {
               failing.scheme?.lowercased() == "https",
               let host = failing.host,
               httpFallbackAttemptedFor != failing.absoluteString,
-              AddressResolver.isLocalHost(host) || AddressResolver.isIPv4Literal(host),
+              AddressResolver.isLocalHost(host),
               var components = URLComponents(url: failing, resolvingAgainstBaseURL: false)
         else { return false }
         components.scheme = "http"
@@ -1772,7 +1798,7 @@ extension LeanTab: WKNavigationDelegate {
         }
         if let url = navigationAction.request.url,
            ExternalLinkPolicy.shouldOpenExternally(url) {
-            NSWorkspace.shared.open(url)
+            openExternally(url, userInitiated: navigationAction.navigationType == .linkActivated)
             decisionHandler(.cancel)
             return
         }
@@ -1820,7 +1846,6 @@ extension LeanTab: WKNavigationDelegate {
                 return
             }
             decisionHandler(.allow)
-            syncContentRuleLists()
             return
         }
         decisionHandler(.allow)
@@ -1935,9 +1960,9 @@ extension LeanTab: WKUIDelegate {
         // after `window.open` returns. Never block the popup for a missing
         // URL: the store lets WebKit drive the load through the returned
         // web view, so a placeholder is enough here.
-        let url = navigationAction.request.url ?? URL(string: "about:blank")!
+        guard let url = navigationAction.request.url ?? URL(string: "about:blank") else { return nil }
         if ExternalLinkPolicy.shouldOpenExternally(url) {
-            NSWorkspace.shared.open(url)
+            openExternally(url, userInitiated: navigationAction.navigationType == .linkActivated)
             return nil
         }
         if navigationAction.navigationType == .linkActivated,
@@ -2067,12 +2092,20 @@ extension LeanTab: WKUIDelegate {
         alert.messageText = "Allow \(requestedMedia)?"
         alert.informativeText = "\(origin.host) wants to use your \(requestedMedia)."
         alert.addButton(withTitle: "Allow")
+        alert.addButton(withTitle: "Allow Once")
         alert.addButton(withTitle: "Don't Allow")
         alert.alertStyle = .informational
         alert.beginSheetModal(for: window) { [weak self] response in
-            let allowed = response == .alertFirstButtonReturn
-            self?.mediaPermissionStore?.setDecision(allowed, forOriginKey: decisionKey)
-            decisionHandler(allowed ? .grant : .deny)
+            switch response {
+            case .alertFirstButtonReturn:
+                self?.mediaPermissionStore?.setDecision(true, forOriginKey: decisionKey)
+                decisionHandler(.grant)
+            case .alertSecondButtonReturn:
+                decisionHandler(.grant)
+            default:
+                self?.mediaPermissionStore?.setDecision(false, forOriginKey: decisionKey)
+                decisionHandler(.deny)
+            }
         }
     }
 
@@ -2278,4 +2311,5 @@ extension LeanTab: WKDownloadDelegate {
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+    var droppingWWW: String { hasPrefix("www.") ? String(dropFirst(4)) : self }
 }

@@ -253,7 +253,7 @@ struct BookmarkConfirmationDialog: View {
         } label: {
             folderTriggerLabel
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
     }
 
     // MARK: - Bespoke Folder Dropdown Card
@@ -391,7 +391,7 @@ struct BookmarkConfirmationDialog: View {
                             .fill(store.isDarkMode ? Color.white : Color.black)
                     )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
 
             Button {
                 withAnimation(.spring(response: 0.20, dampingFraction: 0.8)) {
@@ -407,7 +407,7 @@ struct BookmarkConfirmationDialog: View {
                     .frame(width: 20, height: 20)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
         }
         .padding(.horizontal, 10)
         .frame(height: 34)
@@ -456,7 +456,7 @@ struct BookmarkConfirmationDialog: View {
                         .fill(isRemoveHovered ? Color.red.opacity(0.12) : Color.clear)
                 )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
             .onHover { isRemoveHovered = $0 }
             .help("Delete this bookmark")
 
@@ -475,7 +475,7 @@ struct BookmarkConfirmationDialog: View {
                             .fill(store.isDarkMode ? (isDoneHovered ? Color.white.opacity(0.9) : Color.white) : (isDoneHovered ? Color.black.opacity(0.85) : Color.black))
                     )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
             .onHover { isDoneHovered = $0 }
             .keyboardShortcut(.defaultAction)
         }
@@ -523,6 +523,7 @@ private struct DropdownRowButtonStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
+                .contentShape(Rectangle())
                 .background(
                     RoundedRectangle(cornerRadius: 5.5, style: .continuous)
                         .fill(isHovered ? (isDark ? Color.white.opacity(0.09) : Color.black.opacity(0.05)) : Color.clear)

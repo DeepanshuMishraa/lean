@@ -96,6 +96,7 @@
 		C5E755527AC5CE1518EF2614 /* ChromeWebStoreInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35C2637EB759D8F6B21F4045 /* ChromeWebStoreInstaller.swift */; };
 		CFA967BA5CF33A8F4C36B321 /* OmnibarSuggestionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7FCB01A3F3CCDE9AA9530E /* OmnibarSuggestionRow.swift */; };
 		D3CC22D787F854ED59D05532 /* WebExtensionPrototypeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 980BE17166DA884CFC802F78 /* WebExtensionPrototypeTests.swift */; };
+		D7D803603DDE982C08A049B4 /* HitAreaButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFF96381A58003794D9BC12D /* HitAreaButtonStyle.swift */; };
 		D8DA1C37849FCBD67C9EE9DF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A848AF7624C91DF439D4069E /* SettingsView.swift */; };
 		D9B80274D69A28208394038F /* ThemeColorStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6558AEC1506E53C0FDE8F78 /* ThemeColorStrip.swift */; };
 		DB4831CB6B88926C41A5D902 /* NavigationControlsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E07226B7BD97E945B43B227 /* NavigationControlsTests.swift */; };
@@ -247,6 +248,7 @@
 		D8FEAAABDE4DE9443D6698A8 /* FrameRateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameRateTests.swift; sourceTree = "<group>"; };
 		DAEDC72138F0A52C3928C750 /* LeanNativeHostsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LeanNativeHostsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DD6B10DFBD20A8F10DF0B9C7 /* AdBlockFilterConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdBlockFilterConverter.swift; sourceTree = "<group>"; };
+		DFF96381A58003794D9BC12D /* HitAreaButtonStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitAreaButtonStyle.swift; sourceTree = "<group>"; };
 		E026CDD622E2E63875106C93 /* PageLoadErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageLoadErrorTests.swift; sourceTree = "<group>"; };
 		E1BB4D2B7A2864920D0A7F89 /* YouTubeBlockingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeBlockingTests.swift; sourceTree = "<group>"; };
 		E566A9FFD9A3DA622E49EC68 /* CustomShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomShortcuts.swift; sourceTree = "<group>"; };
@@ -370,6 +372,7 @@
 				4A60E0E2C03D202AC428D083 /* ExtensionsView.swift */,
 				169383803BA6823BA5839E0D /* FaviconService.swift */,
 				CAC482EBFC0CE417CC16463C /* FrameRate.swift */,
+				DFF96381A58003794D9BC12D /* HitAreaButtonStyle.swift */,
 				954940900091ED9F64DAAF5B /* Info.plist */,
 				3E5E9C3E208BB37AB88D6EE1 /* Inspector.swift */,
 				FB880C0CDF8C1F10386A2F57 /* Lean.entitlements */,
@@ -690,6 +693,7 @@
 				0A0BC6E7AEA90A17D3113FD7 /* ExtensionsView.swift in Sources */,
 				2B6C54991EBAF1358B5B6F5F /* FaviconService.swift in Sources */,
 				1899D3CB74C340F73A23B94C /* FrameRate.swift in Sources */,
+				D7D803603DDE982C08A049B4 /* HitAreaButtonStyle.swift in Sources */,
 				9C943D2111068A2A7AC34A03 /* Inspector.swift in Sources */,
 				B0F0B41EACFCFE4F5B932665 /* LeanApp.swift in Sources */,
 				F8F072CF63D139768651B686 /* LeanCommands.swift in Sources */,

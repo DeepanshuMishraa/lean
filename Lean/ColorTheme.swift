@@ -234,7 +234,7 @@ struct ColorThemePicker: View {
                     )
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .accessibilityLabel("\(theme.name), \(variant)")
     }
 }

@@ -439,7 +439,7 @@ private struct SidebarAddressBar: View {
                         .frame(width: 18, height: 18)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
                 .contentShape(Rectangle())
             } else if store.selectedTab?.url != nil {
                 // Copy link button
@@ -460,7 +460,7 @@ private struct SidebarAddressBar: View {
                         .frame(width: 22, height: 22)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
                 .contentShape(Rectangle())
                 .help("Copy Page Link")
             }
@@ -573,7 +573,7 @@ struct SidebarTabItem: View {
             .padding(.horizontal, store.scaled(10))
             .frame(height: store.scaled(36))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .overlay { TabMiddleClick { onClose() } }
         .background {
             ZStack {
@@ -628,7 +628,7 @@ struct SidebarTabItem: View {
                         )
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
                 .contentShape(Rectangle())
                 .help("Close Tab (⌘W)")
                 .padding(.trailing, 8)
@@ -845,7 +845,7 @@ struct SidebarTabItem: View {
                             in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
 
                     if index < tab.splitTabs.count - 1 {
                         Rectangle()
@@ -881,7 +881,7 @@ struct SidebarTabItem: View {
                                 in: RoundedRectangle(cornerRadius: 3.5, style: .continuous)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                 }
 
                 Spacer(minLength: 4)
@@ -906,7 +906,7 @@ struct SidebarTabItem: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
 
                     if index < tab.splitTabs.count - 1 {
                         Text("|")
@@ -974,7 +974,7 @@ private struct SidebarPinnedTabItem: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .overlay(alignment: .bottomTrailing) {
             if tab.isPlayingMedia {
                 TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: true)
@@ -1163,7 +1163,7 @@ private struct TrafficLightButton: View {
             .scaleEffect(isPressed ? 0.92 : 1.0)
             .opacity(isPressed ? 0.8 : 1.0)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in isPressed = true }

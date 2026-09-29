@@ -39,7 +39,7 @@ struct SuggestionRow: View {
             .background(rowBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .onHover { hovered in
             withAnimation(.easeInOut(duration: 0.12)) {
                 isHovered = hovered

@@ -376,7 +376,7 @@ private struct TopBarTabItem: View {
             )
             .frame(height: store.scaled(store.enableWindowBorder ? 27 : 26))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .overlay { TabMiddleClick { onClose() } }
         .background {
             ZStack {
@@ -596,7 +596,7 @@ private struct TopBarTabItem: View {
                             in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
 
                     if index < tab.splitTabs.count - 1 {
                         Rectangle()
@@ -633,7 +633,7 @@ private struct TopBarTabItem: View {
                                 in: RoundedRectangle(cornerRadius: 3.5, style: .continuous)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                 }
             }
             .frame(height: store.scaled(store.enableWindowBorder ? 27 : 26))
@@ -657,7 +657,7 @@ private struct TopBarTabItem: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
 
                     if index < tab.splitTabs.count - 1 {
                         Text("|")
@@ -796,7 +796,7 @@ private struct TopBarTabItem: View {
                 // Rectangular hit area is larger and stable at the edges.
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .contentShape(Rectangle())
     }
 
@@ -835,7 +835,7 @@ private struct TopBarTabItem: View {
                 .animation(.easeOut(duration: 0.10), value: isCloseHovered)
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .onHover { isCloseHovered = $0 }
         .help("Close Tab (⌘W)")
         .transition(.scale(scale: 0.5).combined(with: .opacity))
@@ -891,7 +891,7 @@ private struct TopBarPinnedTabItem: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .overlay(alignment: .bottomTrailing) {
             if tab.isPlayingMedia {
                 TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: true)
@@ -1117,7 +1117,7 @@ struct InlineURLBar: View {
                         .frame(width: 11, height: 11)
                         .foregroundColor(store.adaptiveTheme.secondaryText)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
                 .help("Close Tab (⌘W)")
             }
         }
@@ -1370,7 +1370,7 @@ struct InteractiveIconButton: View {
                 .scaleEffect(isPressed ? 0.93 : 1.0)
                 .animation(.easeOut(duration: 0.08), value: isPressed)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .contentShape(Rectangle())
         .disabled(!isEnabled)
         .help(helpText)
@@ -1479,7 +1479,7 @@ private struct ExtensionToolbarButtonContent: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .contentShape(Rectangle())
         .help(extensionsHelpText)
         .onHover { isHovered = $0 }
@@ -1520,7 +1520,7 @@ private struct ExtensionToolbarButtonFallback: View {
                 .foregroundColor(store.adaptiveTheme.secondaryText)
                 .frame(width: 24 * browserUIScale, height: 24 * browserUIScale)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .help("Extensions require macOS 15.4+")
     }
 }
@@ -1588,7 +1588,7 @@ struct BookmarkToolbarButton: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .contentShape(Rectangle())
         .help(isCurrentTabBookmarked ? "Bookmarks (⌥⌘B) • Current Tab Bookmarked" : "Bookmarks (⌥⌘B)")
         .onHover { isHovered = $0 }
@@ -1688,7 +1688,7 @@ struct DownloadToolbarButton: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .contentShape(Rectangle())
         .help(downloadsHelpText)
         .onHover { isHovered = $0 }
@@ -1965,7 +1965,7 @@ struct QuickSettingsPopover: View {
                     )
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
                 .onHover { hovering in
                     isAllSettingsHovered = hovering
                     handleNonHistoryHovered(hovering)
@@ -2018,7 +2018,7 @@ struct QuickSettingsHistoryRow: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .onHover { hovering in
             isHovered = hovering
             onHoverChanged(hovering)
@@ -2103,7 +2103,7 @@ struct QuickSettingsHistorySubmenu: View {
                 )
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
             .onHover { isViewAllHovered = $0 }
         }
         .padding(6)
@@ -2172,7 +2172,7 @@ private struct QuickSettingsHistorySubmenuItem: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .help("\(item.title)\n\(item.url.absoluteString)")
         .onHover { isHovered = $0 }
     }
@@ -2244,7 +2244,7 @@ struct QuickToggleItem: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .contentShape(Rectangle())
         .onHover { hovering in
             isHovered = hovering

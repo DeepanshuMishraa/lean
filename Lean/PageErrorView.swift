@@ -79,7 +79,7 @@ struct PageErrorView: View {
                                     .frame(width: 10, height: 10)
                                     .foregroundColor(hasCopiedUrl ? Color.green : store.adaptiveTheme.secondaryText.opacity(0.5))
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.hitArea)
                             .help(hasCopiedUrl ? "Copied!" : "Copy address")
                         }
                     }
@@ -138,7 +138,7 @@ struct PageErrorView: View {
                                     .fill(store.isDarkMode ? Color.white : Color.black)
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hitArea)
 
                         if tab.canGoBack {
                             Button(action: { pageErrorClearing { tab.goBack() } }) {
@@ -162,7 +162,7 @@ struct PageErrorView: View {
                                         .fill(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06))
                                 )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.hitArea)
                         }
 
                         Button(action: openOmnibarForEditing) {
@@ -182,7 +182,7 @@ struct PageErrorView: View {
                                     .fill(store.isDarkMode ? Color.white.opacity(0.04) : Color.black.opacity(0.03))
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hitArea)
                         .help("Search the web or enter a new address")
                     }
                     .padding(.top, 6)
@@ -226,7 +226,7 @@ struct PageErrorView: View {
                         .foregroundColor(store.adaptiveTheme.secondaryText.opacity(0.75))
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
 
             if isDetailsExpanded {
                 VStack(alignment: .leading, spacing: 6) {
@@ -260,7 +260,7 @@ struct PageErrorView: View {
                                     .fill(store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hitArea)
 
                         Spacer()
                     }

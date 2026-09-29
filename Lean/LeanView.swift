@@ -907,7 +907,7 @@ struct LeanView: View {
                     .frame(width: 10, height: 10)
                     .foregroundColor(store.themeColors.secondaryText)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
             .help("Find Next")
 
             Button {
@@ -919,7 +919,7 @@ struct LeanView: View {
                     .frame(width: 10, height: 10)
                     .foregroundColor(store.themeColors.secondaryText)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
         }
         .padding(.horizontal, 10)
         .frame(height: 32)
@@ -1167,7 +1167,7 @@ private struct SavedPasswordRow: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.12)) {
                 isHovered = hovering
@@ -1691,7 +1691,7 @@ private struct SplitPaneView: View {
                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                 )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
             .popover(isPresented: $isEditingURL) {
                 HStack(spacing: 6) {
                     TextField("Search or enter URL", text: $urlText)

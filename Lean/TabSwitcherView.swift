@@ -95,6 +95,7 @@ struct TabSwitcherView: View {
                     headingWeight: store.uiHeadingWeight
                 )
                 .id(tab.id)
+                .contentShape(Rectangle())
                 .onTapGesture {
                     store.switcherSelectedIndex = index
                     store.commitTabSwitcher()
@@ -116,6 +117,7 @@ struct TabSwitcherView: View {
                     headingWeight: store.uiHeadingWeight
                 )
                 .id(tab.id)
+                .contentShape(Rectangle())
                 .onTapGesture {
                     store.switcherSelectedIndex = index
                     store.commitTabSwitcher()

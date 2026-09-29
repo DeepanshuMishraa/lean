@@ -58,7 +58,7 @@ struct DownloadsPopover: View {
                                 in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                     .onHover { isClearHovered = $0 }
                 }
             }
@@ -127,7 +127,7 @@ struct DownloadsPopover: View {
                 )
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
             .onHover { isFooterHovered = $0 }
         }
         .padding(8)
@@ -275,6 +275,7 @@ private struct DownloadPopoverRow: View {
         .contentShape(Rectangle())
         .onHover(perform: setHovered)
         .help(item.destinationURL.path)
+        .contentShape(Rectangle())
         .onTapGesture {
             if item.state == .completed {
                 store.openDownload(item)
@@ -364,7 +365,7 @@ private struct HoverIconButton: View {
                 )
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .contentShape(Rectangle())
         .help(help)
         .onHover { isHovered = $0 }

@@ -129,7 +129,7 @@ private struct ExtensionsPopoverContent: View {
                         in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
                 .onHover { isStoreButtonHovered = $0 }
                 .help("Open Chrome Web Store")
             }
@@ -224,7 +224,7 @@ private struct ExtensionsPopoverContent: View {
                 )
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
             .onHover { isFooterHovered = $0 }
         }
     }
@@ -256,7 +256,7 @@ private struct ExtensionsPopoverContent: View {
                         in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
                 .onHover { isBackHovered = $0 }
 
                 Spacer()
@@ -441,7 +441,7 @@ private struct ExtensionsPopoverContent: View {
                 )
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
             .confirmationDialog(
                 "Remove \(item.name)?",
                 isPresented: $isConfirmingRemove,
@@ -479,7 +479,7 @@ private struct ExtensionsPopoverContent: View {
                 in: RoundedRectangle(cornerRadius: 5, style: .continuous)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
     }
 
     private func permissionRow(title: String, isOn: Binding<Bool>) -> some View {
@@ -594,7 +594,7 @@ private struct ExtensionPopoverRow: View {
                 }
                 .frame(width: 22, height: 22)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
             .onHover { isBreadcrumbHovered = $0 }
             .help("Extension options")
         }

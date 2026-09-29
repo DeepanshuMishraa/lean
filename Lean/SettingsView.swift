@@ -340,7 +340,7 @@ private struct HistorySection: View {
                             .frame(width: 12, height: 12)
                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                 }
             }
             .padding(.horizontal, 12)
@@ -388,7 +388,7 @@ private struct HistorySection: View {
                                 in: Capsule()
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hitArea)
                     } else {
                         Button {
                             withAnimation(.spring(response: 0.20, dampingFraction: 0.8)) {
@@ -415,7 +415,7 @@ private struct HistorySection: View {
                                 in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hitArea)
                     }
                 }
             }
@@ -468,7 +468,7 @@ private struct HistorySection: View {
                                 in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 48)
@@ -574,7 +574,7 @@ private struct HistoryItemRow: View {
                                 in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                     .help(isCopied ? "Copied" : "Copy Link")
 
                     // Open in New Tab Button
@@ -591,7 +591,7 @@ private struct HistoryItemRow: View {
                                 in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                     .help("Open in New Tab")
 
                     // Delete Entry Button
@@ -610,7 +610,7 @@ private struct HistoryItemRow: View {
                                 in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                     .help("Remove from History")
                 } else {
                     Text(formattedTime)
@@ -629,6 +629,7 @@ private struct HistoryItemRow: View {
                 : Color.clear
         )
         .onHover { isHovered = $0 }
+        .contentShape(Rectangle())
         .onTapGesture {
             let inNewTab = NSEvent.modifierFlags.contains(.command)
             store.openHistoryItem(item, inNewTab: inNewTab)
@@ -779,7 +780,7 @@ private struct GeneralSection: View {
                                 in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                     .disabled(!updater.canCheckForUpdates)
                 }
                 .padding(.horizontal, 16)
@@ -813,7 +814,7 @@ private struct GeneralSection: View {
                                 in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -862,7 +863,7 @@ private struct TopBarCustomizerSection: View {
                         in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
             }
 
             // Zone 1: Active in Top Bar
@@ -1087,7 +1088,7 @@ private struct ToolbarInteractiveChip: View {
             .padding(.horizontal, 2)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .onHover { isHovered = $0 }
         .help("\(isShown ? "Hide" : "Show") \(item.displayName) (click or drag)")
         .onDrag {
@@ -1366,7 +1367,7 @@ private struct FontPresetPill: View {
                     .stroke(strokeColor, lineWidth: 0.75)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
     }
 }
 
@@ -1428,7 +1429,7 @@ private struct InstalledFontsStackView: View {
                         in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
                 .onHover { isBackHovered = $0 }
 
                 Spacer()
@@ -1489,7 +1490,7 @@ private struct InstalledFontsStackView: View {
                             .frame(width: 14, height: 14)
                             .foregroundColor(secondaryText)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                     .help("Clear search")
                 }
             }
@@ -1668,7 +1669,7 @@ private struct InstalledFontRow: View {
             .background(backgroundColor)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .onHover { isHovered = $0 }
     }
 }
@@ -1878,7 +1879,7 @@ private struct TabLayoutCard: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .onHover { isHovered = $0 }
     }
 
@@ -2087,7 +2088,7 @@ private struct PrivacySection: View {
                                             .stroke(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06), lineWidth: 0.5)
                                     )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.hitArea)
                             .disabled(isUpdatingFilters)
                         }
                     }
@@ -2371,7 +2372,7 @@ private struct ShortcutsSection: View {
                                 .frame(width: 12, height: 12)
                                 .foregroundColor(secondaryText)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hitArea)
                     }
                 }
                 .padding(.horizontal, 12)
@@ -2410,7 +2411,7 @@ private struct ShortcutsSection: View {
                                     in: Capsule()
                                 )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hitArea)
                     }
 
                     Spacer()
@@ -2436,7 +2437,7 @@ private struct ShortcutsSection: View {
                                 in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hitArea)
                         .help("Restore all shortcuts to factory defaults")
                     }
                 }
@@ -2517,7 +2518,7 @@ private struct ShortcutsSection: View {
                                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                                 )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.hitArea)
                             .help("Click to test-trigger this action")
 
                             // Keycap Badges / Shortcut Recorder
@@ -2565,7 +2566,7 @@ private struct ShortcutsSection: View {
                                     )
                                 }
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.hitArea)
                             .help(isRecording ? "Press new key combination or Escape to cancel" : "Click to customize this keyboard shortcut")
 
                             // Reset single shortcut button if modified
@@ -2585,7 +2586,7 @@ private struct ShortcutsSection: View {
                                             in: Circle()
                                         )
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.hitArea)
                                 .help("Reset this shortcut to default")
                             }
                         }
@@ -2742,7 +2743,7 @@ private struct DownloadsSection: View {
                                     in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hitArea)
                         .help("Reveal the download folder in Finder")
 
                         Button {
@@ -2758,7 +2759,7 @@ private struct DownloadsSection: View {
                                     in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hitArea)
                         .help("Choose where downloaded files are saved")
                     }
                     .padding(.horizontal, 16)
@@ -2792,7 +2793,7 @@ private struct DownloadsSection: View {
                                 in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hitArea)
                     }
                 }
 
@@ -2817,7 +2818,7 @@ private struct DownloadsSection: View {
                                     .frame(width: 12, height: 12)
                                     .foregroundColor(secondaryText)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.hitArea)
                         }
                     }
                     .padding(.horizontal, 12)
@@ -2869,7 +2870,7 @@ private struct DownloadsSection: View {
                                     in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hitArea)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 40)
@@ -3025,6 +3026,7 @@ private struct DownloadSettingsRow: View {
         )
         .onHover(perform: setHovered)
         .help(item.destinationURL.path)
+        .contentShape(Rectangle())
         .onTapGesture {
             if item.state == .completed {
                 store.openDownload(item)
@@ -3058,7 +3060,7 @@ private struct SettingsIconButton: View {
                 )
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .contentShape(Rectangle())
         .help(help)
     }
@@ -3130,7 +3132,7 @@ private struct SidebarCategoryButton: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
     }
@@ -3176,7 +3178,7 @@ private struct CompactCategoryButton: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
     }
@@ -3273,7 +3275,7 @@ private struct PasswordManagerSection: View {
                                     .frame(width: 12, height: 12)
                                     .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.hitArea)
                         }
                     }
                     .padding(.horizontal, 11)
@@ -3413,7 +3415,7 @@ private struct PasswordManagerSection: View {
                                             .font(.system(size: 11))
                                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(.hitArea)
                                 }
                             }
                             .padding(.horizontal, 11)
@@ -3445,7 +3447,7 @@ private struct PasswordManagerSection: View {
                                             .font(.system(size: 11))
                                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(.hitArea)
                                 }
                             }
                             .padding(.horizontal, 11)
@@ -3486,7 +3488,7 @@ private struct PasswordManagerSection: View {
                                             .font(.system(size: 11.5))
                                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.40) : Color.black.opacity(0.40))
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(.hitArea)
                                 }
                             }
                             .padding(.horizontal, 11)
@@ -3829,7 +3831,7 @@ private struct ExtensionsSettingsSection: View {
                         in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
                 .onHover { isBackHovered = $0 }
 
                 Spacer()
@@ -4337,7 +4339,7 @@ private struct InstalledBrowserCard: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
     }
 }
 
@@ -4550,7 +4552,7 @@ private struct ImportDataSection: View {
                                 }
                                 .foregroundColor(store.isDarkMode ? Color.white.opacity(0.7) : Color.black.opacity(0.65))
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.hitArea)
                         }
                     }
                     SettingsGroup(isDark: store.isDarkMode) {
@@ -4577,7 +4579,7 @@ private struct ImportDataSection: View {
                                         .foregroundColor(secondaryText)
                                         .frame(width: 24, height: 24)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.hitArea)
                                 .accessibilityLabel("Remove bookmark")
                                 .help("Remove bookmark")
                             }
@@ -4673,7 +4675,7 @@ private struct ImportDataSection: View {
                         in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
                 .onHover { isBackHovered = $0 }
 
                 Spacer()
@@ -4704,7 +4706,7 @@ private struct ImportDataSection: View {
                             .frame(width: 14, height: 14)
                             .foregroundColor(secondaryText)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                     .help("Clear search")
                 }
             }
@@ -5063,7 +5065,7 @@ private struct ImportedBookmarkRow: View {
                             .fill(isDeleteHovered ? (store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05)) : Color.clear)
                     )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
             .onHover { isDeleteHovered = $0 }
             .accessibilityLabel("Remove bookmark")
             .help("Remove bookmark")

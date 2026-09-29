@@ -241,7 +241,7 @@ struct TabMediaIndicatorView: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .onHover { isHovered = $0 }
         .help(tab.isMuted ? "Unmute Tab" : "Mute Tab")
         .scaleEffect(isHovered ? 1.05 : 1.0)

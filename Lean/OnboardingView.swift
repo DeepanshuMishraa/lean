@@ -258,7 +258,7 @@ struct OnboardingView: View {
                                     .fill(currentStep.rawValue == index ? (isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04)) : Color.clear)
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hitArea)
                         .disabled(currentStep == .importing)
                     }
                 }
@@ -290,7 +290,7 @@ struct OnboardingView: View {
                 .padding(.vertical, 3)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 14)
@@ -583,7 +583,7 @@ struct OnboardingView: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .onHover { hovering in
             hoveredItem = hovering ? browser.id : nil
         }
@@ -654,7 +654,7 @@ struct OnboardingView: View {
                 }
                 .font(store.bodyFont(size: 11))
                 .foregroundColor(primaryText)
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
 
                 Text("•").foregroundColor(tertiaryText)
 
@@ -665,7 +665,7 @@ struct OnboardingView: View {
                 }
                 .font(store.bodyFont(size: 11))
                 .foregroundColor(secondaryText)
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
 
                 Spacer()
             }
@@ -716,7 +716,7 @@ struct OnboardingView: View {
             .padding(.vertical, 12)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
     }
 
     // MARK: - Step 5: Importing (real data, real counts)
@@ -800,7 +800,7 @@ struct OnboardingView: View {
                     Button(secondaryTitle, action: secondary)
                         .font(store.bodyFont(size: 12))
                         .foregroundColor(secondaryText)
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hitArea)
                 }
                 Button(primaryTitle, action: primary)
                     .font(store.headingFont(size: 12.5))
@@ -808,7 +808,7 @@ struct OnboardingView: View {
                     .padding(.horizontal, 18)
                     .padding(.vertical, 8)
                     .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(primaryText))
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
             }
 
             Spacer()
@@ -1156,7 +1156,7 @@ struct OnboardingView: View {
                     .padding(.vertical, 6)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
             }
 
             Spacer()
@@ -1187,7 +1187,7 @@ struct OnboardingView: View {
                             .fill(primaryText)
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
             } else if currentStep != .importing {
                 Button {
                     advanceStep()
@@ -1206,7 +1206,7 @@ struct OnboardingView: View {
                             .fill(primaryText)
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
             }
         }
         .padding(.horizontal, 28)

@@ -270,7 +270,7 @@ struct BookmarksPaletteView: View {
                     .stroke(isSelected ? (store.isDarkMode ? Color.white.opacity(0.16) : Color.black.opacity(0.10)) : Color.clear, lineWidth: 0.75)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .contextMenu {
             if folder != BookmarkFolder.allFolder && folder != BookmarkFolder.defaultFolder {
                 Button("Delete Folder", role: .destructive) {
@@ -310,7 +310,7 @@ struct BookmarksPaletteView: View {
                             .fill(store.isDarkMode ? Color.white : Color.black)
                     )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
 
             Button {
                 withAnimation(.spring(response: 0.20, dampingFraction: 0.8)) {
@@ -325,7 +325,7 @@ struct BookmarksPaletteView: View {
                     .foregroundColor(store.adaptiveTheme.secondaryText)
                     .frame(width: 18, height: 18)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hitArea)
         }
         .padding(.horizontal, 8)
         .frame(height: 26)
@@ -586,7 +586,7 @@ struct BookmarkRow: View {
                                     .fill(isOpenHovered ? (store.isDarkMode ? Color.white.opacity(0.12) : Color.black.opacity(0.07)) : Color.clear)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                     .onHover { isOpenHovered = $0 }
                     .help("Open in New Tab (⌘↩)")
 
@@ -603,7 +603,7 @@ struct BookmarkRow: View {
                                     .fill(isDeleteHovered ? Color.red.opacity(0.15) : Color.clear)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                     .onHover { isDeleteHovered = $0 }
                     .help("Delete (⌫)")
                 }
@@ -656,6 +656,7 @@ private struct PlainHoverButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .contentShape(Rectangle())
             .opacity(isHovered ? 0.8 : 1.0)
             .onHover { isHovered = $0 }
     }

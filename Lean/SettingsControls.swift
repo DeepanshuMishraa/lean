@@ -87,7 +87,7 @@ struct SettingsActionButton: View {
                 }
                 .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .onHover { hovering = $0 }
         .opacity(isEnabled ? 1 : 0.45)
         .animation(.easeOut(duration: 0.14), value: hovering)
@@ -317,7 +317,7 @@ struct CustomDropdownButton<Leading: View>: View {
                     .stroke(buttonBorder, lineWidth: 0.75)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .onHover { isHovered = $0 }
     }
 }
@@ -418,7 +418,7 @@ struct CustomDropdownItemRow<Leading: View>: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
     }
@@ -651,7 +651,7 @@ struct FontAllFontsMenuItem: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .onHover { isHovered = $0 }
     }
 }
@@ -767,7 +767,7 @@ private struct SegmentButton: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .contentShape(Rectangle())
         .onHover(perform: onHover)
     }
@@ -813,7 +813,7 @@ struct TactileSwitch: View {
                     .shadow(color: Color.black.opacity(0.16), radius: 1.5, y: 0.5)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
     }
 }
 
@@ -902,6 +902,7 @@ struct CustomToggleRow: View {
                 : Color.clear
         )
         .onHover { isHovered = $0 }
+        .contentShape(Rectangle())
         .onTapGesture {
             withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
                 isOn.toggle()
@@ -948,7 +949,7 @@ struct CustomChecklistRow: View {
             .contentShape(Rectangle())
             .background(isHovered ? (isDark ? Color.white.opacity(0.025) : Color.black.opacity(0.018)) : .clear)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.45)
         .onHover { isHovered = $0 }
@@ -1023,7 +1024,7 @@ struct FrameWidthPickerRow: View {
                         )
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hitArea)
                     .contentShape(Rectangle())
                     .onHover { h in
                         hoveredWidth = h ? item.width : (hoveredWidth == item.width ? nil : hoveredWidth)

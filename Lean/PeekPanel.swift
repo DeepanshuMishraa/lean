@@ -247,7 +247,7 @@ private struct PeekHeaderBar: View {
                             .stroke(headerBorder, lineWidth: 0.75)
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
                 .help("Copy URL")
 
                 // Open as Tab Button (Primary action)
@@ -279,7 +279,7 @@ private struct PeekHeaderBar: View {
                             )
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
                 .help("Open in new tab (⌘⏎)")
 
                 // Close Button
@@ -298,7 +298,7 @@ private struct PeekHeaderBar: View {
                                 .stroke(headerBorder, lineWidth: 0.75)
                         )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hitArea)
                 .help("Close preview (Esc)")
             }
         }
@@ -358,7 +358,7 @@ private struct PeekHeaderIconButton: View {
                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hitArea)
         .disabled(!isEnabled)
         .help(help)
         .onHover { isHovered = $0 }

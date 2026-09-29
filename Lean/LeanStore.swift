@@ -2008,7 +2008,7 @@ final class LeanStore: ObservableObject {
         withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
             selectedID = id
         }
-        saveSession()
+        scheduleDebouncedPersist()
         DispatchQueue.main.async { [weak self] in
             guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
             // If the page is still not on screen after the switch (the stage
@@ -2026,7 +2026,7 @@ final class LeanStore: ObservableObject {
         withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
             self.selectedID = tabs[(index + offset) % tabs.count].id
         }
-        saveSession()
+        scheduleDebouncedPersist()
         DispatchQueue.main.async { [weak self] in
             guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
             tab.webView.window?.makeFirstResponder(tab.webView)
@@ -2060,7 +2060,7 @@ final class LeanStore: ObservableObject {
         withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
             selectedID = tabs[index].id
         }
-        saveSession()
+        scheduleDebouncedPersist()
     }
 
     // MARK: - Ctrl+Tab Switcher Navigation
@@ -2110,9 +2110,10 @@ final class LeanStore: ObservableObject {
             isTabSwitcherVisible = true
             switcherSessionIDs = validTabs.map(\.id)
             switcherSelectedIndex = validTabs.firstIndex(where: { $0.id == selectedID }) ?? 0
-        } else {
-            cycleTabSwitcher(reverse: reverse)
         }
+        // Opening already moves off the current tab, so one press previews
+        // the next (or previous) one; further presses keep cycling.
+        cycleTabSwitcher(reverse: reverse)
     }
 
     func cycleTabSwitcher(reverse: Bool = false) {
@@ -2131,19 +2132,26 @@ final class LeanStore: ObservableObject {
         // of silently staying put.
         let session = switcherSessionTabs
         switcherSessionIDs = []
+        let target: LeanTab.ID
         if session.indices.contains(switcherSelectedIndex) {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
-                selectedID = session[switcherSelectedIndex].id
-            }
-            saveSession()
-            return
+            target = session[switcherSelectedIndex].id
+        } else {
+            let live = switcherTabs
+            guard !live.isEmpty else { return }
+            target = live[min(switcherSelectedIndex, live.count - 1)].id
         }
-        let live = switcherTabs
-        guard !live.isEmpty else { return }
         withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
-            selectedID = live[min(switcherSelectedIndex, live.count - 1)].id
+            selectedID = target
         }
-        saveSession()
+        scheduleDebouncedPersist()
+        // Same follow-up as switchToTab: if the stage rendered before it
+        // could attach the page, the switch would only show on the next
+        // redraw (the next switcher open). Render once more and focus it.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
+            if tab.webView.window == nil, tab.url != nil || tab.isPageSource { self.objectWillChange.send() }
+            tab.webView.window?.makeFirstResponder(tab.webView)
+        }
     }
 
     private static let switcherModifierMask: NSEvent.ModifierFlags = [.control, .command, .option]
@@ -2155,9 +2163,13 @@ final class LeanStore: ObservableObject {
     /// held. The release normally arrives as a flagsChanged event, but it is
     /// lost when it happens while another window or app is active — and a
     /// switcher left open that way covers the window and eats the next click.
-    func settleStaleTabSwitcher() {
+    ///
+    /// Pass the event's own flags when handling one: the class-level
+    /// `NSEvent.modifierFlags` can still report the old state inside a
+    /// flagsChanged monitor, which left the switcher open until the next press.
+    func settleStaleTabSwitcher(flags: NSEvent.ModifierFlags = NSEvent.modifierFlags) {
         guard isTabSwitcherVisible else { return }
-        let held = NSEvent.modifierFlags.intersection(Self.switcherModifierMask)
+        let held = flags.intersection(Self.switcherModifierMask)
         if !held.isSuperset(of: switcherModifiers) { commitTabSwitcher() }
     }
 

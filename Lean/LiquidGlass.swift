@@ -33,6 +33,19 @@ extension View {
         }
     }
 
+    /// The drop shadow under a page or sidebar card. Skipped in glass mode:
+    /// a large blurred shadow behind a full-window card (with a live web view
+    /// inside) is re-rendered off-screen on every frame, and the glass window
+    /// already separates the card from the background.
+    @ViewBuilder
+    func leanCardShadow(glass: Bool, color: Color, radius: CGFloat, x: CGFloat, y: CGFloat) -> some View {
+        if glass {
+            self
+        } else {
+            shadow(color: color, radius: radius, x: x, y: y)
+        }
+    }
+
     /// The surface of a floating panel: glass, or the opaque card with a
     /// blur, hairline and shadow it has always had.
     func leanPopoverSurface(glass: Bool, isDark: Bool, stroke: Color, fill: Color? = nil, radius: CGFloat = 11) -> some View {

@@ -56,16 +56,18 @@ struct TabSwitcherView: View {
                         .padding(8)
                 }
             }
-            .background(
-                VisualEffectBlur(material: .hudWindow, blendingMode: .withinWindow)
-                    .clipShape(RoundedRectangle(cornerRadius: store.enableThumbnailsInTabSwitcher ? 18 : 14, style: .continuous))
-                    .opacity(store.glassActive ? 0 : 1)
-            )
-            .background(
-                (store.isDarkMode ? Color.black.opacity(0.80) : Color(white: 0.96).opacity(0.88))
-                    .clipShape(RoundedRectangle(cornerRadius: store.enableThumbnailsInTabSwitcher ? 18 : 14, style: .continuous))
-                    .opacity(store.glassActive ? 0 : 1)
-            )
+            .background {
+                // Only built when needed: an opacity-0 blur view still costs
+                // a live compositing pass on every frame.
+                if !store.glassActive {
+                    let shape = RoundedRectangle(cornerRadius: store.enableThumbnailsInTabSwitcher ? 18 : 14, style: .continuous)
+                    ZStack {
+                        VisualEffectBlur(material: .hudWindow, blendingMode: .withinWindow)
+                        store.isDarkMode ? Color.black.opacity(0.80) : Color(white: 0.96).opacity(0.88)
+                    }
+                    .clipShape(shape)
+                }
+            }
             .leanGlassIf(store.glassActive, radius: store.enableThumbnailsInTabSwitcher ? 22 : 18)
             .overlay(
                 RoundedRectangle(cornerRadius: store.enableThumbnailsInTabSwitcher ? 18 : 14, style: .continuous)
@@ -74,7 +76,7 @@ struct TabSwitcherView: View {
                         lineWidth: 1
                     )
             )
-            .shadow(color: Color.black.opacity(0.24), radius: 18, x: 0, y: 8)
+            .leanCardShadow(glass: store.glassActive, color: Color.black.opacity(0.24), radius: 18, x: 0, y: 8)
             .fixedSize(horizontal: false, vertical: true)
             .animation(.spring(response: 0.14, dampingFraction: 0.9), value: store.switcherSelectedIndex)
         }

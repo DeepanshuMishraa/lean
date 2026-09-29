@@ -13,7 +13,7 @@ struct TabSwitcherSessionTests {
         return (store, directory, created)
     }
 
-    @Test("Opening highlights the current tab, then advances")
+    @Test("Opening highlights the next tab, then keeps advancing")
     @MainActor
     func openingHighlightsCurrentTab() throws {
         let (store, directory, tabs) = try makeStore(with: [
@@ -23,15 +23,15 @@ struct TabSwitcherSessionTests {
 
         store.startTabSwitcher()
         #expect(store.isTabSwitcherVisible)
-        #expect(store.switcherSelectedIndex == 0)
-        store.startTabSwitcher()
         #expect(store.switcherSelectedIndex == 1)
+        store.startTabSwitcher()
+        #expect(store.switcherSelectedIndex == 2)
         store.commitTabSwitcher()
         #expect(!store.isTabSwitcherVisible)
-        #expect(store.selectedID == tabs[1].id)
+        #expect(store.selectedID == tabs[2].id)
     }
 
-    @Test("Reverse opening highlights the current tab, then moves back")
+    @Test("Reverse opening highlights the previous tab, then moves back")
     @MainActor
     func reverseOpeningHighlightsCurrentTab() throws {
         let (store, directory, tabs) = try makeStore(with: [
@@ -40,11 +40,11 @@ struct TabSwitcherSessionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         store.startTabSwitcher(reverse: true)
-        #expect(store.switcherSelectedIndex == 0)
-        store.startTabSwitcher(reverse: true)
         #expect(store.switcherSelectedIndex == 2)
+        store.startTabSwitcher(reverse: true)
+        #expect(store.switcherSelectedIndex == 1)
         store.commitTabSwitcher()
-        #expect(store.selectedID == tabs[2].id)
+        #expect(store.selectedID == tabs[1].id)
     }
 
     @Test("Reordering mid-gesture still commits the highlighted tab")
@@ -56,7 +56,6 @@ struct TabSwitcherSessionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         // Highlight B…
-        store.startTabSwitcher()
         store.startTabSwitcher()
         #expect(store.switcherVisibleTabs[store.switcherSelectedIndex].id == tabs[1].id)
         // …then move B to the end before releasing.
@@ -75,7 +74,6 @@ struct TabSwitcherSessionTests {
         ])
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        store.startTabSwitcher()
         store.startTabSwitcher() // highlights B
         store.close(tabs[1])
         store.commitTabSwitcher()

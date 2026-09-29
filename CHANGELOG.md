@@ -11,6 +11,12 @@ update often — releases arrive through the built-in updater.
 - Color themes (Catppuccin, Tokyo Night, Dracula, One, Nord, Gruvbox, Rosé Pine), each with dark and light variants, chosen in Settings
 - Liquid Glass now covers the top bar, popovers, bookmark dialog, settings, downloads, extensions, peek panel and tab switcher
 
+### Fixed
+
+- The tab switcher opens on the next (or previous) tab instead of the current one
+- Releasing the switcher shortcut switches tabs immediately instead of on the next press
+- Less lag in Liquid Glass mode (no full-window card shadows) and on tab switches (session saves are debounced)
+
 ## [0.1.6] - 2026-09-28
 
 ### Fixed

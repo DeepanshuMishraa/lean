@@ -440,12 +440,7 @@ struct LeanView: View {
                 RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
                     .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
             )
-            .shadow(
-                color: store.adaptiveTheme.webCardShadow,
-                radius: 18,
-                x: 6,
-                y: 2
-            )
+            .leanCardShadow(glass: store.glassActive, color: store.adaptiveTheme.webCardShadow, radius: 18, x: 6, y: 2)
             .padding(.top, glassInset > 0 ? glassInset : store.windowBorderWidth)
             .padding(.bottom, glassInset > 0 ? glassInset : store.windowBorderWidth)
             .padding(.leading, glassInset > 0 ? glassInset : store.windowBorderWidth)
@@ -528,12 +523,7 @@ struct LeanView: View {
                             RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
                                 .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
                         )
-                        .shadow(
-                            color: store.adaptiveTheme.webCardShadow,
-                            radius: store.adaptiveTheme.webCardShadowRadius,
-                            x: 0,
-                            y: store.adaptiveTheme.isFrameLight ? 2 : 3
-                        )
+                        .leanCardShadow(glass: store.glassActive, color: store.adaptiveTheme.webCardShadow, radius: store.adaptiveTheme.webCardShadowRadius, x: 0, y: store.adaptiveTheme.isFrameLight ? 2 : 3)
                         .padding(.leading, cardLeadingPadding)
                         .padding(.trailing, cardTrailingPadding)
                         .padding(.bottom, cardBottomPadding)
@@ -547,12 +537,7 @@ struct LeanView: View {
                             RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
                                 .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
                         )
-                        .shadow(
-                            color: store.adaptiveTheme.webCardShadow,
-                            radius: store.adaptiveTheme.webCardShadowRadius,
-                            x: 0,
-                            y: store.adaptiveTheme.isFrameLight ? 2 : 3
-                        )
+                        .leanCardShadow(glass: store.glassActive, color: store.adaptiveTheme.webCardShadow, radius: store.adaptiveTheme.webCardShadowRadius, x: 0, y: store.adaptiveTheme.isFrameLight ? 2 : 3)
                         .padding(.leading, cardLeadingPadding)
                         .padding(.trailing, cardTrailingPadding)
                         .padding(.bottom, cardBottomPadding)
@@ -584,12 +569,7 @@ struct LeanView: View {
                         RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
                             .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
                     )
-                    .shadow(
-                        color: store.adaptiveTheme.webCardShadow,
-                        radius: store.adaptiveTheme.webCardShadowRadius,
-                        x: 0,
-                        y: store.adaptiveTheme.isFrameLight ? 2 : 3
-                    )
+                    .leanCardShadow(glass: store.glassActive, color: store.adaptiveTheme.webCardShadow, radius: store.adaptiveTheme.webCardShadowRadius, x: 0, y: store.adaptiveTheme.isFrameLight ? 2 : 3)
                     .padding(.leading, cardLeadingPadding)
                     .padding(.trailing, cardTrailingPadding)
                     .padding(.bottom, cardBottomPadding)
@@ -629,12 +609,7 @@ struct LeanView: View {
                         RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
                             .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
                     )
-                    .shadow(
-                        color: store.adaptiveTheme.webCardShadow,
-                        radius: store.adaptiveTheme.webCardShadowRadius,
-                        x: 0,
-                        y: store.adaptiveTheme.isFrameLight ? 2 : 3
-                    )
+                    .leanCardShadow(glass: store.glassActive, color: store.adaptiveTheme.webCardShadow, radius: store.adaptiveTheme.webCardShadowRadius, x: 0, y: store.adaptiveTheme.isFrameLight ? 2 : 3)
                     .padding(.leading, cardLeadingPadding)
                     .padding(.trailing, cardTrailingPadding)
                     .padding(.bottom, cardBottomPadding)
@@ -797,7 +772,7 @@ struct LeanView: View {
         keyMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             // Tab pressed again with the switcher open cycles it; anything
             // else first checks the switcher is not stale.
-            if event.keyCode != 48 { store.settleStaleTabSwitcher() }
+            if event.keyCode != 48 { store.settleStaleTabSwitcher(flags: event.modifierFlags) }
             // When link peek preview is active:
             if store.peekTab != nil {
                 if event.keyCode == 53 {
@@ -905,7 +880,7 @@ struct LeanView: View {
 
         // Monitor flagsChanged to detect release of Control key
         keyMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
-            store.settleStaleTabSwitcher()
+            store.settleStaleTabSwitcher(flags: event.modifierFlags)
             return event
         })
     }

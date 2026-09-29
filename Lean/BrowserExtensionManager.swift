@@ -73,7 +73,28 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
         }
     }
 
-    func waitUntilReady() async { await startupLoadTask?.value }
+    /// Waits for installed extensions to finish loading, but never longer than
+    /// `timeout`: every page load waits here, so one extension whose load
+    /// never returns would otherwise leave every tab unable to navigate until
+    /// the app restarts.
+    func waitUntilReady(timeout: TimeInterval = 3) async {
+        guard let startupLoadTask else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            var pending: CheckedContinuation<Void, Never>? = continuation
+            let finish = {
+                pending?.resume()
+                pending = nil
+            }
+            Task { @MainActor in
+                await startupLoadTask.value
+                finish()
+            }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                finish()
+            }
+        }
+    }
 
     func icon(for id: String) -> NSImage? {
         if let image = icons[id] { return image }

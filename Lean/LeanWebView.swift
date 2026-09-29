@@ -10,8 +10,15 @@ import WebKit
 final class LeanWebView: WKWebView {
     var contextMenuHook: ((NSMenu) -> Void)?
 
+    /// Where the last right-click landed, in page (CSS) coordinates, so an
+    /// action chosen from the menu can ask the page what was under the cursor.
+    private(set) var lastContextPoint: CGPoint = .zero
+
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
+        let local = convert(event.locationInWindow, from: nil)
+        let top = isFlipped ? local.y : bounds.height - local.y
+        lastContextPoint = CGPoint(x: local.x / pageZoom, y: top / pageZoom)
         contextMenuHook?(menu)
     }
 

@@ -26,6 +26,7 @@ enum PageScripts {
                     }
                     var mediaURL = candidates.find(function(url) { return /^https?:/i.test(url); })
                         || candidates.find(function(url) { return /^blob:/i.test(url); })
+                        || candidates.find(function(url) { return /^data:(image|video)\\//i.test(url); })
                         || '';
                     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(contextMenuMessageName)) {
                         window.webkit.messageHandlers.\(contextMenuMessageName).postMessage({

@@ -297,6 +297,10 @@ private struct SidebarAddressBar: View {
     @FocusState private var isFocused: Bool
     @State private var text = ""
     @State private var selectedIndex = 0
+    /// What the user typed; suggestions come from this, not from `text`, which
+    /// shows the highlighted suggestion while arrowing through the list.
+    @State private var query = ""
+    @State private var appliedSuggestionText: String?
     @State private var didCopyLink = false
 
     private var openTabsForSuggestions: [(id: UUID, title: String, url: URL)] {
@@ -307,9 +311,9 @@ private struct SidebarAddressBar: View {
     }
 
     private var suggestions: [OmnibarSuggestion] {
-        guard !text.isEmpty else { return [] }
+        guard !query.isEmpty else { return [] }
         return OmnibarService.shared.suggestions(
-            for: text,
+            for: query,
             history: store.visitedHistory,
             openTabs: openTabsForSuggestions,
             searchEngine: store.searchEngine
@@ -331,14 +335,14 @@ private struct SidebarAddressBar: View {
             }
             .onKeyPress(.downArrow) {
                 if !suggestions.isEmpty {
-                    selectedIndex = (selectedIndex + 1) % suggestions.count
+                    select((selectedIndex + 1) % suggestions.count)
                     return .handled
                 }
                 return .ignored
             }
             .onKeyPress(.upArrow) {
                 if !suggestions.isEmpty {
-                    selectedIndex = max(selectedIndex - 1, 0)
+                    select(max(selectedIndex - 1, 0))
                     return .handled
                 }
                 return .ignored
@@ -364,57 +368,20 @@ private struct SidebarAddressBar: View {
         }
     }
 
-    @ViewBuilder
-    private var suggestionsOverlay: some View {
-        if isFocused && !suggestions.isEmpty {
-            VStack(spacing: 2) {
-                ForEach(Array(suggestions.prefix(6).enumerated()), id: \.element.id) { index, match in
-                    HStack(spacing: 8) {
-                        (match.isSearch ? LeanIcon.magnifyingGlass.fill : (match.isSwitchToTab ? LeanIcon.arrowCircleRight.fill : LeanIcon.browser.fill))
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 12, height: 12)
-                            .foregroundColor(store.adaptiveTheme.secondaryText)
-                            .frame(width: 14)
-
-                        Text(match.primaryText)
-                            .font(store.headingFont(size: 12))
-                            .foregroundColor(store.adaptiveTheme.primaryText)
-                            .lineLimit(1)
-
-                        Spacer()
-
-                        Text(match.secondaryText)
-                            .font(store.bodyFont(size: 10.5))
-                            .foregroundColor(store.adaptiveTheme.secondaryText)
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 8)
-                    .frame(height: 28)
-                    .background(
-                        index == selectedIndex
-                            ? store.adaptiveTheme.iconHoverBackground
-                            : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        execute(match)
-                    }
-                }
-            }
-            .padding(6)
-            .background(
-                store.adaptiveTheme.dropdownBackground,
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(store.adaptiveTheme.dropdownStroke, lineWidth: 0.75)
-            )
-            .shadow(color: store.adaptiveTheme.dropdownShadow, radius: 12, x: 0, y: 5)
-            .padding(.top, 40)
-            .zIndex(100)
+    /// Drawn by LeanView at the window root: the sidebar card clips and
+    /// z-orders anything drawn from here.
+    private func syncDropdown() {
+        guard isFocused, !suggestions.isEmpty else {
+            if store.suggestionDropdown?.owner == .sidebarBar { store.suggestionDropdown = nil }
+            return
         }
+        store.suggestionDropdown = SuggestionDropdown(
+            owner: .sidebarBar,
+            width: nil,
+            matches: Array(suggestions.prefix(6)),
+            selectedIndex: selectedIndex,
+            onSelect: execute
+        )
     }
 
     var body: some View {
@@ -472,8 +439,15 @@ private struct SidebarAddressBar: View {
         .onTapGesture {
             isFocused = true
         }
-        .overlay(alignment: .top) {
-            suggestionsOverlay
+        .anchorPreference(key: SuggestionAnchorKey.self, value: .bounds) { [.sidebarBar: $0] }
+        .onChange(of: text) { _, _ in
+            textDidChange()
+            syncDropdown()
+        }
+        .onChange(of: selectedIndex) { _, _ in syncDropdown() }
+        .onChange(of: isFocused) { _, _ in syncDropdown() }
+        .onDisappear {
+            if store.suggestionDropdown?.owner == .sidebarBar { store.suggestionDropdown = nil }
         }
         .onAppear {
             syncFromTab()
@@ -504,6 +478,23 @@ private struct SidebarAddressBar: View {
             text = url.absoluteString
         }
         isFocused = true
+    }
+
+    /// Highlights a suggestion and shows it in the field right away.
+    private func select(_ index: Int) {
+        guard suggestions.indices.contains(index) else { return }
+        selectedIndex = index
+        let match = suggestions[index]
+        let shown = match.isSearch ? match.primaryText : match.targetURL.absoluteString
+        appliedSuggestionText = shown
+        text = shown
+    }
+
+    private func textDidChange() {
+        if text == appliedSuggestionText { return }
+        appliedSuggestionText = nil
+        query = text
+        selectedIndex = 0
     }
 
     private func submitCurrent() {

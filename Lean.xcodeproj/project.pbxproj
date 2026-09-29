@@ -43,6 +43,7 @@
 		4D642F93D1BCE6BACD83B656 /* PageLoadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F223D3E0E5D21A9B6965446 /* PageLoadingTests.swift */; };
 		510DD86C20F775C3F5A542B7 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E72942590E49E85581DFAAC5 /* DownloadManager.swift */; };
 		528B117F29C5A1E8019261C5 /* WebEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFEE1335003A4544272D347D /* WebEngine.swift */; };
+		54ACC0C4A977ECC970BAA28E /* SuggestionDropdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E914422B8536C45EA5E960A2 /* SuggestionDropdownView.swift */; };
 		557148C21986A48B5ABC5FE2 /* GeistMono-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7AF69F861FD9CDBC829BD268 /* GeistMono-Variable.ttf */; };
 		571263C8F841874C413F13EB /* LeanTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D34204B30CD8161D2E590DF /* LeanTheme.swift */; };
 		5833C030B039CAC18AB17D73 /* PageScripts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F359A809C7FBA774892C62A2 /* PageScripts.swift */; };
@@ -72,6 +73,7 @@
 		8A6436AE37F332DE7548F77B /* AdBlockFilterConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD6B10DFBD20A8F10DF0B9C7 /* AdBlockFilterConverter.swift */; };
 		9042BF6C2D7CF8674CFDC1F0 /* LeanTabPopupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5907E6D8081598539D8437B5 /* LeanTabPopupTests.swift */; };
 		9189BD1604353EC11AD2E7BB /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A240F0FAABC15EC3C0D230E /* TestHelpers.swift */; };
+		963ED79B791AEDDDA0B4CE38 /* NewTabToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4FF3CC836DF75826189D411 /* NewTabToastView.swift */; };
 		96A93B3107359C2948FBF9D6 /* LiquidGlass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81840A229E57DF37AA48DD93 /* LiquidGlass.swift */; };
 		9781C2BF3CBE9A5AEC69FAB5 /* NativeMessagingCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C59A22C06416C42970660C92 /* NativeMessagingCore.swift */; };
 		9B7EF06C932FD3C9B4A4181C /* PasswordVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51504E57E400453E497CD481 /* PasswordVault.swift */; };
@@ -224,6 +226,7 @@
 		990C495395F1F1C48EE3ABDA /* LeanTabTitleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanTabTitleTests.swift; sourceTree = "<group>"; };
 		9E570BC18AD372821AB350BC /* TabFaviconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabFaviconView.swift; sourceTree = "<group>"; };
 		9F1CF9A74E1C95B3A7BA49A0 /* LeanNativeHosts.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = LeanNativeHosts.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
+		A4FF3CC836DF75826189D411 /* NewTabToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewTabToastView.swift; sourceTree = "<group>"; };
 		A848AF7624C91DF439D4069E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AA93006FF8D0CD999AA120C4 /* Lean.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lean.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B15F19C70BDD8CCECE0E351E /* ChromiumExtensionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromiumExtensionsTests.swift; sourceTree = "<group>"; };
@@ -255,6 +258,7 @@
 		E72942590E49E85581DFAAC5 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 		E794F04D718D9017D9CBA9A8 /* PageLoadError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageLoadError.swift; sourceTree = "<group>"; };
 		E79752CAC905E311310040C7 /* OmnibarServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmnibarServiceTests.swift; sourceTree = "<group>"; };
+		E914422B8536C45EA5E960A2 /* SuggestionDropdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionDropdownView.swift; sourceTree = "<group>"; };
 		ECBB6F58B56C5F78D6616416 /* TabStripScrollSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabStripScrollSupport.swift; sourceTree = "<group>"; };
 		EFEE1335003A4544272D347D /* WebEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebEngine.swift; sourceTree = "<group>"; };
 		F18A4954A3A2466EAD067457 /* PeekPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeekPanel.swift; sourceTree = "<group>"; };
@@ -387,6 +391,7 @@
 				741B4DA4257A50B78DAB7BDA /* LeanWebView.swift */,
 				81840A229E57DF37AA48DD93 /* LiquidGlass.swift */,
 				C59A22C06416C42970660C92 /* NativeMessagingCore.swift */,
+				A4FF3CC836DF75826189D411 /* NewTabToastView.swift */,
 				BE299D40B9F2B4D61F3D41AD /* OmnibarService.swift */,
 				4C7FCB01A3F3CCDE9AA9530E /* OmnibarSuggestionRow.swift */,
 				6AC627B2D3E8E4EB789B7523 /* OmnibarView.swift */,
@@ -402,6 +407,7 @@
 				A848AF7624C91DF439D4069E /* SettingsView.swift */,
 				84A5B4BCED207122DB77E61C /* SettingsWindowManager.swift */,
 				0FFFAF344F05056E843A70F1 /* SidebarView.swift */,
+				E914422B8536C45EA5E960A2 /* SuggestionDropdownView.swift */,
 				9E570BC18AD372821AB350BC /* TabFaviconView.swift */,
 				18CE6C0540AC120E66BBF568 /* TabSleepPolicy.swift */,
 				ECBB6F58B56C5F78D6616416 /* TabStripScrollSupport.swift */,
@@ -705,6 +711,7 @@
 				0FA60CB9A14A3C713C1EC473 /* LeanWebView.swift in Sources */,
 				96A93B3107359C2948FBF9D6 /* LiquidGlass.swift in Sources */,
 				26390AFBD7ED060866038937 /* NativeMessagingCore.swift in Sources */,
+				963ED79B791AEDDDA0B4CE38 /* NewTabToastView.swift in Sources */,
 				1D9FED4451F17326C14D6A43 /* OmnibarService.swift in Sources */,
 				CFA967BA5CF33A8F4C36B321 /* OmnibarSuggestionRow.swift in Sources */,
 				9F7CDF17FBB0540000928EA0 /* OmnibarView.swift in Sources */,
@@ -720,6 +727,7 @@
 				D8DA1C37849FCBD67C9EE9DF /* SettingsView.swift in Sources */,
 				78C6CF86E4E44D9D9BCE3E8E /* SettingsWindowManager.swift in Sources */,
 				B92CC1297B7BDFDDDB82379A /* SidebarView.swift in Sources */,
+				54ACC0C4A977ECC970BAA28E /* SuggestionDropdownView.swift in Sources */,
 				69AC4FF3AD87A8C412AB8AA2 /* TabFaviconView.swift in Sources */,
 				49BB96110AFECF59ADF20109 /* TabSleepPolicy.swift in Sources */,
 				E5BFC6064A14CB1E7A7C4D03 /* TabStripScrollSupport.swift in Sources */,

@@ -1030,6 +1030,10 @@ struct InlineURLBar: View {
     @Environment(\.browserUIScale) private var browserUIScale
     @State private var text = ""
     @State private var selectedIndex = 0
+    /// What the user typed; suggestions come from this, not from `text`, which
+    /// shows the highlighted suggestion while arrowing through the list.
+    @State private var query = ""
+    @State private var appliedSuggestionText: String?
 
     private var openTabsForSuggestions: [(id: UUID, title: String, url: URL)] {
         store.tabs.compactMap { t in
@@ -1039,23 +1043,13 @@ struct InlineURLBar: View {
     }
 
     private var suggestions: [OmnibarSuggestion] {
-        guard !text.isEmpty else { return [] }
+        guard !query.isEmpty else { return [] }
         return OmnibarService.shared.suggestions(
-            for: text,
+            for: query,
             history: store.visitedHistory,
             openTabs: openTabsForSuggestions,
             searchEngine: store.searchEngine
         )
-    }
-
-    private func suggestionIcon(for match: OmnibarSuggestion) -> LeanIcon {
-        if match.isSearch {
-            return .magnifyingGlass
-        } else if match.isSwitchToTab {
-            return .arrowCircleRight
-        } else {
-            return .browser
-        }
     }
 
     var body: some View {
@@ -1093,14 +1087,14 @@ struct InlineURLBar: View {
                 }
                 .onKeyPress(.downArrow) {
                     if !suggestions.isEmpty {
-                        selectedIndex = (selectedIndex + 1) % suggestions.count
+                        select((selectedIndex + 1) % suggestions.count)
                         return .handled
                     }
                     return .ignored
                 }
                 .onKeyPress(.upArrow) {
                     if !suggestions.isEmpty {
-                        selectedIndex = max(selectedIndex - 1, 0)
+                        select(max(selectedIndex - 1, 0))
                         return .handled
                     }
                     return .ignored
@@ -1144,12 +1138,13 @@ struct InlineURLBar: View {
                     }
             }
         )
-        .overlay(alignment: .topLeading) {
-            if !suggestions.isEmpty && isFieldFocused {
-                suggestionsDropdown
-                    .offset(y: 32 * browserUIScale)
-            }
+        .onChange(of: text) { _, _ in
+            textDidChange()
+            syncDropdown()
         }
+        .onChange(of: selectedIndex) { _, _ in syncDropdown() }
+        .onChange(of: isFieldFocused) { _, _ in syncDropdown() }
+        .anchorPreference(key: SuggestionAnchorKey.self, value: .bounds) { [.inlineBar: $0] }
         .onAppear {
             text = tab.url?.absoluteString ?? ""
             if autoFocus || store.isInlineURLEditing {
@@ -1167,6 +1162,7 @@ struct InlineURLBar: View {
         .onDisappear {
             store.inlineURLBarFrame = .zero
             store.inlineSuggestionsFrame = .zero
+            if store.suggestionDropdown?.owner == .inlineBar { store.suggestionDropdown = nil }
         }
         .onChange(of: suggestions.isEmpty) { _, isEmpty in
             if isEmpty {
@@ -1194,52 +1190,37 @@ struct InlineURLBar: View {
         }
     }
 
-    private var suggestionsDropdown: some View {
-        VStack(spacing: 1) {
-            let items = Array(suggestions.prefix(6).enumerated())
-            ForEach(items, id: \.element.id) { index, match in
-                InlineSuggestionRow(
-                    match: match,
-                    icon: suggestionIcon(for: match),
-                    isSelected: selectedIndex == index,
-                    store: store
-                ) {
-                    execute(match)
-                }
-            }
+    /// The dropdown is drawn by LeanView, above the tab strip's scroll
+    /// view (which would clip it to the bar's height).
+    private func syncDropdown() {
+        guard isFieldFocused, !suggestions.isEmpty else {
+            if store.suggestionDropdown?.owner == .inlineBar { store.suggestionDropdown = nil }
+            return
         }
-        .padding(4)
-        .frame(width: 380 * browserUIScale)
-        .background(
-            store.glassActive ? Color.clear : store.adaptiveTheme.dropdownBackground,
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        store.suggestionDropdown = SuggestionDropdown(
+            owner: .inlineBar,
+            width: 380 * browserUIScale,
+            matches: Array(suggestions.prefix(6)),
+            selectedIndex: selectedIndex,
+            onSelect: execute
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(store.glassActive ? Color.clear : store.adaptiveTheme.dropdownStroke, lineWidth: 1)
-        )
-        .leanGlassIf(store.glassActive, radius: 14)
-        .shadow(color: store.adaptiveTheme.dropdownShadow, radius: 12, x: 0, y: 4)
-        .background(
-            GeometryReader { geo in
-                Color.clear
-                    .onAppear {
-                        store.inlineSuggestionsFrame = geo.frame(in: .global)
-                    }
-                    .onChange(of: geo.frame(in: .global)) { _, newFrame in
-                        let old = store.inlineSuggestionsFrame
-                        if abs(old.origin.x - newFrame.origin.x) > 1
-                            || abs(old.origin.y - newFrame.origin.y) > 1
-                            || abs(old.width - newFrame.width) > 1
-                            || abs(old.height - newFrame.height) > 1 {
-                            store.inlineSuggestionsFrame = newFrame
-                        }
-                    }
-            }
-        )
-        .onDisappear {
-            store.inlineSuggestionsFrame = .zero
-        }
+    }
+
+    /// Highlights a suggestion and shows it in the field right away.
+    private func select(_ index: Int) {
+        guard suggestions.indices.contains(index) else { return }
+        selectedIndex = index
+        let match = suggestions[index]
+        let shown = match.isSearch ? match.primaryText : match.targetURL.absoluteString
+        appliedSuggestionText = shown
+        text = shown
+    }
+
+    private func textDidChange() {
+        if text == appliedSuggestionText { return }
+        appliedSuggestionText = nil
+        query = text
+        selectedIndex = 0
     }
 
     private func submitCurrent() {

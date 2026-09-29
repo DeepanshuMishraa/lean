@@ -180,6 +180,9 @@ final class LeanStore: ObservableObject {
     @Published var floatingPaletteFrame: CGRect = .zero
     @Published var inlineURLBarFrame: CGRect = .zero
     @Published var inlineSuggestionsFrame: CGRect = .zero
+    @Published var suggestionDropdown: SuggestionDropdown?
+    @Published private(set) var newTabToast: NewTabToast?
+    private var newTabToastDismiss: DispatchWorkItem?
     @Published var isTabSwitcherVisible = false
     @Published var switcherSelectedIndex = 0
     @Published var historyItems: [HistoryItem] = []
@@ -192,7 +195,15 @@ final class LeanStore: ObservableObject {
     @Published var bookmarksPaletteFrame: CGRect = .zero
     @Published var isBookmarkDialogPresented = false
     @Published var dialogBookmarkTitle = ""
-    @Published var dialogBookmarkFolder = BookmarkFolder.defaultFolder
+    @Published var dialogBookmarkFolder = BookmarkFolder.defaultFolder {
+        didSet {
+            guard dialogBookmarkFolder != oldValue, isBookmarkDialogPresented else { return }
+            lastBookmarkFolder = dialogBookmarkFolder
+            persist(dialogBookmarkFolder, forKey: Self.lastBookmarkFolderKey)
+        }
+    }
+    /// Folder the user last chose in the ⌘D dialog; the next bookmark starts there.
+    private var lastBookmarkFolder: String?
     @Published var dialogBookmarkURL: URL? = nil
     @Published var dialogBookmarkFrame: CGRect = .zero
     @Published var selectedSettingsCategory: SettingsCategory = .general
@@ -583,6 +594,7 @@ final class LeanStore: ObservableObject {
             folders.insert(BookmarkFolder.defaultFolder, at: 0)
         }
         self.bookmarkFolders = folders
+        self.lastBookmarkFolder = databaseValue(self.database, String.self, forKey: Self.lastBookmarkFolderKey)
 
         // Load bookmarks (with migration from importedBookmarks on first run)
         let savedBookmarks = databaseValue(self.database, [BookmarkItem].self, forKey: Self.bookmarksKey)
@@ -1382,7 +1394,8 @@ final class LeanStore: ObservableObject {
             dialogBookmarkURL = existing.url
         } else {
             let title = tab.title.isEmpty ? (url.host ?? url.absoluteString) : tab.title
-            let targetFolder = folder ?? (selectedBookmarkFolder == BookmarkFolder.allFolder ? BookmarkFolder.defaultFolder : selectedBookmarkFolder)
+            let remembered = lastBookmarkFolder.flatMap { bookmarkFolders.contains($0) ? $0 : nil }
+            let targetFolder = folder ?? remembered ?? (selectedBookmarkFolder == BookmarkFolder.allFolder ? BookmarkFolder.defaultFolder : selectedBookmarkFolder)
             addBookmark(title: title, url: url, folder: targetFolder)
             dialogBookmarkTitle = title
             dialogBookmarkFolder = targetFolder
@@ -1736,8 +1749,27 @@ final class LeanStore: ObservableObject {
             self?.openPageSource(title: title, html: html)
         }
         tab.onOpenURLInNewTab = { [weak self] url, select in
-            self?.newTab(url: url, select: select)
+            guard let self else { return }
+            let opened = self.newTab(url: url, select: select)
+            // A background open (⌘-click) changes nothing on screen; say so.
+            if !select { self.showNewTabToast(for: opened, url: url) }
         }
+    }
+
+    private func showNewTabToast(for tab: LeanTab, url: URL) {
+        newTabToastDismiss?.cancel()
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
+            newTabToast = NewTabToast(tabID: tab.id, host: url.host?.replacingOccurrences(of: "www.", with: "") ?? url.absoluteString)
+        }
+        let work = DispatchWorkItem { [weak self] in self?.dismissNewTabToast() }
+        newTabToastDismiss = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4, execute: work)
+    }
+
+    func dismissNewTabToast() {
+        newTabToastDismiss?.cancel()
+        newTabToastDismiss = nil
+        withAnimation(.easeInOut(duration: 0.28)) { newTabToast = nil }
     }
 
     // MARK: - Split Tab Support
@@ -2258,6 +2290,7 @@ final class LeanStore: ObservableObject {
     private static let importedBookmarksKey = "importedBookmarks_v1"
     private static let bookmarksKey = "bookmarks_v1"
     private static let bookmarkFoldersKey = "bookmarkFolders_v1"
+    private static let lastBookmarkFolderKey = "lastBookmarkFolder_v1"
     private static let searchEngineKey = "searchEngine"
     private static let adBlockingKey = "adBlockingEnabled"
     private static let passwordSavePromptsKey = "passwordSavePromptsEnabled"

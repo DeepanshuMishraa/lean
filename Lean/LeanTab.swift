@@ -54,6 +54,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     /// the error page instead of looping.
     private var httpFallbackAttemptedFor: String?
     private var mainDocumentMIMEType: String?
+    private var lastProcessTermination: Date?
     /// Last heartbeat per frame. Playing frames report every poll; a frame
     /// that played briefly and then detached (ad iframe, SPA swap) can never
     /// send its goodbye, so frames unheard from past the timeout are evicted
@@ -349,10 +350,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
                 self.lastPublishedProgress = progress
                 self.lastProgressPublishDate = now
                 self.loadingProgress = progress
-                if progress >= 0.7, self.isLoading {
-                    self.isLoading = false
-                    self.refreshState()
-                }
+                // isLoading only ends in didFinish/didFail: cutting it at a
+                // progress threshold showed a finished tab for a page that
+                // was still loading (GitHub).
             }
         }
         navigationObservers = [
@@ -782,10 +782,15 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             let title = item.title.lowercased()
             guard title.contains("download") || title.contains("save") else { continue }
             let itemKind = title.contains("video") ? "video" : (title.contains("image") ? "image" : nil)
-            guard itemKind == contextKind, let contextURL else { continue }
+            guard let itemKind else { continue }
+            // The page script may have missed the media (an overlay above the
+            // <img>, a CSS background, a data: URL); WebKit's own hit test
+            // still offers the item. Patch it anyway and, with no URL from the
+            // script, ask the page what is under the click when it is chosen.
+            if let contextKind, itemKind != contextKind { continue }
             item.target = self
             item.action = #selector(pageMenuDownloadMedia(_:))
-            item.representedObject = contextURL.absoluteString
+            item.representedObject = contextURL?.absoluteString ?? ""
             patchedMediaItem = true
         }
         if !patchedMediaItem, let contextKind, let contextURL {
@@ -869,9 +874,47 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     @objc private func pageMenuReload() { reload() }
 
     @objc private func pageMenuDownloadMedia(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let url = URL(string: raw) else { return }
-        downloadContextMedia(at: url)
+        guard let raw = sender.representedObject as? String else { return }
+        if !raw.isEmpty, let url = URL(string: raw) {
+            downloadContextMedia(at: url)
+            return
+        }
+        resolveMediaAtContextPoint { [weak self] url in
+            guard let self else { return }
+            if let url {
+                self.downloadContextMedia(at: url)
+            } else {
+                self.onDownloadFailed?()
+            }
+        }
+    }
+
+    /// The image or video under the last right-click, read from the page's
+    /// own hit test so overlays and CSS backgrounds are seen through.
+    private func resolveMediaAtContextPoint(completion: @escaping (URL?) -> Void) {
+        let point = webView.lastContextPoint
+        let script = """
+        (() => {
+            const found = document.elementsFromPoint(\(point.x), \(point.y));
+            for (const el of found) {
+                if (el.tagName === 'IMG') { const src = el.currentSrc || el.src; if (src) return src; }
+                if (el.tagName === 'VIDEO') {
+                    const src = el.currentSrc || el.src;
+                    if (src) return src;
+                }
+                const bg = getComputedStyle(el).backgroundImage;
+                const match = /url\\(["']?(.*?)["']?\\)/.exec(bg || '');
+                if (match && match[1]) return new URL(match[1], document.baseURI).href;
+            }
+            return '';
+        })()
+        """
+        webView.evaluateJavaScript(script) { result, _ in
+            DispatchQueue.main.async {
+                let raw = (result as? String) ?? ""
+                completion(raw.isEmpty ? nil : URL(string: raw))
+            }
+        }
     }
 
     func downloadContextMedia(at url: URL) {
@@ -880,6 +923,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             webView.startDownload(using: URLRequest(url: url)) { [weak self] download in
                 self?.keep(download)
             }
+        case "data":
+            saveDataURL(url)
         case "blob":
             guard let data = try? JSONEncoder().encode(url.absoluteString),
                   let urlLiteral = String(data: data, encoding: .utf8) else { return }
@@ -898,6 +943,48 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             }
         default:
             break
+        }
+    }
+
+    /// data: URLs (Google Images thumbnails, inline images) carry their own
+    /// bytes and no filename: decode here and write the file straight into
+    /// the downloads folder, listed like any other download.
+    private func saveDataURL(_ url: URL) {
+        let text = url.absoluteString
+        guard let comma = text.firstIndex(of: ",") else {
+            onDownloadFailed?()
+            return
+        }
+        let header = text[text.index(text.startIndex, offsetBy: 5)..<comma]
+        let payload = String(text[text.index(after: comma)...])
+        let decoded = payload.removingPercentEncoding ?? payload
+        let bytes = header.hasSuffix(";base64") ? Data(base64Encoded: decoded) : decoded.data(using: .utf8)
+        guard let bytes, !bytes.isEmpty else {
+            onDownloadFailed?()
+            return
+        }
+        let mime = header.split(separator: ";").first.map(String.init) ?? ""
+        let subtype = mime.split(separator: "/").last?.split(separator: "+").first.map(String.init) ?? "bin"
+        let stem = mime.hasPrefix("video") ? "video" : "image"
+        let name = "\(stem).\(subtype == "jpeg" ? "jpg" : subtype)"
+        let directory = DownloadManager.defaultDownloadsDirectory()
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let destination = downloadManager?.uniqueDestination(for: name) ?? directory.appendingPathComponent(name)
+        do {
+            try bytes.write(to: destination, options: .atomic)
+        } catch {
+            onDownloadFailed?()
+            return
+        }
+        if let manager = downloadManager {
+            let id = manager.beginDownload(
+                fileName: destination.lastPathComponent,
+                sourceURL: nil,
+                destinationURL: destination,
+                totalBytes: Int64(bytes.count)
+            )
+            manager.updateProgress(id: id, receivedBytes: Int64(bytes.count), totalBytes: Int64(bytes.count), speedBytesPerSec: 0)
+            manager.finishDownload(id: id)
         }
     }
 
@@ -1224,6 +1311,15 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             sleepingInteractionState = nil
             restoreScrollPosition = nil
             webView.interactionState = state
+            // A saved state that WebKit can't restore starts no navigation:
+            // the tab would sit blank with the loader running. Load the
+            // address instead when nothing has begun.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self, weak webView] in
+                guard let self, let webView, self.storedWebView === webView,
+                      !self.isSleeping, webView.url == nil, !webView.isLoading,
+                      self.pageError == nil else { return }
+                webView.load(URLRequest(url: url))
+            }
         } else {
             webView.load(URLRequest(url: url))
         }
@@ -1365,7 +1461,7 @@ extension LeanTab: WKScriptMessageHandler {
               message.webView === webView else {
             return
         }
-        isLoading = false
+        // First paint is not "loaded": isLoading ends in didFinish/didFail.
         refreshState()
     }
 
@@ -1526,13 +1622,10 @@ extension LeanTab: WKNavigationDelegate {
         // createWebView persist per-configuration and already cover new
         // navigations. Rebuilding twice per load (commit+finish) was pure
         // waste (removeAll+re-add x12 + live JS eval, per navigation).
+        // isLoading stays true until didFinish/didFail: ending it here showed
+        // a settled tab while the page was still loading.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            guard let self else { return }
-            if self.isLoading {
-                self.isLoading = false
-                self.refreshState()
-            }
-            self.captureSnapshot()
+            self?.captureSnapshot()
         }
     }
 
@@ -1705,6 +1798,23 @@ extension LeanTab: WKNavigationDelegate {
         }
     }
 
+    /// WebKit kills a page's renderer under memory pressure or after a crash
+    /// (likeliest on a tab left alone for a long time). The view is left
+    /// blank and stuck, and nothing else ever restarts it — reload it.
+    /// A second death within seconds is a crash loop: stop and show the
+    /// state instead of reloading forever.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        let now = Date()
+        let isCrashLoop = lastProcessTermination.map { now.timeIntervalSince($0) < 10 } ?? false
+        lastProcessTermination = now
+        guard !isCrashLoop, let target = webView.url ?? url else {
+            isLoading = false
+            refreshState()
+            return
+        }
+        load(target)
+    }
+
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation?, withError error: Error) {
         if tryHTTPFallback(for: error) { return }
         pendingLogin = nil
@@ -1842,7 +1952,16 @@ extension LeanTab: WKNavigationDelegate {
                 // unfiltered. Otherwise the attached set already matches,
                 // so answer at once instead of stalling behind a cold
                 // rule-list compile; sync anyway for drift.
-                syncContentRuleLists { decisionHandler(.allow) }
+                // Bounded: if the list compile never returns, an unfiltered
+                // load beats a tab that can never navigate.
+                var answered = false
+                let answer = {
+                    guard !answered else { return }
+                    answered = true
+                    decisionHandler(.allow)
+                }
+                syncContentRuleLists { answer() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { answer() }
                 return
             }
             decisionHandler(.allow)

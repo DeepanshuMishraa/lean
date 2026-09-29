@@ -125,14 +125,14 @@ struct BookmarksPaletteView: View {
                     .onKeyPress(.downArrow) {
                         isKeyboardNavigating = true
                         if !filteredBookmarks.isEmpty {
-                            selectedIndex = min(selectedIndex + 1, filteredBookmarks.count - 1)
+                            selectedIndex = (selectedIndex + 1) % filteredBookmarks.count
                         }
                         return .handled
                     }
                     .onKeyPress(.upArrow) {
                         isKeyboardNavigating = true
-                        if selectedIndex > 0 {
-                            selectedIndex -= 1
+                        if !filteredBookmarks.isEmpty {
+                            selectedIndex = (selectedIndex - 1 + filteredBookmarks.count) % filteredBookmarks.count
                         }
                         return .handled
                     }

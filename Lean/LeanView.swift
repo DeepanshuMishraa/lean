@@ -125,6 +125,16 @@ struct LeanView: View {
         .environment(\.browserUIScale, store.browserUIScale)
         .environment(\.liquidGlassEnabled, store.glassActive)
         .environment(\.themePalette, store.themeColors.palette)
+        // URL-bar suggestions live here so no bar's clipping can cut them off.
+        .overlayPreferenceValue(SuggestionAnchorKey.self) { anchors in
+            GeometryReader { geo in
+                if let dropdown = store.suggestionDropdown, let anchor = anchors[dropdown.owner] {
+                    let bar = geo[anchor]
+                    SuggestionDropdownView(store: store, model: dropdown, barWidth: bar.width)
+                        .offset(x: bar.minX, y: bar.maxY + 4)
+                }
+            }
+        }
         .ignoresSafeArea(.all)
         .background(
             store.enableWindowBorder
@@ -386,6 +396,16 @@ struct LeanView: View {
                 ))
                 .animation(.easeOut(duration: 0.12), value: store.isExtensionsPresented)
                 .zIndex(190)
+            }
+
+            // ⌘-click "opened in new tab" pill
+            if let toast = store.newTabToast {
+                NewTabToastView(store: store, toast: toast)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(.top, store.scaled(48))
+                    .padding(.trailing, 16)
+                    .transition(.move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.92, anchor: .topTrailing)))
+                    .zIndex(196)
             }
 
             // Link Preview / Peek Panel (Shift + Click)

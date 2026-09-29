@@ -132,22 +132,7 @@ struct DownloadsPopover: View {
         }
         .padding(8)
         .frame(width: 300)
-        .background(
-            (store.isDarkMode
-                ? Color(red: 18 / 255, green: 18 / 255, blue: 21 / 255)
-                : Color(white: 0.995)
-            ).opacity(0.97)
-        )
-        .background(
-            VisualEffectBlur(material: .popover, blendingMode: .withinWindow)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .stroke(store.adaptiveTheme.dropdownStroke, lineWidth: 0.75)
-        )
-        .shadow(color: Color.black.opacity(store.isDarkMode ? 0.45 : 0.12), radius: 18, x: 0, y: 8)
-        .shadow(color: Color.black.opacity(store.isDarkMode ? 0.20 : 0.04), radius: 2, x: 0, y: 1)
+        .leanPopoverSurface(glass: store.glassActive, isDark: store.isDarkMode, stroke: store.adaptiveTheme.dropdownStroke, fill: store.themeColors.palette?.raised)
         .background(
             GeometryReader { proxy in
                 Color.clear

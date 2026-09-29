@@ -123,12 +123,15 @@ struct LeanView: View {
             }
         }
         .environment(\.browserUIScale, store.browserUIScale)
-        .environment(\.liquidGlassEnabled, store.liquidGlassEnabled)
+        .environment(\.liquidGlassEnabled, store.glassActive)
+        .environment(\.themePalette, store.themeColors.palette)
         .ignoresSafeArea(.all)
         .background(
             store.enableWindowBorder
                 ? AnyView(store.effectiveZenColor.ignoresSafeArea())
-                : AnyView(store.themeColors.windowBackground.ignoresSafeArea())
+                : (store.glassActive
+                    ? AnyView(VisualEffectBlur(material: .underWindowBackground, blendingMode: .behindWindow).ignoresSafeArea())
+                    : AnyView(store.themeColors.windowBackground.ignoresSafeArea()))
         )
         .background(WindowConfigurator(store: store, isTopBarVisible: isTopBarVisible, isSidebarVisible: isSidebarEffectivelyVisible))
         .preferredColorScheme(store.colorScheme)
@@ -443,9 +446,9 @@ struct LeanView: View {
                 x: 6,
                 y: 2
             )
-            .padding(.top, store.windowBorderWidth)
-            .padding(.bottom, store.windowBorderWidth)
-            .padding(.leading, store.windowBorderWidth)
+            .padding(.top, glassInset > 0 ? glassInset : store.windowBorderWidth)
+            .padding(.bottom, glassInset > 0 ? glassInset : store.windowBorderWidth)
+            .padding(.leading, glassInset > 0 ? glassInset : store.windowBorderWidth)
             .onHover { hovering in
                 isMouseOverSidebar = hovering
                 if store.isSidebarCollapsed {
@@ -456,15 +459,18 @@ struct LeanView: View {
 
     // MARK: - Main Content Card & Spacing
     private var cardTopPadding: CGFloat {
-        if !store.enableWindowBorder { return 0 }
+        if !store.enableWindowBorder { return store.tabLayout == .sidebar ? glassInset : 0 }
         if store.tabLayout == .sidebar {
             return store.windowBorderWidth
         }
         return isTopBarVisible ? 2 : store.windowBorderWidth
     }
 
+    /// The inset that lets the page float over the glass window.
+    private var glassInset: CGFloat { store.glassActive && !store.enableWindowBorder ? 8 : 0 }
+
     private var cardBottomPadding: CGFloat {
-        store.enableWindowBorder ? store.windowBorderWidth : 0
+        store.enableWindowBorder ? store.windowBorderWidth : glassInset
     }
 
     private var isCurrentTabWebPage: Bool {
@@ -474,7 +480,7 @@ struct LeanView: View {
     }
 
     private var cardLeadingPadding: CGFloat {
-        let basePadding = store.enableWindowBorder ? store.windowBorderWidth : 0
+        let basePadding = store.enableWindowBorder ? store.windowBorderWidth : glassInset
         if store.tabLayout == .sidebar && isSidebarEffectivelyVisible && !store.isSidebarCollapsed && isCurrentTabWebPage {
             let gap = store.enableWindowBorder ? store.windowBorderWidth : 8
             return basePadding + store.scaled(256) + gap
@@ -483,7 +489,7 @@ struct LeanView: View {
     }
 
     private var cardTrailingPadding: CGFloat {
-        store.enableWindowBorder ? store.windowBorderWidth : 0
+        store.enableWindowBorder ? store.windowBorderWidth : glassInset
     }
 
     private var zoomIndicatorTopPadding: CGFloat {
@@ -504,7 +510,7 @@ struct LeanView: View {
 
     private var mainContentCard: some View {
         ZStack {
-            (store.enableWindowBorder ? Color.clear : store.themeColors.windowBackground)
+            (store.enableWindowBorder || store.glassActive ? Color.clear : store.themeColors.windowBackground)
                 .ignoresSafeArea()
 
             if let tab = store.selectedTab {
@@ -943,13 +949,14 @@ struct LeanView: View {
         .padding(.horizontal, 10)
         .frame(height: 32)
         .background(
-            store.themeColors.omnibarBackground,
+            store.glassActive ? Color.clear : store.themeColors.omnibarBackground,
             in: RoundedRectangle(cornerRadius: 8, style: .continuous)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(store.themeColors.omnibarBorder, lineWidth: 1)
+                .stroke(store.glassActive ? Color.clear : store.themeColors.omnibarBorder, lineWidth: 1)
         )
+        .leanGlassIf(store.glassActive, radius: 16)
         .shadow(
             color: store.isDarkMode ? Color.black.opacity(0.4) : Color.black.opacity(0.08),
             radius: 8, x: 0, y: 2
@@ -1233,9 +1240,15 @@ private struct WindowConfigurator: NSViewRepresentable {
         // surfaces behind the top bar / sidebar empty areas instead.
         window.isMovableByWindowBackground = false
         window.isReleasedWhenClosed = false
-        window.backgroundColor = store.enableWindowBorder
-            ? NSColor(store.effectiveZenColor)
-            : (store.isDarkMode ? NSColor.black : NSColor.white)
+        // Glass needs a translucent window to refract; otherwise solid.
+        let translucent = store.glassActive && !store.enableWindowBorder
+        window.isOpaque = !translucent
+        window.backgroundColor = translucent
+            ? NSColor.clear
+            : (store.enableWindowBorder
+                ? NSColor(store.effectiveZenColor)
+                : (store.themeColors.palette.map { NSColor($0.background) }
+                    ?? (store.isDarkMode ? NSColor.black : NSColor.white)))
         window.appearance = store.enableWindowBorder
             ? (store.adaptiveTheme.isFrameLight ? NSAppearance(named: .aqua) : NSAppearance(named: .darkAqua))
             : (store.isDarkMode ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua))

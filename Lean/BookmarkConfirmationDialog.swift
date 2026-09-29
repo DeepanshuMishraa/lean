@@ -102,6 +102,7 @@ struct BookmarkConfirmationDialog: View {
         .background(dialogBackground)
         .overlay(dialogBorder)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .leanGlassIf(store.glassActive, radius: 18)
         .shadow(
             color: Color.black.opacity(store.isDarkMode ? 0.45 : 0.12),
             radius: 28,
@@ -486,19 +487,24 @@ struct BookmarkConfirmationDialog: View {
     }
 
     // MARK: - Styling
+    @ViewBuilder
     private var dialogBackground: some View {
-        VisualEffectBlur(material: .popover, blendingMode: .withinWindow)
-            .background(
-                (store.isDarkMode
-                    ? Color(red: 20/255, green: 20/255, blue: 24/255)
-                    : Color(white: 0.99)
-                ).opacity(0.98)
-            )
+        if store.glassActive {
+            Color.clear
+        } else {
+            VisualEffectBlur(material: .popover, blendingMode: .withinWindow)
+                .background(
+                    (store.isDarkMode
+                        ? Color(red: 20/255, green: 20/255, blue: 24/255)
+                        : Color(white: 0.99)
+                    ).opacity(0.98)
+                )
+        }
     }
 
     private var dialogBorder: some View {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .stroke(store.adaptiveTheme.dropdownStroke, lineWidth: 0.75)
+            .stroke(store.glassActive ? Color.clear : store.adaptiveTheme.dropdownStroke, lineWidth: 0.75)
     }
 }
 

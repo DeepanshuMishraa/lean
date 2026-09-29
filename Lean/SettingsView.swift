@@ -84,6 +84,8 @@ struct SettingsView: View {
                     sidebarView
                         .frame(width: 210)
                         .background(sidebarBackground)
+                        .leanGlassIf(store.glassActive, radius: 18)
+                        .padding(store.glassActive ? 8 : 0)
 
                     Rectangle()
                         .fill(dividerColor)
@@ -107,6 +109,7 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environmentObject(dropdownState)
         .environment(\.leanSettingsFont, store.leanUIFont)
+        .environment(\.themePalette, store.themeColors.palette)
         .preferredColorScheme(store.colorScheme)
         .onAppear {
             selectedCategory = store.selectedSettingsCategory
@@ -123,24 +126,26 @@ struct SettingsView: View {
     }
 
     // MARK: - Color Tokens
+    // Under Liquid Glass the panes are clear so the translucent window
+    // shows through; the sidebar and grouped rows are glass themselves.
     private var sidebarBackground: Color {
-        store.isDarkMode ? Color(white: 0.04) : Color(white: 0.975)
+        store.glassActive ? Color.clear : store.themeColors.settingsSidebarBackground
     }
 
     private var contentBackground: Color {
-        store.themeColors.windowBackground
+        store.glassActive ? Color.clear : store.themeColors.windowBackground
     }
 
     private var dividerColor: Color {
-        store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.06)
+        store.glassActive ? Color.clear : (store.themeColors.palette?.border ?? (store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.06)))
     }
 
     private var primaryText: Color {
-        store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12)
+        store.themeColors.primaryText
     }
 
     private var secondaryText: Color {
-        store.isDarkMode ? Color(white: 0.50) : Color(white: 0.48)
+        store.themeColors.palette?.textMuted ?? (store.isDarkMode ? Color(white: 0.50) : Color(white: 0.48))
     }
 
     // MARK: - Sidebar View
@@ -532,7 +537,7 @@ private struct HistoryItemRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
                     .font(store.leanUIFont.font(size: 13, weight: .medium))
-                    .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                    .foregroundColor(store.themeColors.primaryText)
                     .lineLimit(1)
 
                 Text(displayHostAndPath)
@@ -647,7 +652,7 @@ private struct GeneralSection: View {
                     VStack(alignment: .leading, spacing: 2.5) {
                         Text("Default browser")
                             .font(store.leanUIFont.font(size: 13, weight: .medium))
-                            .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                            .foregroundColor(store.themeColors.primaryText)
 
                         Text(defaultNotice ?? (isDefault ? "Lean is the default browser on this Mac" : "Mail, Slack and the rest still send links elsewhere"))
                             .font(store.leanUIFont.font(size: 11.5))
@@ -753,7 +758,7 @@ private struct GeneralSection: View {
                     VStack(alignment: .leading, spacing: 2.5) {
                         Text("Lean \(updater.marketingVersion) \(AppUpdater.releaseChannel)")
                             .font(store.leanUIFont.font(size: 13, weight: .medium))
-                            .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                            .foregroundColor(store.themeColors.primaryText)
                         Text("Build \(updater.buildVersion) · Signed updates from GitHub releases.")
                             .font(store.leanUIFont.font(size: 11.5))
                             .foregroundColor(store.isDarkMode ? Color(white: 0.50) : Color(white: 0.48))
@@ -1138,6 +1143,17 @@ private struct AppearanceSection: View {
 
     private var mainAppearanceContent: some View {
         VStack(alignment: .leading, spacing: 20) {
+            // Colour theme: one name, dark and light variants
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel(
+                    "Color Theme",
+                    subtitle: "Each theme has a dark and a light variant; the interface theme below picks which one is used.",
+                    uiFont: store.leanUIFont,
+                    isDark: store.isDarkMode
+                )
+                ColorThemePicker(store: store)
+            }
+
             // Theme Selector
             VStack(alignment: .leading, spacing: 8) {
                 SettingsHeaderLabel("Interface Theme", uiFont: store.leanUIFont, isDark: store.isDarkMode)
@@ -1277,7 +1293,7 @@ private struct AppearanceSection: View {
                     HStack(alignment: .firstTextBaseline) {
                         Text("Typography Preview")
                             .font(store.headingFont(size: 13.5))
-                            .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                            .foregroundColor(store.themeColors.primaryText)
 
                         Spacer()
 
@@ -1427,7 +1443,7 @@ private struct InstalledFontsStackView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(target.title)
                     .font(store.headingFont(size: 16))
-                    .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                    .foregroundColor(store.themeColors.primaryText)
 
                 Text(target.subtitle)
                     .font(store.leanUIFont.font(size: 11.5))
@@ -2172,7 +2188,7 @@ private struct PrivacySection: View {
     }
 
     private var primaryText: Color {
-        store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12)
+        store.themeColors.primaryText
     }
 
     private var secondaryText: Color {
@@ -2246,7 +2262,7 @@ private struct DataClearRow: View {
             VStack(alignment: .leading, spacing: 2.5) {
                 Text(title)
                     .font(store.leanUIFont.font(size: 13, weight: .medium))
-                    .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                    .foregroundColor(store.themeColors.primaryText)
                 Text(isConfirming ? confirmation : subtitle)
                     .font(store.leanUIFont.font(size: 11.5))
                     .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
@@ -2591,7 +2607,7 @@ private struct ShortcutsSection: View {
     }
 
     private var primaryText: Color {
-        store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12)
+        store.themeColors.primaryText
     }
 
     private var secondaryText: Color {
@@ -2674,7 +2690,7 @@ private struct DownloadsSection: View {
     }
 
     private var primaryText: Color {
-        store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12)
+        store.themeColors.primaryText
     }
 
     private var secondaryText: Color {
@@ -2942,7 +2958,7 @@ private struct DownloadSettingsRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.fileName)
                     .font(store.leanUIFont.font(size: 13, weight: .medium))
-                    .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                    .foregroundColor(store.themeColors.primaryText)
                     .lineLimit(1)
                     .truncationMode(.middle)
 
@@ -3321,7 +3337,7 @@ private struct PasswordManagerSection: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(login.host)
                                         .font(store.leanUIFont.font(size: 13, weight: .medium))
-                                        .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                                        .foregroundColor(store.themeColors.primaryText)
 
                                     HStack(spacing: 6) {
                                         Text(login.username.isEmpty ? "No username" : login.username)
@@ -3724,7 +3740,7 @@ private struct ExtensionsSettingsSection: View {
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(item.name)
                                             .font(store.leanUIFont.font(size: 13, weight: .medium))
-                                            .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                                            .foregroundColor(store.themeColors.primaryText)
                                         Text("Version \(item.version) · \(item.fromStore == true ? "Chrome Web Store" : "Unpacked extension")")
                                             .font(store.leanUIFont.font(size: 11))
                                             .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
@@ -3980,7 +3996,7 @@ private struct ExtensionsSettingsSection: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Remove Extension")
                                 .font(store.leanUIFont.font(size: 13, weight: .medium))
-                                .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                                .foregroundColor(store.themeColors.primaryText)
                             Text("Uninstall this extension and delete its files from Lean.")
                                 .font(store.leanUIFont.font(size: 11.5))
                                 .foregroundColor(store.isDarkMode ? Color.white.opacity(0.48) : Color.black.opacity(0.48))
@@ -5020,7 +5036,7 @@ private struct ImportedBookmarkRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(bookmark.title.isEmpty ? bookmark.url.absoluteString : bookmark.title)
                     .font(store.leanUIFont.font(size: 12.5, weight: .medium))
-                    .foregroundColor(store.isDarkMode ? Color(white: 0.94) : Color(white: 0.12))
+                    .foregroundColor(store.themeColors.primaryText)
                     .lineLimit(1)
                 Text(bookmark.url.host ?? bookmark.url.absoluteString)
                     .font(store.leanUIFont.font(size: 11))

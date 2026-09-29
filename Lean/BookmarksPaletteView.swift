@@ -68,6 +68,7 @@ struct BookmarksPaletteView: View {
         .background(paletteBackground)
         .overlay(paletteBorder)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .leanGlassIf(store.glassActive, radius: 18)
         .shadow(
             color: Color.black.opacity(store.isDarkMode ? 0.40 : 0.12),
             radius: 24,
@@ -482,14 +483,19 @@ struct BookmarksPaletteView: View {
     }
 
     // MARK: - Styling Helpers
+    @ViewBuilder
     private var paletteBackground: some View {
-        VisualEffectBlur(material: .hudWindow, blendingMode: .withinWindow)
-            .background(store.themeColors.omnibarBackground)
+        if store.glassActive {
+            Color.clear
+        } else {
+            VisualEffectBlur(material: .hudWindow, blendingMode: .withinWindow)
+                .background(store.themeColors.omnibarBackground)
+        }
     }
 
     private var paletteBorder: some View {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .stroke(store.themeColors.omnibarBorder, lineWidth: 0.75)
+            .stroke(store.glassActive ? Color.clear : store.themeColors.omnibarBorder, lineWidth: 0.75)
     }
 }
 

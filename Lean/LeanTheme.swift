@@ -194,70 +194,92 @@ enum ScrollbarStyle: String, CaseIterable, Identifiable {
 
 struct ThemeColors {
     let isDark: Bool
+    /// The colour theme's variant for this mode; nil is the default look.
+    var palette: ThemePalette? = nil
 
     var windowBackground: Color {
-        isDark ? Color.black : Color.white
+        palette?.background ?? (isDark ? Color.black : Color.white)
     }
 
     var topBarBackground: Color {
-        isDark ? Color.black : Color.white
+        palette?.background ?? (isDark ? Color.black : Color.white)
     }
 
     var divider: Color {
-        isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.06)
+        palette?.border ?? (isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.06))
     }
 
     var pinnedButtonBackground: Color {
-        isDark ? Color(white: 0.12) : Color(white: 0.94)
+        palette?.surface ?? (isDark ? Color(white: 0.12) : Color(white: 0.94))
     }
 
     var pinnedButtonHover: Color {
-        isDark ? Color(white: 0.20) : Color(white: 0.88)
+        palette.map { $0.surface.opacity(0.7) } ?? (isDark ? Color(white: 0.20) : Color(white: 0.88))
     }
 
     var pinnedButtonText: Color {
-        isDark ? Color(white: 0.70) : Color(white: 0.52)
+        palette?.textMuted ?? (isDark ? Color(white: 0.70) : Color(white: 0.52))
     }
 
     var activeTabBackground: Color {
-        isDark ? Color(white: 0.15) : Color(white: 0.93)
+        palette?.surface ?? (isDark ? Color(white: 0.15) : Color(white: 0.93))
     }
 
     var activeTabText: Color {
-        isDark ? Color.white : Color(white: 0.12)
+        palette?.text ?? (isDark ? Color.white : Color(white: 0.12))
     }
 
     var inactiveTabText: Color {
-        isDark ? Color(white: 0.55) : Color(white: 0.38)
+        palette?.textMuted ?? (isDark ? Color(white: 0.55) : Color(white: 0.38))
     }
 
     var inactiveTabHover: Color {
-        isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.04)
+        palette.map { $0.text.opacity(0.08) } ?? (isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.04))
     }
 
     var omnibarBackground: Color {
-        isDark ? Color.black : Color.white
+        palette?.raised ?? (isDark ? Color.black : Color.white)
     }
 
     var omnibarBorder: Color {
-        isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.08)
+        palette?.border ?? (isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.08))
     }
 
     var omnibarText: Color {
-        isDark ? Color.white : Color.primary
+        palette?.text ?? (isDark ? Color.white : Color.primary)
     }
 
     var omnibarPlaceholder: Color {
-        isDark ? Color(white: 0.45) : Color(white: 0.62)
+        palette.map { $0.textMuted.opacity(0.85) } ?? (isDark ? Color(white: 0.45) : Color(white: 0.62))
     }
 
     var omnibarSuggestionSelected: Color {
-        isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.04)
+        palette.map { $0.text.opacity(0.10) } ?? (isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.04))
     }
 
     var secondaryText: Color {
-        isDark ? Color(white: 0.55) : Color(white: 0.52)
+        palette?.textMuted ?? (isDark ? Color(white: 0.55) : Color(white: 0.52))
     }
+
+    // MARK: Settings & shared content tokens
+
+    var primaryText: Color {
+        palette?.text ?? (isDark ? Color(white: 0.94) : Color(white: 0.12))
+    }
+
+    var settingsSidebarBackground: Color {
+        palette?.raised ?? (isDark ? Color(white: 0.04) : Color(white: 0.975))
+    }
+
+    var settingsGroupFill: Color {
+        palette.map { $0.surface.opacity(0.55) } ?? (isDark ? Color.white.opacity(0.035) : Color.black.opacity(0.02))
+    }
+
+    var settingsGroupStroke: Color {
+        palette.map { $0.border.opacity(0.7) } ?? (isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.05))
+    }
+
+    var accent: Color? { palette?.accent }
 }
 
 extension Color {
@@ -330,11 +352,14 @@ struct AdaptiveFrameTheme {
     let frameColor: Color
     let baseThemeColors: ThemeColors
     let isBaseDark: Bool
+    /// Liquid Glass: the page floats as a rounded card over the translucent window.
+    let isGlass: Bool
 
     let frameLuminance: Double
     let isFrameLight: Bool
 
-    init(isBorderEnabled: Bool, frameColor: Color, baseThemeColors: ThemeColors, isBaseDark: Bool) {
+    init(isBorderEnabled: Bool, frameColor: Color, baseThemeColors: ThemeColors, isBaseDark: Bool, isGlass: Bool = false) {
+        self.isGlass = isGlass
         self.isBorderEnabled = isBorderEnabled
         self.frameColor = frameColor
         self.baseThemeColors = baseThemeColors
@@ -384,6 +409,7 @@ struct AdaptiveFrameTheme {
         if isBorderEnabled {
             return isFrameLight ? Color.black.opacity(0.08) : Color.white.opacity(0.14)
         }
+        if let palette = baseThemeColors.palette { return palette.text.opacity(0.10) }
         return isBaseDark ? Color.white.opacity(0.10) : Color.black.opacity(0.06)
     }
 
@@ -391,6 +417,7 @@ struct AdaptiveFrameTheme {
         if isBorderEnabled {
             return isFrameLight ? Color.black.opacity(0.15) : Color.white.opacity(0.22)
         }
+        if let palette = baseThemeColors.palette { return palette.text.opacity(0.18) }
         return isBaseDark ? Color.white.opacity(0.18) : Color.black.opacity(0.12)
     }
 
@@ -473,6 +500,7 @@ struct AdaptiveFrameTheme {
         if isBorderEnabled {
             return isFrameLight ? Color.black.opacity(0.10) : Color.white.opacity(0.20)
         }
+        if let palette = baseThemeColors.palette { return palette.border }
         return isBaseDark ? Color.white.opacity(0.15) : Color.black.opacity(0.10)
     }
 
@@ -480,6 +508,7 @@ struct AdaptiveFrameTheme {
         if isBorderEnabled {
             return isFrameLight ? Color.white : Color(red: 28/255, green: 28/255, blue: 32/255)
         }
+        if let palette = baseThemeColors.palette { return palette.raised }
         return isBaseDark ? baseThemeColors.omnibarBackground : Color.white
     }
 
@@ -487,6 +516,7 @@ struct AdaptiveFrameTheme {
         if isBorderEnabled {
             return isFrameLight ? Color.black.opacity(0.09) : Color.white.opacity(0.14)
         }
+        if let palette = baseThemeColors.palette { return palette.border }
         return isBaseDark ? Color.white.opacity(0.12) : Color.black.opacity(0.08)
     }
 
@@ -518,7 +548,7 @@ struct AdaptiveFrameTheme {
     }
 
     var cardCornerRadius: CGFloat {
-        isBorderEnabled ? 10.0 : 0.0
+        isBorderEnabled ? 10.0 : (isGlass ? 16.0 : 0.0)
     }
 
     var webCardStroke: Color {
@@ -532,14 +562,14 @@ struct AdaptiveFrameTheme {
         if isBorderEnabled {
             return Color.black.opacity(isFrameLight ? 0.08 : 0.32)
         }
-        return Color.clear
+        return isGlass ? Color.black.opacity(isBaseDark ? 0.35 : 0.14) : Color.clear
     }
 
     var webCardShadowRadius: CGFloat {
         if isBorderEnabled {
             return isFrameLight ? 8 : 10
         }
-        return 0
+        return isGlass ? 14 : 0
     }
 
     var scrollIndicatorColor: Color {

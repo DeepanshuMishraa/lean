@@ -6,19 +6,24 @@ import SwiftUI
 struct SettingsGroup<Content: View>: View {
     let isDark: Bool
     @ViewBuilder let content: () -> Content
+    @Environment(\.liquidGlassEnabled) private var glass
+    @Environment(\.themePalette) private var palette
+
+    private var colors: ThemeColors { ThemeColors(isDark: isDark, palette: palette) }
 
     var body: some View {
         VStack(spacing: 0) {
             content()
         }
         .background(
-            isDark ? Color.white.opacity(0.035) : Color.black.opacity(0.02),
+            glass ? Color.clear : colors.settingsGroupFill,
             in: RoundedRectangle(cornerRadius: 10, style: .continuous)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.05), lineWidth: 0.75)
+                .stroke(glass ? Color.clear : colors.settingsGroupStroke, lineWidth: 0.75)
         )
+        .leanGlassIf(glass, radius: 14)
     }
 }
 

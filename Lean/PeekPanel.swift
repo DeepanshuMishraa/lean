@@ -19,7 +19,7 @@ struct PeekPanel: View {
     let tab: LeanTab
 
     private var cardBackground: Color {
-        store.isDarkMode
+        store.glassActive ? Color.clear : store.isDarkMode
             ? Color(red: 20/255, green: 20/255, blue: 23/255)
             : Color(white: 0.99)
     }
@@ -60,6 +60,7 @@ struct PeekPanel: View {
                 .frame(width: cardWidth, height: cardHeight)
                 .background(cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .leanGlassIf(store.glassActive, radius: 16)
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(

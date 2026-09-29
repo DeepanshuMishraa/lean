@@ -33,6 +33,7 @@ struct TopBarView: View {
                             }
                         }
                         .padding(2)
+                        .leanGlassGroup(store.glassActive)
                         .background(
                             store.liquidGlassEnabled ? Color.clear : (store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04)),
                             in: RoundedRectangle(cornerRadius: 7, style: .continuous)
@@ -181,6 +182,7 @@ struct TopBarView: View {
                             }
                         }
                     }
+                    .leanGlassGroup(store.glassActive)
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
 
                     Spacer().frame(width: 4)
@@ -280,13 +282,14 @@ struct TopBarView: View {
                         }
                     }
                 }
+                .leanGlassGroup(store.glassActive)
             }
 
             Spacer().frame(width: 12)
         }
         .frame(height: store.scaled(store.enableWindowBorder ? 34 : 36))
         .background {
-            if !store.enableWindowBorder {
+            if !store.enableWindowBorder && !store.glassActive {
                 store.themeColors.topBarBackground
             }
         }
@@ -1208,13 +1211,14 @@ struct InlineURLBar: View {
         .padding(4)
         .frame(width: 380 * browserUIScale)
         .background(
-            store.adaptiveTheme.dropdownBackground,
+            store.glassActive ? Color.clear : store.adaptiveTheme.dropdownBackground,
             in: RoundedRectangle(cornerRadius: 10, style: .continuous)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(store.adaptiveTheme.dropdownStroke, lineWidth: 1)
+                .stroke(store.glassActive ? Color.clear : store.adaptiveTheme.dropdownStroke, lineWidth: 1)
         )
+        .leanGlassIf(store.glassActive, radius: 14)
         .shadow(color: store.adaptiveTheme.dropdownShadow, radius: 12, x: 0, y: 4)
         .background(
             GeometryReader { geo in
@@ -1970,22 +1974,7 @@ struct QuickSettingsPopover: View {
         }
         .padding(8)
         .frame(width: 228)
-        .background(
-            (store.isDarkMode
-                ? Color(red: 18/255, green: 18/255, blue: 21/255)
-                : Color(white: 0.995)
-            ).opacity(0.97)
-        )
-        .background(
-            VisualEffectBlur(material: .popover, blendingMode: .withinWindow)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .stroke(store.adaptiveTheme.dropdownStroke, lineWidth: 0.75)
-        )
-        .shadow(color: Color.black.opacity(store.isDarkMode ? 0.45 : 0.12), radius: 18, x: 0, y: 8)
-        .shadow(color: Color.black.opacity(store.isDarkMode ? 0.20 : 0.04), radius: 2, x: 0, y: 1)
+        .leanPopoverSurface(glass: store.glassActive, isDark: store.isDarkMode, stroke: store.adaptiveTheme.dropdownStroke, fill: store.themeColors.palette?.raised)
     }
 }
 
@@ -2119,22 +2108,7 @@ struct QuickSettingsHistorySubmenu: View {
         }
         .padding(6)
         .frame(width: 240)
-        .background(
-            (store.isDarkMode
-                ? Color(red: 18/255, green: 18/255, blue: 21/255)
-                : Color(white: 0.995)
-            ).opacity(0.97)
-        )
-        .background(
-            VisualEffectBlur(material: .popover, blendingMode: .withinWindow)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .stroke(store.adaptiveTheme.dropdownStroke, lineWidth: 0.75)
-        )
-        .shadow(color: Color.black.opacity(store.isDarkMode ? 0.45 : 0.12), radius: 18, x: 0, y: 8)
-        .shadow(color: Color.black.opacity(store.isDarkMode ? 0.20 : 0.04), radius: 2, x: 0, y: 1)
+        .leanPopoverSurface(glass: store.glassActive, isDark: store.isDarkMode, stroke: store.adaptiveTheme.dropdownStroke, fill: store.themeColors.palette?.raised)
         .background(
             GeometryReader { proxy in
                 Color.clear

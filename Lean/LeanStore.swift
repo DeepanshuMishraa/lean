@@ -287,6 +287,14 @@ final class LeanStore: ObservableObject {
         didSet { persist(liquidGlassEnabled, forKey: Self.liquidGlassKey) }
     }
 
+    /// The colour theme; its dark or light variant follows the interface theme.
+    @Published var colorTheme: BrowserTheme {
+        didSet {
+            persist(colorTheme.rawValue, forKey: Self.colorThemeKey)
+            updateAllTabsTheme()
+        }
+    }
+
     @Published var scrollbarStyle: ScrollbarStyle {
         didSet {
             persist(scrollbarStyle.rawValue, forKey: Self.scrollbarKey)
@@ -595,6 +603,9 @@ final class LeanStore: ObservableObject {
         self.liquidGlassEnabled = databaseValue(self.database, Bool.self, forKey: Self.liquidGlassKey)
             ?? UserDefaults.standard.object(forKey: Self.liquidGlassKey) as? Bool
             ?? false
+        let savedColorTheme = databaseValue(self.database, String.self, forKey: Self.colorThemeKey)
+            ?? UserDefaults.standard.string(forKey: Self.colorThemeKey)
+        self.colorTheme = savedColorTheme.flatMap(BrowserTheme.init(rawValue:)) ?? .standard
 
         // Load saved scrollbar style (default to normal)
         let savedScrollbar = databaseValue(self.database, String.self, forKey: Self.scrollbarKey)
@@ -806,11 +817,12 @@ final class LeanStore: ObservableObject {
     static let zenModeDarkColor = Color(hex: "#18181B")
 
     var effectiveZenColor: Color {
-        isDarkMode ? Self.zenModeDarkColor : Self.zenModeLightColor
+        if let palette = colorTheme.palette(isDark: isDarkMode) { return palette.surface }
+        return isDarkMode ? Self.zenModeDarkColor : Self.zenModeLightColor
     }
 
     var themeColors: ThemeColors {
-        ThemeColors(isDark: isDarkMode)
+        ThemeColors(isDark: isDarkMode, palette: colorTheme.palette(isDark: isDarkMode))
     }
 
     var adaptiveTheme: AdaptiveFrameTheme {
@@ -818,7 +830,8 @@ final class LeanStore: ObservableObject {
             isBorderEnabled: enableWindowBorder,
             frameColor: effectiveZenColor,
             baseThemeColors: themeColors,
-            isBaseDark: isDarkMode
+            isBaseDark: isDarkMode,
+            isGlass: glassActive
         )
     }
 
@@ -2192,6 +2205,7 @@ final class LeanStore: ObservableObject {
         persist(adBlockingEnabled, forKey: Self.adBlockingKey)
         persist(theme.rawValue, forKey: Self.themeKey)
         persist(liquidGlassEnabled, forKey: Self.liquidGlassKey)
+        persist(colorTheme.rawValue, forKey: Self.colorThemeKey)
         persist(scrollbarStyle.rawValue, forKey: Self.scrollbarKey)
         persist(tabDisplayMode.rawValue, forKey: Self.tabDisplayModeKey)
         persist(tabLayout.rawValue, forKey: Self.tabLayoutKey)
@@ -2242,6 +2256,7 @@ final class LeanStore: ObservableObject {
     private static let adBlockingExcludedHostsKey = "adBlockingExcludedHosts_v1"
     private static let themeKey = "appTheme"
     private static let liquidGlassKey = "liquidGlassEnabled"
+    private static let colorThemeKey = "colorTheme"
     private static let scrollbarKey = "scrollbarStyle"
     private static let tabDisplayModeKey = "tabDisplayMode"
     private static let tabLayoutKey = "tabLayout"

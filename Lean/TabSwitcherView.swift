@@ -59,11 +59,14 @@ struct TabSwitcherView: View {
             .background(
                 VisualEffectBlur(material: .hudWindow, blendingMode: .withinWindow)
                     .clipShape(RoundedRectangle(cornerRadius: store.enableThumbnailsInTabSwitcher ? 18 : 14, style: .continuous))
+                    .opacity(store.glassActive ? 0 : 1)
             )
             .background(
                 (store.isDarkMode ? Color.black.opacity(0.80) : Color(white: 0.96).opacity(0.88))
                     .clipShape(RoundedRectangle(cornerRadius: store.enableThumbnailsInTabSwitcher ? 18 : 14, style: .continuous))
+                    .opacity(store.glassActive ? 0 : 1)
             )
+            .leanGlassIf(store.glassActive, radius: store.enableThumbnailsInTabSwitcher ? 22 : 18)
             .overlay(
                 RoundedRectangle(cornerRadius: store.enableThumbnailsInTabSwitcher ? 18 : 14, style: .continuous)
                     .stroke(

@@ -978,13 +978,6 @@ final class LeanStageView: NSView {
         settle()
     }
 
-    // WebKit hands keys the page did not use up the responder chain, and the
-    // window answers with the system beep (right arrow on a video, say). The
-    // stage is the page's superview, so ending the chain here keeps it quiet.
-    override func keyDown(with event: NSEvent) {}
-    override func doCommand(by selector: Selector) {}
-    override func noResponder(for eventSelector: Selector) {}
-
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         settle()

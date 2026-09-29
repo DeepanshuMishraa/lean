@@ -16,6 +16,7 @@ update often — releases arrive through the built-in updater.
 - The tab switcher opens on the next (or previous) tab instead of the current one
 - Releasing the switcher shortcut switches tabs immediately instead of on the next press
 - Less lag in Liquid Glass mode (no full-window card shadows) and on tab switches (session saves are debounced)
+- Select all, cut, copy and paste (⌘A, ⌘X, ⌘C, ⌘V) work again
 
 ## [0.1.6] - 2026-09-28
 

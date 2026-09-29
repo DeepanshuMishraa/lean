@@ -4,6 +4,13 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.7] - 2026-09-29
+
+### Added
+
+- Color themes (Catppuccin, Tokyo Night, Dracula, One, Nord, Gruvbox, Rosé Pine), each with dark and light variants, chosen in Settings
+- Liquid Glass now covers the top bar, popovers, bookmark dialog, settings, downloads, extensions, peek panel and tab switcher
+
 ## [0.1.6] - 2026-09-28
 
 ### Fixed

@@ -951,14 +951,17 @@ private struct SidebarPinnedTabItem: View {
             .frame(height: store.scaled(38))
             .background {
                 ZStack {
-                    if isHovered && !isSelected {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(store.isDarkMode ? Color.white.opacity(0.14) : Color.black.opacity(0.09))
-                    }
-                    if isSelected {
-                        if store.liquidGlassEnabled, #available(macOS 26, *) {
-                            Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
-                        } else {
+                    if store.liquidGlassEnabled, #available(macOS 26, *) {
+                        Color.clear.glassEffect(
+                            isSelected ? .regular.interactive() : .clear.interactive(),
+                            in: .rect(cornerRadius: 8)
+                        )
+                    } else {
+                        if isHovered && !isSelected {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(store.isDarkMode ? Color.white.opacity(0.14) : Color.black.opacity(0.09))
+                        }
+                        if isSelected {
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .fill(store.adaptiveTheme.activeTabBackground)
                                 .overlay(

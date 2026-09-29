@@ -4,6 +4,26 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.8] - 2026-09-30
+
+### Added
+
+- URL-bar suggestions now show in both the vertical sidebar and the horizontal bar; arrowing through them fills the field
+- A glass pill appears at the top right when a link opens in a background tab (⌘-click)
+- ⌘D remembers the folder you saved to last
+- Picture-in-picture works on any site with a playing video, and its controls use Liquid Glass
+
+### Fixed
+
+- Pinned tabs in the vertical sidebar are glassy
+- The whole button or row is clickable, not just the icon or text
+- The loader now stays on until the page has finished loading
+- Pages no longer get stuck until a restart (bounded extension/ad-block waits, renderer crash recovery)
+- Download Image works, including `data:` images
+- Bookmark list arrows wrap from last to first
+- Picture-in-picture no longer shows black on X and resumes players that pause when their tab is hidden
+- Security: no passwords saved in history addresses, file choosers and alerts from background tabs are handled safely, extension pages are refused to other extensions
+
 ## [0.1.7] - 2026-09-29
 
 ### Added

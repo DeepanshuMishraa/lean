@@ -145,6 +145,18 @@ private struct BrowserSession: Codable {
     var pinnedIndices: [Int]?
 }
 
+extension URL {
+    /// The address without a name and password typed into it
+    /// (https://user:pass@host), which must never be stored in history.
+    var withoutCredentials: URL {
+        guard user != nil || password != nil,
+              var parts = URLComponents(url: self, resolvingAgainstBaseURL: false) else { return self }
+        parts.user = nil
+        parts.password = nil
+        return parts.url ?? self
+    }
+}
+
 struct HistoryItem: Identifiable, Equatable, Hashable, Codable, Sendable {
     let id: UUID
     let url: URL
@@ -523,6 +535,7 @@ final class LeanStore: ObservableObject {
     /// (or close) can land the lift after the page already came home. A
     /// stale completion must un-isolate, never lift.
     private var pipGeneration = 0
+    private var pipUserPaused = false
     /// Coalesced history+session persistence. `onStateChange` fires 6-10x
     /// per page load (progress, canGoBack/Forward, title); each used to do
     /// 2 full SQLite encodes on the main thread. Now debounced to one
@@ -812,6 +825,13 @@ final class LeanStore: ObservableObject {
             persist(defaultFont, forKey: Self.webPageFontKey)
             persist(true, forKey: "hasMigratedFontToGeistV2")
         }
+        // History kept by an older Lean may hold a name and password in an address.
+        if self.historyItems.contains(where: { $0.url.user != nil || $0.url.password != nil }) {
+            self.historyItems = self.historyItems.map {
+                HistoryItem(id: $0.id, url: $0.url.withoutCredentials, title: $0.title, timestamp: $0.timestamp)
+            }
+            persist(self.historyItems, forKey: Self.historyKey)
+        }
     }
 
     var isDarkMode: Bool {
@@ -988,9 +1008,10 @@ final class LeanStore: ObservableObject {
         // else a technically-playing video is as likely a muted hero loop
         // or ad as a film, and lifting it yields a blank little window
         // for nothing playing. Mirrors Search's quiet lift.
-        guard Players.knows(tab.url) else { return }
+        // Other sites are judged by the video itself (Isolate.onStrict).
+        let script = Players.knows(tab.url) ? Isolate.on : Isolate.onStrict
         let generation = pipGeneration
-        tab.webView.evaluateJavaScript(Isolate.on) { [weak self, weak tab] result, _ in
+        tab.webView.evaluateJavaScript(script) { [weak self, weak tab] result, _ in
             DispatchQueue.main.async {
                 guard let self, let tab else { return }
                 guard self.pipGeneration == generation else {
@@ -1007,11 +1028,15 @@ final class LeanStore: ObservableObject {
                     return
                 }
                 self.pictureInPictureTabID = tab.id
+                PictureInPicture.glassEnabled = self.glassActive
                 self.pictureInPicture.onClose = { [weak self] in self?.dismissPictureInPicture() }
                 self.pictureInPicture.onReturn = { [weak self] in self?.returnFromPictureInPicture() }
-                self.pictureInPicture.onPlayPause = { [weak tab] completion in
+                self.pipUserPaused = false
+                self.pictureInPicture.onPlayPause = { [weak self, weak tab] completion in
                     tab?.webView.evaluateJavaScript(Isolate.toggle) { result, _ in
-                        completion((result as? Bool) ?? false)
+                        let playing = (result as? Bool) ?? false
+                        self?.pipUserPaused = !playing
+                        completion(playing)
                     }
                 }
                 self.pictureInPicture.onSkip = { [weak tab] seconds in
@@ -1038,6 +1063,22 @@ final class LeanStore: ObservableObject {
                     favicon: tab.favicon
                 )
                 self.revealPictureInPicture(for: tab)
+                self.keepPictureInPicturePlaying(tab, generation: generation)
+            }
+        }
+    }
+
+    /// Switching away hides the page, and some players pause themselves for
+    /// it just as the lift lands. Start the video again over the next few
+    /// seconds unless it was you who paused it.
+    private func keepPictureInPicturePlaying(_ tab: LeanTab, generation: Int) {
+        for delay in [0.25, 0.7, 1.5, 3.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak tab] in
+                guard let self, let tab,
+                      self.pipGeneration == generation,
+                      self.pictureInPictureTabID == tab.id,
+                      !self.pipUserPaused else { return }
+                tab.webView.evaluateJavaScript(Isolate.resume, completionHandler: nil)
             }
         }
     }
@@ -1283,9 +1324,13 @@ final class LeanStore: ObservableObject {
         }
     }
 
-    func recordHistory(url: URL, title: String) {
+    func recordHistory(url original: URL, title: String) {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanTitle.isEmpty, cleanTitle != "New Tab", !url.absoluteString.hasPrefix("lean://") else { return }
+        guard !cleanTitle.isEmpty, cleanTitle != "New Tab",
+              let scheme = original.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
+        // A name and password typed into an address (https://user:pass@host)
+        // must never reach the history file.
+        let url = original.withoutCredentials
         historyItems.removeAll {
             $0.url == url || ($0.url.host == url.host && $0.title == cleanTitle)
         }

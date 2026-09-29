@@ -959,7 +959,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         let payload = String(text[text.index(after: comma)...])
         let decoded = payload.removingPercentEncoding ?? payload
         let bytes = header.hasSuffix(";base64") ? Data(base64Encoded: decoded) : decoded.data(using: .utf8)
-        guard let bytes, !bytes.isEmpty else {
+        guard let bytes, !bytes.isEmpty, bytes.count <= 100_000_000 else {
             onDownloadFailed?()
             return
         }
@@ -2111,12 +2111,20 @@ extension LeanTab: WKUIDelegate {
         initiatedByFrame frame: WKFrameInfo,
         completionHandler: @escaping ([URL]?) -> Void
     ) {
+        // Only over its own page: a tab behind yours has no window, and a
+        // chooser it raised would appear under the page you are looking at.
+        guard webView.window != nil else {
+            completionHandler(nil)
+            return
+        }
         let panel = NSOpenPanel()
+        panel.message = frame.securityOrigin.host.isEmpty
+            ? "Choose a file for this page"
+            : "Choose a file for \(frame.securityOrigin.host)"
         panel.canChooseFiles = !parameters.allowsDirectories
         panel.canChooseDirectories = parameters.allowsDirectories
         panel.allowsMultipleSelection = parameters.allowsMultipleSelection
         panel.canCreateDirectories = false
-        panel.message = "Choose a file to upload"
         let finish: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .OK else {
                 completionHandler(nil)
@@ -2240,7 +2248,9 @@ extension LeanTab: WKUIDelegate {
             return
         }
         let alert = NSAlert()
-        alert.messageText = webView.title?.nilIfEmpty ?? url?.host ?? "This page"
+        // The site, never the page's own title: a page could title itself
+        // as something trusted and have its alert pass for the app's.
+        alert.messageText = "\(webView.url?.host ?? url?.host ?? "This page") says"
         alert.informativeText = message
         alert.alertStyle = .informational
         let textField: NSTextField? = showsTextField ? NSTextField(string: defaultText ?? "") : nil

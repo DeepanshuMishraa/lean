@@ -15,10 +15,13 @@ enum PageScripts {
     (function() {
         try {
             document.addEventListener('contextmenu', function(e) {
+                // Only your own right-click: a page can dispatch one itself
+                // and would otherwise steer what Download Image saves.
+                if (!e.isTrusted) return;
                 try {
                     var link = (e.target && e.target.closest) ? e.target.closest('a[href]') : null;
                     var media = (e.target && e.target.closest) ? e.target.closest('img, video') : null;
-                    var kind = media ? media.tagName.toLowerCase() : '';
+                    var kind = media ? (media.tagName === 'IMG' ? 'image' : 'video') : '';
                     var candidates = media ? [media.src || '', media.currentSrc || ''] : [];
                     if (kind === 'video') {
                         var source = media.querySelector('source[src]');

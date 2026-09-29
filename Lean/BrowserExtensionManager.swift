@@ -365,6 +365,18 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
         do { try save() } catch { errorMessage = error.localizedDescription }
     }
 
+    /// No extension is ever given extension pages (its own need no grant):
+    /// they are refused outright, as WebKit lets a denial for every host
+    /// stand, so an <all_urls> or wildcard grant can't reach another
+    /// extension's pages.
+    private static func fence(_ context: WKWebExtensionContext) {
+        for scheme in ["webkit-extension", "chrome-extension"] {
+            if let pages = try? WKWebExtension.MatchPattern(string: "\(scheme)://*/*") {
+                context.setPermissionStatus(.deniedExplicitly, for: pages)
+            }
+        }
+    }
+
     private func load(_ id: String) async -> Bool {
         guard let index = installed.firstIndex(where: { $0.id == id }), installed[index].enabled else { return false }
         do {
@@ -394,6 +406,7 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
                 let granted = installed[index].grantedHosts.contains(pattern.string)
                 context.setPermissionStatus(granted ? .grantedExplicitly : .deniedExplicitly, for: pattern)
             }
+            Self.fence(context)
             try controller.load(context)
             contexts[id] = context
             loadedIDs.insert(id)

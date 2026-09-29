@@ -40,6 +40,10 @@ final class PictureInPicture {
 
     private var ticker: Timer?
 
+    /// Liquid Glass for the widget's controls, when the browser's Liquid
+    /// Glass setting is on (macOS 26+). Set by the store before lifting.
+    static var glassEnabled = false
+
     var showing: Bool { panel != nil }
 
     func lift(_ page: NSView, aspectRatio: CGFloat, title: String? = nil, url: URL? = nil, favicon: NSImage? = nil) {
@@ -187,6 +191,9 @@ final class PictureInPicture {
 
     /// Tactile frosted glass button with subtle hairline border and hover feedback.
     private final class PipGlassButton: NSButton {
+        /// The glass drawn behind this button, so a caller that fades the
+        /// button can fade its glass with it.
+        var glassView: NSView? { glassBacking }
         var isDestructiveHover = false
         var isHero = false
         var isGhost = false
@@ -194,10 +201,32 @@ final class PictureInPicture {
             didSet { updateAppearance() }
         }
         private var trackingArea: NSTrackingArea?
+        /// Glass sits behind the button as a sibling: an NSButton draws its
+        /// image beneath its own subviews, so a child glass view would hide it.
+        private var glassBacking: NSView?
 
         override init(frame: NSRect) {
             super.init(frame: frame)
             setup()
+        }
+
+        override var frame: NSRect {
+            didSet { glassBacking?.frame = frame }
+        }
+
+        override func viewDidMoveToSuperview() {
+            super.viewDidMoveToSuperview()
+            glassBacking?.removeFromSuperview()
+            glassBacking = nil
+            guard PictureInPicture.glassEnabled, #available(macOS 26, *), let superview else {
+                updateAppearance()
+                return
+            }
+            let glass = NSGlassEffectView(frame: frame)
+            glass.cornerRadius = min(bounds.width, bounds.height) / 2
+            superview.addSubview(glass, positioned: .below, relativeTo: self)
+            glassBacking = glass
+            updateAppearance()
         }
 
         required init?(coder: NSCoder) {
@@ -246,6 +275,23 @@ final class PictureInPicture {
             CATransaction.setAnimationDuration(0.12)
             layer?.cornerRadius = min(bounds.width, bounds.height) / 2
 
+            if glassBacking != nil {
+                // The glass is the surface: only tint it for feedback.
+                layer?.borderWidth = 0
+                if isHighlighted {
+                    layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.24).cgColor
+                } else if isHovered {
+                    layer?.backgroundColor = isDestructiveHover
+                        ? NSColor(red: 0.92, green: 0.24, blue: 0.24, alpha: 0.55).cgColor
+                        : NSColor(white: 1.0, alpha: 0.14).cgColor
+                } else {
+                    layer?.backgroundColor = NSColor.clear.cgColor
+                }
+                CATransaction.commit()
+                return
+            }
+            layer?.borderWidth = 0.75
+
             if isHighlighted {
                 layer?.backgroundColor = NSColor(white: 0.35, alpha: 0.88).cgColor
                 layer?.borderColor = NSColor(white: 1.0, alpha: 0.38).cgColor
@@ -278,6 +324,9 @@ final class PictureInPicture {
         override func layout() {
             super.layout()
             layer?.cornerRadius = min(bounds.width, bounds.height) / 2
+            if #available(macOS 26, *), let glass = glassBacking as? NSGlassEffectView {
+                glass.cornerRadius = min(bounds.width, bounds.height) / 2
+            }
         }
     }
 
@@ -292,9 +341,16 @@ final class PictureInPicture {
             wantsLayer = true
             layer?.cornerRadius = 13
             layer?.cornerCurve = .continuous
-            layer?.backgroundColor = NSColor(white: 0.10, alpha: 0.60).cgColor
-            layer?.borderColor = NSColor(white: 1.0, alpha: 0.15).cgColor
-            layer?.borderWidth = 0.75
+            if PictureInPicture.glassEnabled, #available(macOS 26, *) {
+                let glass = NSGlassEffectView(frame: bounds)
+                glass.autoresizingMask = [.width, .height]
+                glass.cornerRadius = 13
+                addSubview(glass)
+            } else {
+                layer?.backgroundColor = NSColor(white: 0.10, alpha: 0.60).cgColor
+                layer?.borderColor = NSColor(white: 1.0, alpha: 0.15).cgColor
+                layer?.borderWidth = 0.75
+            }
 
             closeButton.isDestructiveHover = true
             closeButton.image = Controls.glyph("xmark", 8.5, weight: .bold)
@@ -612,6 +668,7 @@ final class PictureInPicture {
             addSubview(resizeGrip)
 
             [topBadge, returnButton, centerCluster, scrubber, resizeGrip].forEach { $0.alphaValue = 0 }
+            returnButton.glassView?.alphaValue = 0
         }
 
         @available(*, unavailable)
@@ -790,6 +847,7 @@ final class PictureInPicture {
                 context.duration = 0.18
                 topBadge.animator().alphaValue = value
                 returnButton.animator().alphaValue = value
+                returnButton.glassView?.animator().alphaValue = value
                 centerCluster.animator().alphaValue = value
                 scrubber.animator().alphaValue = value
                 resizeGrip.animator().alphaValue = value
@@ -1072,14 +1130,32 @@ enum Isolate {
     /// React re-render, quality change, or ad break cannot orphan it, and
     /// landing needs no saved parent to restore (a stale parent was what
     /// left the page blank on return). Mirrors Search's Float.Isolate.
-    static let on = """
+    static let on = template(strict: false)
+
+    /// For a site not on the list of places people go to watch: only a video
+    /// that is really being watched — audible, not a loop, not a short clip,
+    /// and big enough to be the point of the page — is lifted, so a muted
+    /// hero loop or an ad card never yields a little window for nothing.
+    static let onStrict = template(strict: true)
+
+    private static func template(strict: Bool) -> String {
+        onTemplate.replacingOccurrences(of: "__STRICT__", with: strict ? "true" : "false")
+    }
+
+    private static let onTemplate = """
     (function () {
+      var strict = __STRICT__;
       var videos = document.querySelectorAll('video');
       var best = null, area = 0;
       for (var i = 0; i < videos.length; i++) {
         var v = videos[i];
         if (v.paused || v.ended || v.readyState < 2) continue;
         var box = v.getBoundingClientRect();
+        if (strict) {
+          if (v.muted || v.volume === 0 || v.loop) continue;
+          if (isFinite(v.duration) && v.duration < 30) continue;
+          if (box.width < 240 || box.height < 135) continue;
+        }
         if (box.width * box.height >= area) { area = box.width * box.height; best = v; }
       }
       if (!best) return 'none';
@@ -1116,8 +1192,16 @@ enum Isolate {
         // that clips — YouTube's player does — and in a window this small
         // that box sits partly or wholly off screen, more so on a page that
         // was scrolled. That was the black window.
+        //
+        // A fixed element is placed against the nearest ancestor that has a
+        // transform, filter, contain or will-change, not the viewport. Timelines
+        // such as X's move every item with a transform, which left the video
+        // fixed inside a box scrolled out of sight: a black window.
         'html.lean-picture-in-picture-active body :has([data-lean-picture-in-picture]) {',
-        'overflow:visible !important}',
+        'overflow:visible !important; transform:none !important; translate:none !important;',
+        'filter:none !important; backdrop-filter:none !important; perspective:none !important;',
+        'contain:none !important; will-change:auto !important; clip-path:none !important;',
+        'mask:none !important; content-visibility:visible !important}',
         // The player's own controls would sit under ours, and two sets of
         // buttons on one small window is one set too many.
         'html.lean-picture-in-picture-active [data-lean-picture-in-picture]::-webkit-media-controls {',
@@ -1209,6 +1293,21 @@ enum Isolate {
         || document.querySelector('video');
       if (!video || !video.duration || !isFinite(video.duration)) return [0, true, 0, 0];
       return [video.currentTime / video.duration, !video.paused, video.currentTime || 0, video.duration || 0];
+    })();
+    """
+
+    /// Starts the lifted video again if the page paused it. Some players (X's,
+    /// for one) pause themselves when their tab is hidden, which switching
+    /// away does a moment before the lift.
+    static let resume = """
+    (function () {
+      var video = document.querySelector('[data-lean-picture-in-picture]');
+      if (!video) return false;
+      if (video.paused && !video.ended) {
+        var attempt = video.play();
+        if (attempt && attempt.catch) attempt.catch(function () {});
+      }
+      return !video.paused;
     })();
     """
 

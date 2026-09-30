@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import WebKit
 
 @available(macOS 15.4, *)
@@ -48,6 +49,8 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
     @Published private(set) var isInstallingFromStore = false
 
     private var contexts: [String: WKWebExtensionContext] = [:]
+    let window = ExtensionWindow()
+    @Published private(set) var activePopup: WKWebExtension.Action?
     private var startupLoadTask: Task<Void, Never>?
     private var pending: [String: PendingInstall] = [:]
     private let directory = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -419,6 +422,43 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
         }
     }
 
+    /// Toolbar-click behaviour: a popup is handed to the Extensions popover
+    /// (via `presentActionPopup`); an action without one fires `onClicked`.
+    /// Returns whether a popup is coming, so the caller knows to keep the
+    /// popover open.
+    @discardableResult
+    func performAction(_ id: String) -> Bool {
+        guard let context = contexts[id] else { return false }
+        let tab = window.store?.selectedTab
+        let hasPopup = context.action(for: tab)?.presentsPopup ?? false
+        context.performAction(for: tab)
+        return hasPopup
+    }
+
+    func dismissPopup() {
+        activePopup?.closePopup()
+        activePopup = nil
+    }
+
+    /// Hands the store's window and tabs to extensions.
+    func attach(store: LeanStore) {
+        window.store = store
+        controller.didOpenWindow(window)
+        controller.didFocusWindow(window)
+        for tab in store.tabs { controller.didOpenTab(tab) }
+        if let selected = store.selectedTab { controller.didActivateTab(selected, previousActiveTab: nil) }
+    }
+
+    func tabsChanged(old: [LeanTab], new: [LeanTab]) {
+        let oldIDs = Set(old.map(\.id)), newIDs = Set(new.map(\.id))
+        for tab in new where !oldIDs.contains(tab.id) { controller.didOpenTab(tab) }
+        for tab in old where !newIDs.contains(tab.id) { controller.didCloseTab(tab, windowIsClosing: false) }
+    }
+
+    func tabActivated(_ tab: LeanTab, previous: LeanTab?) {
+        controller.didActivateTab(tab, previousActiveTab: previous)
+    }
+
     private func unload(_ id: String) {
         guard let context = contexts.removeValue(forKey: id) else { return }
         do {
@@ -453,4 +493,22 @@ final class BrowserExtensionManager: NSObject, ObservableObject {
 }
 
 @available(macOS 15.4, *)
-extension BrowserExtensionManager: WKWebExtensionControllerDelegate { }
+extension BrowserExtensionManager: WKWebExtensionControllerDelegate {
+    func webExtensionController(_ controller: WKWebExtensionController, openWindowsFor extensionContext: WKWebExtensionContext) -> [any WKWebExtensionWindow] {
+        [window]
+    }
+
+    func webExtensionController(_ controller: WKWebExtensionController, focusedWindowFor extensionContext: WKWebExtensionContext) -> (any WKWebExtensionWindow)? {
+        window
+    }
+
+    func webExtensionController(
+        _ controller: WKWebExtensionController,
+        presentActionPopup action: WKWebExtension.Action,
+        for context: WKWebExtensionContext,
+        completionHandler: @escaping @Sendable (Error?) -> Void
+    ) {
+        activePopup = action
+        completionHandler(nil)
+    }
+}

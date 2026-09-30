@@ -108,6 +108,10 @@ struct LeanCommands: Commands {
         }
 
         CommandMenu("Tabs") {
+            Button("Copy Address") { store.copyAddress() }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .disabled(store.selectedTab?.url == nil)
+            Divider()
             Button(store.selectedTab?.isPinned == true ? "Unpin Tab" : "Pin Tab") {
                 if let tab = store.selectedTab, tab.url != nil {
                     store.togglePin(tab: tab)

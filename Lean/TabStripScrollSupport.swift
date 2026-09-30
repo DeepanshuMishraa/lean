@@ -169,3 +169,45 @@ final class TabReorderDropDelegate: DropDelegate {
         return true
     }
 }
+
+/// Where AppKit's own window drag (title bar, three-finger drag) must not
+/// start: the tabs, which sit in the title bar, so a press on one would carry
+/// the window off with it. AppKit decides before the app sees the press, so
+/// `isMovable` has to be right beforehand: LeanView re-evaluates it from the
+/// pointer's position on every move and release, rather than trusting
+/// hover enter/exit, which a reorder drag or a rebuilt tab can drop and leave
+/// the window locked. Plain storage, not observed: frames change on every
+/// scroll and must not invalidate views.
+@MainActor
+final class WindowDragZones {
+    static let shared = WindowDragZones()
+    private var frames: [UUID: CGRect] = [:]
+
+    func set(_ frame: CGRect?, for id: UUID) {
+        frames[id] = frame
+    }
+
+    /// `point` is in SwiftUI global coordinates (origin top-left).
+    func update(_ window: NSWindow, at locationInWindow: NSPoint) {
+        let height = window.contentView?.frame.height ?? window.frame.height
+        let point = CGPoint(x: locationInWindow.x, y: height - locationInWindow.y)
+        let movable = !frames.values.contains { $0.contains(point) }
+        if window.isMovable != movable { window.isMovable = movable }
+    }
+}
+
+extension View {
+    /// Presses inside this view never start a native window drag.
+    func excludesWindowDrag(id: UUID) -> some View {
+        background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { WindowDragZones.shared.set(geo.frame(in: .global), for: id) }
+                    .onChange(of: geo.frame(in: .global)) { _, frame in
+                        WindowDragZones.shared.set(frame, for: id)
+                    }
+                    .onDisappear { WindowDragZones.shared.set(nil, for: id) }
+            }
+        )
+    }
+}

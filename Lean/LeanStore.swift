@@ -173,7 +173,13 @@ struct HistoryItem: Identifiable, Equatable, Hashable, Codable, Sendable {
 
 @MainActor
 final class LeanStore: ObservableObject {
-    @Published private(set) var tabs: [LeanTab] = []
+    @Published private(set) var tabs: [LeanTab] = [] {
+        didSet {
+            if #available(macOS 15.4, *) {
+                BrowserExtensionManager.shared.tabsChanged(old: oldValue, new: tabs)
+            }
+        }
+    }
     var pinnedTabs: [LeanTab] {
         tabs.filter(\.isPinned)
     }
@@ -193,6 +199,16 @@ final class LeanStore: ObservableObject {
     @Published var inlineURLBarFrame: CGRect = .zero
     @Published var inlineSuggestionsFrame: CGRect = .zero
     @Published var suggestionDropdown: SuggestionDropdown?
+    /// The tab whose site card (connection, zoom, sound…) hangs under the
+    /// inline URL bar: set while its address is being edited and untouched.
+    @Published var siteCardTabID: LeanTab.ID? {
+        didSet { probeLog("siteCardTabID -> \(siteCardTabID == nil ? "nil" : "set") editing=\(isInlineURLEditing) stack=" + Thread.callStackSymbols.dropFirst(1).prefix(4).map { String($0.suffix(70)) }.joined(separator: " | ")) } // DEBUGTMP
+    }
+    /// Whether the pointer is over the site card. Set by the card's own hover,
+    /// which is what a click there is judged by: its frame in window
+    /// coordinates is easy to get wrong and, wrong, reads every click on the
+    /// card as a click outside it.
+    var isPointerOverSiteCard = false
     @Published private(set) var newTabToast: NewTabToast?
     private var newTabToastDismiss: DispatchWorkItem?
     @Published var isTabSwitcherVisible = false
@@ -1146,6 +1162,9 @@ final class LeanStore: ObservableObject {
 
     private func handleTabSelectionChange(from previous: LeanTab.ID?, to current: LeanTab.ID?) {
         guard previous != current else { return }
+        if #available(macOS 15.4, *), let tab = tabs.first(where: { $0.id == current }) {
+            BrowserExtensionManager.shared.tabActivated(tab, previous: tabs.first { $0.id == previous })
+        }
         let isReturningToPictureInPictureTab = current == pictureInPictureTabID
         if isReturningToPictureInPictureTab {
             returnFromPictureInPicture()
@@ -1954,7 +1973,13 @@ final class LeanStore: ObservableObject {
         return tab
     }
 
+    /// Closes `tab` with the row closing up around it: the tab leaves and its
+    /// neighbours slide in over it, in one animation.
     func close(_ tab: LeanTab) {
+        withAnimation(Motion.tabSwitch) { closeImmediately(tab) }
+    }
+
+    private func closeImmediately(_ tab: LeanTab) {
         guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
         if pictureInPictureTabID == tab.id { dismissPictureInPicture() }
         if let url = tab.url {
@@ -2057,13 +2082,21 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    func copyAddress() {
+        guard let url = selectedTab?.url else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.absoluteString, forType: .string)
+    }
+
     func dismissInlineURLEditing() {
         guard isInlineURLEditing else { return }
+        probeLog("DISMISS from: " + Thread.callStackSymbols.dropFirst(1).prefix(7).map { String($0.suffix(90)) }.joined(separator: " | ")) // DEBUGTMP
         withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
             isInlineURLEditing = false
         }
         inlineURLBarFrame = .zero
         inlineSuggestionsFrame = .zero
+        siteCardTabID = nil
         DispatchQueue.main.async { [weak self] in
             guard let self, let tab = self.selectedTab, tab.hasWebView else { return }
             tab.webView.evaluateJavaScript("window.getSelection()?.removeAllRanges()", completionHandler: nil)
@@ -2081,8 +2114,9 @@ final class LeanStore: ObservableObject {
         isInlineURLEditing = false
         inlineURLBarFrame = .zero
         inlineSuggestionsFrame = .zero
+        siteCardTabID = nil
         floatingPaletteFrame = .zero
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+        withAnimation(Motion.tabSwitch) {
             selectedID = id
         }
         scheduleDebouncedPersist()
@@ -2100,7 +2134,7 @@ final class LeanStore: ObservableObject {
               let selectedID,
               let index = tabs.firstIndex(where: { $0.id == selectedID }) else { return }
         let offset = reverse ? tabs.count - 1 : 1
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+        withAnimation(Motion.tabSwitch) {
             self.selectedID = tabs[(index + offset) % tabs.count].id
         }
         scheduleDebouncedPersist()
@@ -2134,7 +2168,7 @@ final class LeanStore: ObservableObject {
         guard !tabs.isEmpty else { return }
         let index = number == 9 ? tabs.count - 1 : number - 1
         guard tabs.indices.contains(index) else { return }
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+        withAnimation(Motion.tabSwitch) {
             selectedID = tabs[index].id
         }
         scheduleDebouncedPersist()
@@ -2217,7 +2251,7 @@ final class LeanStore: ObservableObject {
             guard !live.isEmpty else { return }
             target = live[min(switcherSelectedIndex, live.count - 1)].id
         }
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+        withAnimation(Motion.tabSwitch) {
             selectedID = target
         }
         scheduleDebouncedPersist()

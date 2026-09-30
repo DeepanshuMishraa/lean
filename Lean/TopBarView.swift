@@ -30,6 +30,7 @@ struct TopBarView: View {
                                     onSelect: { handleTabSelection(tab) },
                                     onClose: { store.close(tab) }
                                 )
+                                .transition(.opacity.combined(with: .scale(scale: 0.88)))
                             }
                         }
                         .padding(2)
@@ -61,6 +62,10 @@ struct TopBarView: View {
                             onSelect: { handleTabSelection(tab) },
                             onClose: { store.close(tab) }
                         )
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.92, anchor: .leading)),
+                            removal: .opacity.combined(with: .scale(scale: 0.88, anchor: .leading))
+                        ))
                     }
 
                 }
@@ -71,6 +76,15 @@ struct TopBarView: View {
                     }
                 }
             }
+            // The scroll view is only as wide as its tabs (less, once they
+            // overflow): the empty rest of the row then belongs to the
+            // Spacer's WindowDragView, a real view that moves the window,
+            // instead of to a scroll view AppKit lets drag the window too.
+            .frame(maxWidth: tabContentWidth > 0 ? tabContentWidth : .infinity)
+            // Laid out first, so it is offered all the room rather than a
+            // share of it: a short share clips the last tab, and what is cut
+            // off falls through to the drag area.
+            .layoutPriority(1)
             .background(HorizontalScrollWheelBridge(metrics: $tabScrollMetrics))
             .background {
                 GeometryReader { geometry in
@@ -313,7 +327,7 @@ struct TopBarView: View {
                 }
             }
         } else {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+            withAnimation(Motion.tabSwitch) {
                 store.switchToTab(id: tab.id)
             }
         }
@@ -384,42 +398,51 @@ private struct TopBarTabItem: View {
                     .fill(isSelected && store.liquidGlassEnabled ? Color.clear : (isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : store.adaptiveTheme.inactiveTabBackground))
 
                 if isSelected {
-                    if store.liquidGlassEnabled, #available(macOS 26, *) {
-                        Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
-                    } else {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(store.adaptiveTheme.activeTabBackground)
-                            .overlay(
-                                store.enableWindowBorder
-                                    ? RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
-                                    : nil
-                            )
-                            .shadow(
-                                color: store.enableWindowBorder ? store.adaptiveTheme.activeTabShadow : Color.clear,
-                                radius: store.adaptiveTheme.isFrameLight ? 2 : 4,
-                                x: 0,
-                                y: 1
-                            )
+                    // One highlight that slides from tab to tab, rather than
+                    // each tab fading its own in and out.
+                    Group {
+                        if store.liquidGlassEnabled, #available(macOS 26, *) {
+                            Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
+                        } else {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(store.adaptiveTheme.activeTabBackground)
+                                .overlay(
+                                    store.enableWindowBorder
+                                        ? RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
+                                        : nil
+                                )
+                                .shadow(
+                                    color: store.enableWindowBorder ? store.adaptiveTheme.activeTabShadow : Color.clear,
+                                    radius: store.adaptiveTheme.isFrameLight ? 2 : 4,
+                                    x: 0,
+                                    y: 1
+                                )
+                        }
                     }
+                    .matchedGeometryEffect(id: "activeTabHighlight", in: namespace)
                 }
             }
         }
+        // Drag/drop sits below the URL bar overlay: on the whole tab, the drag
+        // recognizer swallows mouse-downs meant for the inline text field.
+        .onDrag {
+            store.draggingTabID = tab.id
+            return NSItemProvider(object: tab.id.uuidString as NSString)
+        }
+        .onDrop(
+            of: [UTType.plainText],
+            delegate: TabReorderDropDelegate(targetID: tab.id, store: store) { isDropTarget = $0 }
+        )
         .overlay {
             if showURLBar {
                 InlineURLBar(
                     tab: tab,
                     store: store,
                     autoFocus: store.isInlineURLEditing,
-                    isFocusedBinding: $isFieldFocused,
-                    onClose: onClose
+                    isFocusedBinding: $isFieldFocused
                 )
-                .transition(
-                    .asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .leading)),
-                        removal: .opacity.combined(with: .scale(scale: 0.98, anchor: .leading))
-                    )
-                )
+                .transition(.opacity)
             }
         }
         .overlay(alignment: .trailing) {
@@ -438,6 +461,7 @@ private struct TopBarTabItem: View {
             }
         }
         .contentShape(Rectangle())
+        .excludesWindowDrag(id: tab.id)
         .help(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
         .onHover { handleHoverChange($0) }
         .onChange(of: isSelected) { _, selected in
@@ -445,7 +469,9 @@ private struct TopBarTabItem: View {
                 store.dismissInlineURLEditing()
             }
         }
-        .animation(.spring(response: 0.30, dampingFraction: 0.82), value: showURLBar)
+        .animation(Motion.tabSwitch, value: showURLBar)
+        .onChange(of: showURLBar) { _, now in probeLog("showURLBar -> \(now) isSelected=\(isSelected) editing=\(store.isInlineURLEditing) focused=\(isFieldFocused)") } // DEBUGTMP
+        .onDisappear { probeLog("TopBarTabItem disappeared sel=\(isSelected)") } // DEBUGTMP
         .zIndex(isHovered ? 15 : (isSelected ? 10 : 1))
         .contextMenu {
             if tab.isPlayingMedia {
@@ -518,14 +544,6 @@ private struct TopBarTabItem: View {
                 Button("Forward") { tab.goForward() }
             }
         }
-        .onDrag {
-            store.draggingTabID = tab.id
-            return NSItemProvider(object: tab.id.uuidString as NSString)
-        }
-        .onDrop(
-            of: [UTType.plainText],
-            delegate: TabReorderDropDelegate(targetID: tab.id, store: store) { isDropTarget = $0 }
-        )
         .overlay(alignment: .leading) {
             if isDropTarget {
                 Capsule()
@@ -904,6 +922,7 @@ private struct TopBarPinnedTabItem: View {
                     .transition(.scale.combined(with: .opacity))
             }
         }
+        .excludesWindowDrag(id: tab.id)
         .help(tab.displayTitle(isSelected: isSelected, showFullTitle: true))
         .onHover { isHovered = $0 }
         .onDrag {
@@ -1024,7 +1043,6 @@ struct InlineURLBar: View {
     @ObservedObject var store: LeanStore
     var autoFocus: Bool = false
     var isFocusedBinding: Binding<Bool>? = nil
-    let onClose: () -> Void
 
     @FocusState private var isFieldFocused: Bool
     @Environment(\.browserUIScale) private var browserUIScale
@@ -1054,25 +1072,6 @@ struct InlineURLBar: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            ZStack {
-                if tab.isLoading {
-                    DotMatrixLoader(
-                        color: store.adaptiveTheme.primaryText,
-                        size: store.scaled(13)
-                    )
-                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
-                } else {
-                    TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 13)
-                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
-                }
-            }
-            .frame(width: store.scaled(13), height: store.scaled(13))
-            .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                dismiss()
-            }
-
             TextField("Search or enter URL...", text: $text)
                 .textFieldStyle(.plain)
                 .font(store.headingFont(size: 12.5))
@@ -1100,20 +1099,6 @@ struct InlineURLBar: View {
                     return .ignored
                 }
 
-            if !text.isEmpty {
-                Button {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                        onClose()
-                    }
-                } label: {
-                    LeanIcon.xCircle.fill
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 11, height: 11)
-                        .foregroundColor(store.adaptiveTheme.secondaryText)
-                }
-                .buttonStyle(.hitArea)
-                .help("Close Tab (⌘W)")
-            }
         }
         .padding(.horizontal, 9)
         .frame(height: store.scaled(26))
@@ -1141,28 +1126,37 @@ struct InlineURLBar: View {
         .onChange(of: text) { _, _ in
             textDidChange()
             syncDropdown()
+            syncSiteCard()
         }
         .onChange(of: selectedIndex) { _, _ in syncDropdown() }
-        .onChange(of: isFieldFocused) { _, _ in syncDropdown() }
+        .onChange(of: isFieldFocused) { _, _ in
+            syncDropdown()
+            syncSiteCard()
+        }
         .anchorPreference(key: SuggestionAnchorKey.self, value: .bounds) { [.inlineBar: $0] }
         .onAppear {
+            probeLog("InlineURLBar onAppear editing=\(store.isInlineURLEditing)") // DEBUGTMP
             text = tab.url?.absoluteString ?? ""
+            // The address as it opens is not a query: no suggestions until
+            // something is typed, so the site card can show.
+            appliedSuggestionText = text
             if autoFocus || store.isInlineURLEditing {
                 isFieldFocused = true
                 tab.webView.evaluateJavaScript("window.getSelection()?.removeAllRanges()", completionHandler: nil)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    if let textEditor = NSApp.keyWindow?.firstResponder as? NSTextView {
-                        textEditor.setSelectedRange(NSRange(location: textEditor.string.count, length: 0))
-                    } else if let textEditor = NSApp.keyWindow?.firstResponder as? NSText {
-                        textEditor.selectedRange = NSRange(location: textEditor.string.count, length: 0)
-                    }
-                }
+                selectWholeAddress()
             }
         }
         .onDisappear {
+            probeLog("InlineURLBar onDisappear editing=\(store.isInlineURLEditing)") // DEBUGTMP
+            // SwiftUI reports this view gone while the address is still being
+            // edited — the pointer moving down onto the site card is enough —
+            // and clearing the card or the frames then closed the card under
+            // the pointer. Ending the edit clears them itself.
+            guard !store.isInlineURLEditing else { return }
             store.inlineURLBarFrame = .zero
             store.inlineSuggestionsFrame = .zero
             if store.suggestionDropdown?.owner == .inlineBar { store.suggestionDropdown = nil }
+            store.siteCardTabID = nil
         }
         .onChange(of: suggestions.isEmpty) { _, isEmpty in
             if isEmpty {
@@ -1171,15 +1165,14 @@ struct InlineURLBar: View {
         }
         .onChange(of: isFieldFocused) { _, focused in
             isFocusedBinding?.wrappedValue = focused
+            probeLog("focus -> \(focused) overCard=\(isPointerOverSiteCard)") // DEBUGTMP
             if focused {
                 store.isInlineURLEditing = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    if let textEditor = NSApp.keyWindow?.firstResponder as? NSTextView {
-                        textEditor.setSelectedRange(NSRange(location: textEditor.string.count, length: 0))
-                    } else if let textEditor = NSApp.keyWindow?.firstResponder as? NSText {
-                        textEditor.selectedRange = NSRange(location: textEditor.string.count, length: 0)
-                    }
-                }
+                selectWholeAddress()
+            } else if isPointerOverSiteCard {
+                // A click on the card takes focus from the field; the field
+                // gets it back so the card stays and the address stays open.
+                isFieldFocused = true
             } else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                     if !isFieldFocused {
@@ -1188,6 +1181,29 @@ struct InlineURLBar: View {
                 }
             }
         }
+    }
+
+    /// Whole address selected, as a browser's address bar takes a click: the
+    /// next keystroke replaces it, and the site card hangs under it until
+    /// then. Run after focus lands, which SwiftUI does a beat late.
+    private func selectWholeAddress() {
+        for delay in [0.0, 0.05] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                (NSApp.keyWindow?.firstResponder as? NSText)?.selectAll(nil)
+            }
+        }
+    }
+
+    private var isPointerOverSiteCard: Bool {
+        store.siteCardTabID == tab.id && store.isPointerOverSiteCard
+    }
+
+    /// The card is about the page you are on, so it stays only while the
+    /// address is as the page has it.
+    private func syncSiteCard() {
+        let unchanged = (isFieldFocused || isPointerOverSiteCard) && !text.isEmpty && text == tab.url?.absoluteString
+        probeLog("syncSiteCard focused=\(isFieldFocused) over=\(isPointerOverSiteCard) text=\(text.prefix(30)) url=\((tab.url?.absoluteString ?? "").prefix(30)) equal=\(text == tab.url?.absoluteString)") // DEBUGTMP
+        store.siteCardTabID = unchanged ? tab.id : nil
     }
 
     /// The dropdown is drawn by LeanView, above the tab strip's scroll

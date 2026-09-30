@@ -1707,6 +1707,13 @@ private struct TabsSection: View {
                 }
             }
 
+            // Loading Indicator
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Loading Indicator", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+
+                LoaderStylePickerView(store: store)
+            }
+
             // Tab Behaviors
             VStack(alignment: .leading, spacing: 8) {
                 SettingsHeaderLabel("Behaviors", uiFont: store.leanUIFont, isDark: store.isDarkMode)
@@ -5073,5 +5080,70 @@ private struct ImportedBookmarkRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Loading Indicator Picker
+private struct LoaderStylePickerView: View {
+    @ObservedObject var store: LeanStore
+    @AppStorage(LoaderStyle.storageKey) private var styleRaw = LoaderStyle.defaultStyle.rawValue
+
+    private let columns = [GridItem(.adaptive(minimum: 96, maximum: 140), spacing: 10)]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+            ForEach(LoaderStyle.allCases) { style in
+                LoaderStyleCard(
+                    store: store,
+                    style: style,
+                    isSelected: (LoaderStyle(rawValue: styleRaw) ?? .defaultStyle) == style
+                ) {
+                    withAnimation(.easeOut(duration: 0.15)) { styleRaw = style.rawValue }
+                }
+            }
+        }
+    }
+}
+
+private struct LoaderStyleCard: View {
+    @ObservedObject var store: LeanStore
+    let style: LoaderStyle
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                LoaderView(style: style, color: store.adaptiveTheme.primaryText, size: 22)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 58)
+                    .background(
+                        store.isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.035),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+                Text(style.label)
+                    .font(store.leanUIFont.font(size: 11.5, weight: isSelected ? .semibold : .medium))
+                    .foregroundColor(isSelected ? store.adaptiveTheme.primaryText : store.adaptiveTheme.secondaryText)
+            }
+            .padding(6)
+            .background(
+                isHovered && !isSelected ? (store.isDarkMode ? Color.white.opacity(0.04) : Color.black.opacity(0.03)) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(
+                        isSelected
+                            ? store.adaptiveTheme.primaryText.opacity(0.55)
+                            : (store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.08)),
+                        lineWidth: isSelected ? 1.5 : 1
+                    )
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.hitArea)
+        .onHover { isHovered = $0 }
     }
 }

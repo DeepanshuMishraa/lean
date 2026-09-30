@@ -48,6 +48,37 @@ private struct ExtensionsPopoverContent: View {
     }
 
     var body: some View {
+        Group {
+            if let action = manager.activePopup {
+                ExtensionPopupHost(action: action)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(4)
+            } else {
+                listOrDetail
+                    .padding(8)
+                    .frame(width: 320)
+            }
+        }
+        .leanPopoverSurface(glass: store.glassActive, isDark: store.isDarkMode, stroke: store.adaptiveTheme.dropdownStroke, fill: store.themeColors.palette?.raised)
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear {
+                        store.extensionsPopoverFrame = proxy.frame(in: .global)
+                    }
+                    .onChange(of: proxy.frame(in: .global)) { _, newFrame in
+                        store.extensionsPopoverFrame = newFrame
+                    }
+            }
+        )
+        .onDisappear {
+            store.extensionsPopoverFrame = .zero
+            selectedExtensionID = nil
+            manager.dismissPopup()
+        }
+    }
+
+    private var listOrDetail: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let selectedID = selectedExtensionID,
                let item = manager.installed.first(where: { $0.id == selectedID }) {
@@ -64,25 +95,8 @@ private struct ExtensionsPopoverContent: View {
                     ))
             }
         }
-        .padding(8)
-        .frame(width: 320)
-        .leanPopoverSurface(glass: store.glassActive, isDark: store.isDarkMode, stroke: store.adaptiveTheme.dropdownStroke, fill: store.themeColors.palette?.raised)
-        .background(
-            GeometryReader { proxy in
-                Color.clear
-                    .onAppear {
-                        store.extensionsPopoverFrame = proxy.frame(in: .global)
-                    }
-                    .onChange(of: proxy.frame(in: .global)) { _, newFrame in
-                        store.extensionsPopoverFrame = newFrame
-                    }
-            }
-        )
-        .onDisappear {
-            store.extensionsPopoverFrame = .zero
-            selectedExtensionID = nil
-        }
     }
+
 
     // MARK: - Root List View
     private var rootListView: some View {
@@ -608,5 +622,56 @@ private struct ExtensionPopoverRow: View {
         )
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
+        .onTapGesture {
+            guard item.enabled else { return }
+            if !manager.performAction(item.id) {
+                store.isExtensionsPresented = false
+            }
+        }
+    }
+}
+
+/// An extension's popup page, hosted inside the Extensions popover so it
+/// shares its surface and position. WebKit keeps the view controller's
+/// `preferredContentSize` in step with the page's content.
+@available(macOS 15.4, *)
+private struct ExtensionPopupHost: View {
+    let action: WKWebExtension.Action
+    @State private var size = CGSize(width: 320, height: 200)
+
+    var body: some View {
+        if let controller = action.popupPopover?.contentViewController {
+            PopupControllerView(controller: controller, size: $size)
+                .frame(width: size.width, height: size.height)
+        }
+    }
+}
+
+@available(macOS 15.4, *)
+private struct PopupControllerView: NSViewControllerRepresentable {
+    let controller: NSViewController
+    @Binding var size: CGSize
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSViewController(context: Context) -> NSViewController {
+        context.coordinator.observe(controller) { newSize in
+            guard newSize.width > 0, newSize.height > 0 else { return }
+            DispatchQueue.main.async { size = newSize }
+        }
+        return controller
+    }
+
+    func updateNSViewController(_ nsViewController: NSViewController, context: Context) {}
+
+    final class Coordinator {
+        private var observation: NSKeyValueObservation?
+
+        func observe(_ controller: NSViewController, onChange: @escaping (CGSize) -> Void) {
+            onChange(controller.preferredContentSize)
+            observation = controller.observe(\.preferredContentSize, options: [.new]) { _, change in
+                if let newSize = change.newValue { onChange(newSize) }
+            }
+        }
     }
 }

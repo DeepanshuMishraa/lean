@@ -454,7 +454,7 @@ struct AdaptiveFrameTheme {
 
     var inactiveTabBackground: Color {
         if isBorderEnabled {
-            return isFrameLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08)
+            return isFrameLight ? Color.black.opacity(0.035) : Color.white.opacity(0.045)
         }
         return Color.clear
     }
@@ -468,7 +468,7 @@ struct AdaptiveFrameTheme {
 
     var inactiveTabHoverBackground: Color {
         if isBorderEnabled {
-            return isFrameLight ? Color.black.opacity(0.09) : Color.white.opacity(0.15)
+            return isFrameLight ? Color.black.opacity(0.07) : Color.white.opacity(0.09)
         }
         return baseThemeColors.inactiveTabHover
     }

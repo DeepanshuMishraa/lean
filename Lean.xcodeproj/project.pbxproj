@@ -81,6 +81,7 @@
 		9E43DF834EFD61D237BC05DA /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5268449F35E5A41542EEF02 /* AppUpdater.swift */; };
 		9F7CDF17FBB0540000928EA0 /* OmnibarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AC627B2D3E8E4EB789B7523 /* OmnibarView.swift */; };
 		A120023EBA9CA774D77FEB55 /* WebEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A30DE20D55EF4F746694EB /* WebEngineTests.swift */; };
+		A1A39EAB8F3A4AEEBC139B58 /* SiteSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EC06BF23C3D78EE9566F3E /* SiteSettings.swift */; };
 		A5364002E14974BBC303C3E6 /* LeanIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1041DE954306C249A5B9F938 /* LeanIcons.swift */; };
 		A5F5E354FE6DC961EB0B3250 /* NativeMessagingCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C59A22C06416C42970660C92 /* NativeMessagingCore.swift */; };
 		A91B0FF57EFB4487C52766CC /* PasswordVaultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2601F84C6FDEB3F58E4C912F /* PasswordVaultTests.swift */; };
@@ -97,6 +98,7 @@
 		C1F9942CE25B69EA54697AEE /* ChromiumPasswordsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67124E7B47F26E511012B6D8 /* ChromiumPasswordsTests.swift */; };
 		C5E755527AC5CE1518EF2614 /* ChromeWebStoreInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35C2637EB759D8F6B21F4045 /* ChromeWebStoreInstaller.swift */; };
 		CFA967BA5CF33A8F4C36B321 /* OmnibarSuggestionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7FCB01A3F3CCDE9AA9530E /* OmnibarSuggestionRow.swift */; };
+		D312C75DDCC16ABD01958C01 /* ExtensionBrowserBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D88FB2556A4454961BFD037 /* ExtensionBrowserBridge.swift */; };
 		D3CC22D787F854ED59D05532 /* WebExtensionPrototypeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 980BE17166DA884CFC802F78 /* WebExtensionPrototypeTests.swift */; };
 		D7D803603DDE982C08A049B4 /* HitAreaButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFF96381A58003794D9BC12D /* HitAreaButtonStyle.swift */; };
 		D8DA1C37849FCBD67C9EE9DF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A848AF7624C91DF439D4069E /* SettingsView.swift */; };
@@ -114,6 +116,7 @@
 		EF81104AE976E2079F2656FE /* LeanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53149805E8E44A5ECCE884F3 /* LeanView.swift */; };
 		F20F5A75FB1AE3B3F4EFF939 /* OmnibarServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79752CAC905E311310040C7 /* OmnibarServiceTests.swift */; };
 		F3029125E6F1E2DEF6DB3593 /* InspectorSpiTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C5E38ACF825186B17BE0C69 /* InspectorSpiTests.swift */; };
+		F38884528FA5C7C7B9A1AC90 /* ProbeLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD6B4541298B5422B43202F2 /* ProbeLog.swift */; };
 		F66DB17A3221DADC8EC8A92B /* ChromiumPasswords.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F64D9D86B5C387FB9E0FB6E /* ChromiumPasswords.swift */; };
 		F8412E715FD178DE5C1E643C /* lean.icon in Resources */ = {isa = PBXBuildFile; fileRef = 28482E243F19BC7282F14B6F /* lean.icon */; };
 		F8F072CF63D139768651B686 /* LeanCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0848E1405C94F6D577AC6C4F /* LeanCommands.swift */; };
@@ -172,6 +175,7 @@
 		28482E243F19BC7282F14B6F /* lean.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = lean.icon; sourceTree = "<group>"; };
 		2DA03B4F27F0993A4D062C82 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		329359943D08761604195E40 /* AddressResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressResolverTests.swift; sourceTree = "<group>"; };
+		34EC06BF23C3D78EE9566F3E /* SiteSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiteSettings.swift; sourceTree = "<group>"; };
 		35C2637EB759D8F6B21F4045 /* ChromeWebStoreInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromeWebStoreInstaller.swift; sourceTree = "<group>"; };
 		375BB03B356BB64280D766C7 /* ColorTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTheme.swift; sourceTree = "<group>"; };
 		39FC7F01364675372F09FA78 /* NativeHostService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHostService.swift; sourceTree = "<group>"; };
@@ -190,6 +194,7 @@
 		4C7FCB01A3F3CCDE9AA9530E /* OmnibarSuggestionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmnibarSuggestionRow.swift; sourceTree = "<group>"; };
 		4CD9886B5A0CFDEBBD7866FC /* Geist-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-Variable.ttf"; sourceTree = "<group>"; };
 		4CE003CFDB286E7313E3170B /* BrowserImportProgressDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserImportProgressDialog.swift; sourceTree = "<group>"; };
+		4D88FB2556A4454961BFD037 /* ExtensionBrowserBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionBrowserBridge.swift; sourceTree = "<group>"; };
 		4F64D9D86B5C387FB9E0FB6E /* ChromiumPasswords.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromiumPasswords.swift; sourceTree = "<group>"; };
 		51504E57E400453E497CD481 /* PasswordVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordVault.swift; sourceTree = "<group>"; };
 		53149805E8E44A5ECCE884F3 /* LeanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanView.swift; sourceTree = "<group>"; };
@@ -229,6 +234,7 @@
 		A4FF3CC836DF75826189D411 /* NewTabToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewTabToastView.swift; sourceTree = "<group>"; };
 		A848AF7624C91DF439D4069E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AA93006FF8D0CD999AA120C4 /* Lean.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lean.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AD6B4541298B5422B43202F2 /* ProbeLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProbeLog.swift; sourceTree = "<group>"; };
 		B15F19C70BDD8CCECE0E351E /* ChromiumExtensionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromiumExtensionsTests.swift; sourceTree = "<group>"; };
 		B53E2D1FDEBA2B433144566B /* SettingsPopoverHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPopoverHistoryTests.swift; sourceTree = "<group>"; };
 		B68D79B10CF72FD177F0AC81 /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
@@ -371,6 +377,7 @@
 				F27EC5E6F10DEA6F39123642 /* DotMatrixLoader.swift */,
 				E72942590E49E85581DFAAC5 /* DownloadManager.swift */,
 				B68D79B10CF72FD177F0AC81 /* DownloadsView.swift */,
+				4D88FB2556A4454961BFD037 /* ExtensionBrowserBridge.swift */,
 				4264638C28E8CE1683A21A92 /* ExtensionImportReviewer.swift */,
 				630B72F11CA0AAD00F1E1C58 /* ExtensionNativeMessaging.swift */,
 				4A60E0E2C03D202AC428D083 /* ExtensionsView.swift */,
@@ -403,10 +410,12 @@
 				51504E57E400453E497CD481 /* PasswordVault.swift */,
 				F18A4954A3A2466EAD067457 /* PeekPanel.swift */,
 				8121373BB4CCB65F1193F694 /* PictureInPicture.swift */,
+				AD6B4541298B5422B43202F2 /* ProbeLog.swift */,
 				BA97354673D3289795AA33C7 /* SettingsControls.swift */,
 				A848AF7624C91DF439D4069E /* SettingsView.swift */,
 				84A5B4BCED207122DB77E61C /* SettingsWindowManager.swift */,
 				0FFFAF344F05056E843A70F1 /* SidebarView.swift */,
+				34EC06BF23C3D78EE9566F3E /* SiteSettings.swift */,
 				E914422B8536C45EA5E960A2 /* SuggestionDropdownView.swift */,
 				9E570BC18AD372821AB350BC /* TabFaviconView.swift */,
 				18CE6C0540AC120E66BBF568 /* TabSleepPolicy.swift */,
@@ -694,6 +703,7 @@
 				5A638900363577A489504B7F /* DotMatrixLoader.swift in Sources */,
 				510DD86C20F775C3F5A542B7 /* DownloadManager.swift in Sources */,
 				ACF15006217CE98EFFA1FE21 /* DownloadsView.swift in Sources */,
+				D312C75DDCC16ABD01958C01 /* ExtensionBrowserBridge.swift in Sources */,
 				B847947964E83824808E9CDF /* ExtensionImportReviewer.swift in Sources */,
 				E9A5B1AFC900239FDC4144EA /* ExtensionNativeMessaging.swift in Sources */,
 				0A0BC6E7AEA90A17D3113FD7 /* ExtensionsView.swift in Sources */,
@@ -723,10 +733,12 @@
 				9B7EF06C932FD3C9B4A4181C /* PasswordVault.swift in Sources */,
 				E7708BC5AE5CEB00FB8C590C /* PeekPanel.swift in Sources */,
 				6AAD3D4D75B3A36D77411D65 /* PictureInPicture.swift in Sources */,
+				F38884528FA5C7C7B9A1AC90 /* ProbeLog.swift in Sources */,
 				3C148F2CAF286BDD2E6095F3 /* SettingsControls.swift in Sources */,
 				D8DA1C37849FCBD67C9EE9DF /* SettingsView.swift in Sources */,
 				78C6CF86E4E44D9D9BCE3E8E /* SettingsWindowManager.swift in Sources */,
 				B92CC1297B7BDFDDDB82379A /* SidebarView.swift in Sources */,
+				A1A39EAB8F3A4AEEBC139B58 /* SiteSettings.swift in Sources */,
 				54ACC0C4A977ECC970BAA28E /* SuggestionDropdownView.swift in Sources */,
 				69AC4FF3AD87A8C412AB8AA2 /* TabFaviconView.swift in Sources */,
 				49BB96110AFECF59ADF20109 /* TabSleepPolicy.swift in Sources */,

@@ -1885,6 +1885,24 @@ extension LeanTab: WKNavigationDelegate {
         return true
     }
 
+    /// The form of the question that also hands over the page's preferences,
+    /// the only place a site allowed to play sound by itself can say so (see
+    /// SiteAutoplay). The decision itself is the one below.
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        preferences: WKWebpagePreferences,
+        decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void
+    ) {
+        self.webView(webView, decidePolicyFor: navigationAction) { policy in
+            if policy == .allow, navigationAction.targetFrame?.isMainFrame ?? true,
+               let url = navigationAction.request.url {
+                SiteAutoplay.apply(to: preferences, for: url)
+            }
+            decisionHandler(policy, preferences)
+        }
+    }
+
     func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationAction: WKNavigationAction,

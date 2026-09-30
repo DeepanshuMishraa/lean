@@ -25,6 +25,11 @@ struct LeanView: View {
         if !store.enableZenMode {
             return true
         }
+        // The address being edited, and the card under it, hang off this
+        // bar: the pointer going down to the card must not hide it.
+        if store.isInlineURLEditing {
+            return true
+        }
         return isZenTopBarRevealed
     }
 
@@ -133,6 +138,16 @@ struct LeanView: View {
                     SuggestionDropdownView(store: store, model: dropdown, barWidth: bar.width)
                         .offset(x: bar.minX, y: bar.maxY + 4)
                 }
+                if store.suggestionDropdown == nil,
+                   let id = store.siteCardTabID,
+                   let tab = store.tabs.first(where: { $0.id == id }),
+                   let url = tab.url,
+                   let anchor = anchors[.inlineBar] {
+                    let bar = geo[anchor]
+                    SiteCardView(store: store, tab: tab, url: url, width: max(bar.width, store.scaled(260)))
+                        .offset(x: bar.minX, y: bar.maxY + 4)
+                        .transition(.opacity.combined(with: .offset(y: -4)))
+                }
             }
         }
         .ignoresSafeArea(.all)
@@ -147,6 +162,9 @@ struct LeanView: View {
         .preferredColorScheme(store.colorScheme)
         .onAppear {
             setupKeyMonitor()
+            if #available(macOS 15.4, *) {
+                BrowserExtensionManager.shared.attach(store: store)
+            }
         }
         .onDisappear {
             // Monitors are app-wide: a closed window must not keep (or
@@ -210,6 +228,17 @@ struct LeanView: View {
                 if store.isSidebarCollapsed && store.tabLayout == .sidebar && !isMouseOverSidebar {
                     setSidebarHoverState(isHovering: false)
                 }
+            }
+        }
+        .onChange(of: isTopBarVisible) { _, v in probeLog("isTopBarVisible -> \(v) zenRevealed=\(isZenTopBarRevealed) editing=\(store.isInlineURLEditing)") } // DEBUGTMP
+        .onChange(of: store.isInlineURLEditing) { _, editing in
+            // Editing held the bar up; let it go unless the pointer is still on it.
+            guard !editing, store.enableZenMode, store.tabLayout == .top,
+                  let window = NSApp.keyWindow else { return }
+            let height = window.contentView?.frame.height ?? window.frame.height
+            let fromTop = height - window.mouseLocationOutsideOfEventStream.y
+            if fromTop > store.scaled(40) {
+                setZenHoverState(isHoveringTop: false)
             }
         }
         .onChange(of: store.isExtensionsPresented) { _, presented in
@@ -644,6 +673,13 @@ struct LeanView: View {
         guard !hasSetupKeyMonitor else { return }
         hasSetupKeyMonitor = true
 
+        keyMonitors.append(NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseUp]) { event in
+            if let window = event.window, window.styleMask.contains(.fullSizeContentView) {
+                WindowDragZones.shared.update(window, at: event.locationInWindow)
+            }
+            return event
+        })
+
         // Monitor mouse clicks when quick settings, inline URL bar, or floating omnibar is open:
         // Only clicking outside the active region collapses / closes it!
         keyMonitors.append(NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { event in
@@ -700,7 +736,8 @@ struct LeanView: View {
                 let isInsideBar = store.inlineURLBarFrame.width > 0 && barFrame.contains(swiftUIPoint)
                 let isInsideSugg = store.inlineSuggestionsFrame.width > 0 && suggFrame.contains(swiftUIPoint)
 
-                if !isInsideBar && !isInsideSugg {
+                probeLog("CLICK \(swiftUIPoint) bar=\(store.inlineURLBarFrame) sugg=\(store.inlineSuggestionsFrame) overCard=\(store.isPointerOverSiteCard) card=\(store.siteCardTabID != nil)") // DEBUGTMP
+                if !isInsideBar && !isInsideSugg && !store.isPointerOverSiteCard {
                     store.dismissInlineURLEditing()
                 }
                 return event
@@ -1227,6 +1264,8 @@ private struct WindowConfigurator: NSViewRepresentable {
         // clicks to fire. Dragging is owned explicitly by WindowDragView
         // surfaces behind the top bar / sidebar empty areas instead.
         window.isMovableByWindowBackground = false
+        // WindowDragZones follows the pointer to keep `isMovable` right.
+        window.acceptsMouseMovedEvents = true
         window.isReleasedWhenClosed = false
         // Glass needs a translucent window to refract; otherwise solid.
         let translucent = store.glassActive && !store.enableWindowBorder

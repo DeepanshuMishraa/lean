@@ -284,7 +284,7 @@ struct SidebarView: View {
         if tab.id == store.selectedID {
             NotificationCenter.default.post(name: .focusAddress, object: nil)
         } else {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+            withAnimation(Motion.tabSwitch) {
                 store.switchToTab(id: tab.id)
             }
         }
@@ -1208,11 +1208,17 @@ struct WindowDragView: NSViewRepresentable {
             onHover?(false)
         }
 
+        /// This view moves the window itself (below); AppKit must not also.
+        override var mouseDownCanMoveWindow: Bool { false }
+
         override func mouseDown(with event: NSEvent) {
             if event.clickCount == 2 {
                 window?.zoom(nil)
-            } else {
-                window?.performDrag(with: event)
+            } else if let window {
+                // Tabs make the window unmovable while hovered
+                // (WindowDragZones); this press is the one that moves it.
+                window.isMovable = true
+                window.performDrag(with: event)
             }
         }
     }

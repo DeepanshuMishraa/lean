@@ -88,7 +88,7 @@ struct SiteCardView: View {
                     }
             }
         )
-        .onHover { store.isPointerOverSiteCard = $0; probeLog("card hover \($0)") } // DEBUGTMP
+        .onHover { store.isPointerOverSiteCard = $0 }
         .onDisappear {
             store.inlineSuggestionsFrame = .zero
             store.isPointerOverSiteCard = false

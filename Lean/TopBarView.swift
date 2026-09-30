@@ -470,8 +470,6 @@ private struct TopBarTabItem: View {
             }
         }
         .animation(Motion.tabSwitch, value: showURLBar)
-        .onChange(of: showURLBar) { _, now in probeLog("showURLBar -> \(now) isSelected=\(isSelected) editing=\(store.isInlineURLEditing) focused=\(isFieldFocused)") } // DEBUGTMP
-        .onDisappear { probeLog("TopBarTabItem disappeared sel=\(isSelected)") } // DEBUGTMP
         .zIndex(isHovered ? 15 : (isSelected ? 10 : 1))
         .contextMenu {
             if tab.isPlayingMedia {
@@ -1135,7 +1133,6 @@ struct InlineURLBar: View {
         }
         .anchorPreference(key: SuggestionAnchorKey.self, value: .bounds) { [.inlineBar: $0] }
         .onAppear {
-            probeLog("InlineURLBar onAppear editing=\(store.isInlineURLEditing)") // DEBUGTMP
             text = tab.url?.absoluteString ?? ""
             // The address as it opens is not a query: no suggestions until
             // something is typed, so the site card can show.
@@ -1147,7 +1144,6 @@ struct InlineURLBar: View {
             }
         }
         .onDisappear {
-            probeLog("InlineURLBar onDisappear editing=\(store.isInlineURLEditing)") // DEBUGTMP
             // SwiftUI reports this view gone while the address is still being
             // edited — the pointer moving down onto the site card is enough —
             // and clearing the card or the frames then closed the card under
@@ -1165,7 +1161,6 @@ struct InlineURLBar: View {
         }
         .onChange(of: isFieldFocused) { _, focused in
             isFocusedBinding?.wrappedValue = focused
-            probeLog("focus -> \(focused) overCard=\(isPointerOverSiteCard)") // DEBUGTMP
             if focused {
                 store.isInlineURLEditing = true
                 selectWholeAddress()
@@ -1202,7 +1197,6 @@ struct InlineURLBar: View {
     /// address is as the page has it.
     private func syncSiteCard() {
         let unchanged = (isFieldFocused || isPointerOverSiteCard) && !text.isEmpty && text == tab.url?.absoluteString
-        probeLog("syncSiteCard focused=\(isFieldFocused) over=\(isPointerOverSiteCard) text=\(text.prefix(30)) url=\((tab.url?.absoluteString ?? "").prefix(30)) equal=\(text == tab.url?.absoluteString)") // DEBUGTMP
         store.siteCardTabID = unchanged ? tab.id : nil
     }
 

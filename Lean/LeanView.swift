@@ -230,7 +230,6 @@ struct LeanView: View {
                 }
             }
         }
-        .onChange(of: isTopBarVisible) { _, v in probeLog("isTopBarVisible -> \(v) zenRevealed=\(isZenTopBarRevealed) editing=\(store.isInlineURLEditing)") } // DEBUGTMP
         .onChange(of: store.isInlineURLEditing) { _, editing in
             // Editing held the bar up; let it go unless the pointer is still on it.
             guard !editing, store.enableZenMode, store.tabLayout == .top,
@@ -736,7 +735,6 @@ struct LeanView: View {
                 let isInsideBar = store.inlineURLBarFrame.width > 0 && barFrame.contains(swiftUIPoint)
                 let isInsideSugg = store.inlineSuggestionsFrame.width > 0 && suggFrame.contains(swiftUIPoint)
 
-                probeLog("CLICK \(swiftUIPoint) bar=\(store.inlineURLBarFrame) sugg=\(store.inlineSuggestionsFrame) overCard=\(store.isPointerOverSiteCard) card=\(store.siteCardTabID != nil)") // DEBUGTMP
                 if !isInsideBar && !isInsideSugg && !store.isPointerOverSiteCard {
                     store.dismissInlineURLEditing()
                 }

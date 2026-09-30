@@ -201,9 +201,7 @@ final class LeanStore: ObservableObject {
     @Published var suggestionDropdown: SuggestionDropdown?
     /// The tab whose site card (connection, zoom, sound…) hangs under the
     /// inline URL bar: set while its address is being edited and untouched.
-    @Published var siteCardTabID: LeanTab.ID? {
-        didSet { probeLog("siteCardTabID -> \(siteCardTabID == nil ? "nil" : "set") editing=\(isInlineURLEditing) stack=" + Thread.callStackSymbols.dropFirst(1).prefix(4).map { String($0.suffix(70)) }.joined(separator: " | ")) } // DEBUGTMP
-    }
+    @Published var siteCardTabID: LeanTab.ID?
     /// Whether the pointer is over the site card. Set by the card's own hover,
     /// which is what a click there is judged by: its frame in window
     /// coordinates is easy to get wrong and, wrong, reads every click on the
@@ -2090,7 +2088,6 @@ final class LeanStore: ObservableObject {
 
     func dismissInlineURLEditing() {
         guard isInlineURLEditing else { return }
-        probeLog("DISMISS from: " + Thread.callStackSymbols.dropFirst(1).prefix(7).map { String($0.suffix(90)) }.joined(separator: " | ")) // DEBUGTMP
         withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
             isInlineURLEditing = false
         }

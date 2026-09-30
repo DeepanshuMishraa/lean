@@ -4,6 +4,24 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.9] - 2026-10-01
+
+### Added
+
+- Extension popups open from the Extensions popover (uBlock Origin and the like), and extensions can now see your tabs and act on the current one
+- Site card: click the tab you are on to see its connection, copy its address (⇧⌘C), print, zoom, and choose whether the site may play sound by itself
+- Loading indicator styles in Settings › Tabs (Ring, Dot Matrix, Pulse, Bars, Orbit, Ripple); the choice applies everywhere, and Ring is the new default
+- Tabs animate when switched, opened and closed: the highlight slides between tabs and the row closes up around a closed tab
+
+### Changed
+
+- A single click on the current tab opens its address fully selected, without the icon or close button
+- Inactive tabs are less white in the window-border style
+
+### Fixed
+
+- Dragging a tab or selecting text in the address no longer moves the window, and three-finger window drag keeps working afterwards
+
 ## [0.1.8] - 2026-09-30
 
 ### Added

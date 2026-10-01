@@ -27,6 +27,9 @@
     let hoverTimer = 0;
     let veil = null;
     let veilTimer = 0;
+    let svgMedia = new WeakMap();
+    // Rules are appended as elements are classified; past this many, rebuild from live records.
+    let compactAt = 1000;
     const hovered = new Set();
     let dominantCanvas = null;
     let primaryText = null;
@@ -130,6 +133,13 @@
         if (el.closest('img, picture, video, canvas, iframe, object, embed, [role="img"]')) return true;
         const svg = el.closest('svg');
         if (!svg) return false;
+        // One verdict per SVG: every descendant asks, and rereading all its children each time is quadratic.
+        if (svgMedia.has(svg)) return svgMedia.get(svg);
+        const verdict = svgIsArtwork(svg);
+        svgMedia.set(svg, verdict);
+        return verdict;
+    }
+    function svgIsArtwork(svg) {
         const rect = svg.getBoundingClientRect();
         // ponytail: monochrome small SVGs only; complex artwork needs an image classifier.
         const label = `${svg.getAttribute('aria-label') || ''} ${svg.querySelector('title')?.textContent || ''}`;
@@ -615,7 +625,11 @@
                 }
                 const rect = el.getBoundingClientRect();
                 // Classify the viewport first; native visibility events promote deferred graph nodes.
-                if (rect.bottom < -400 || rect.top > innerHeight + 400) continue;
+                if (rect.bottom < -400 || rect.top > innerHeight + 400) {
+                    // Changed while offscreen: drop the stale classification so scrolling it into view rereads it.
+                    if (record.source) { unregisterColors(record); restore(record); record.source = null; }
+                    continue;
+                }
                 // The media verdict is stable; recomputing it reads every SVG child's style.
                 const protectedMedia = record.mediaKnown ? record.media : media(el);
                 record.mediaKnown = true;
@@ -676,6 +690,15 @@
             classify(record, source);
             classify(record, pseudos[0], 'before-');
             classify(record, pseudos[1], 'after-');
+        }
+        if (rules.size > compactAt) {
+            // Removed nodes and recolored elements leave their old rules behind; rebuild from live records.
+            rules.clear();
+            for (const record of records.values()) {
+                for (const [name, spec] of record.specs) rules.set(`${name}:${spec.key}`, spec);
+            }
+            compactAt = Math.max(1000, rules.size * 2);
+            fullUpdate = true;
         }
         // Rules only grow between theme changes; unused ones are harmless, so append instead of rebuilding.
         if (fullUpdate) updateStyles();
@@ -760,6 +783,7 @@
             if (scope.constructed) root.adoptedStyleSheets = root.adoptedStyleSheets.filter(sheet => sheet !== scope.constructed);
             scope.style.remove();
         }
+        svgMedia = new WeakMap(); compactAt = 1000;
         records.clear(); scopes.clear(); rules.clear(); palette.clear(); textPalette.clear(); variableUses.clear(); parsedColors.clear();
         dominantCanvas = null; primaryText = null; importantElements.clear();
         for (const type of ['pointerover', 'pointerout', 'focusin', 'focusout', 'input', 'change', 'transitionend']) document.removeEventListener(type, invalidate, true);

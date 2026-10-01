@@ -444,19 +444,19 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         }
     }
 
-    /// Until a page paints, WebKit shows its own grey (or white). With a page theme the web view is
-    /// transparent instead, so the themed card behind it shows through from the first frame.
     /// Whether the committed page is one the engine themes. Optimistic until the first commit, so a
     /// page that is still loading shows the theme; a commit with no http(s) URL (local file, source
     /// view, PDF) turns it off.
     private var committedPageIsThemeable = true
 
+    /// Until a page paints, WebKit shows its own grey (or white). With a page theme the web view is
+    /// transparent instead, so the themed card behind it shows through from the first frame.
     private func syncPageBackground(_ webView: LeanWebView) {
-        if #available(macOS 12.0, *) {
-            webView.underPageBackgroundColor = pageBackgroundColor
-        }
         // The theme engine only runs on http(s); other pages (local files, PDFs) must keep their own paper.
         let themed = pageTheme != nil && committedPageIsThemeable
+        if #available(macOS 12.0, *) {
+            webView.underPageBackgroundColor = themed ? pageBackgroundColor : (isDark ? NSColor.black : NSColor.white)
+        }
         webView.setValue(!themed, forKey: "drawsBackground")
     }
 
@@ -641,9 +641,15 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private func adoptThemeFrame(_ message: WKScriptMessage) {
         guard let webView = storedWebView, message.webView === webView, !message.frameInfo.isMainFrame else { return }
         themeFrames.append(message.frameInfo)
-        if themeFrames.count > 64 { themeFrames.removeFirst(themeFrames.count - 64) }
+        // Frames that were removed never report in, so probe them when the list gets long rather than
+        // dropping the oldest, which may still be alive.
+        if themeFrames.count > 64, themeFrames.count % 16 == 1 { prunePageThemeFrames(of: webView) }
         // The frame's own script carries the theme it was built with; catch up if it changed since.
         if let update = PageScripts.pageThemeUpdate(pageTheme) { evaluatePageTheme(update, in: message.frameInfo, of: webView) }
+    }
+
+    private func prunePageThemeFrames(of webView: LeanWebView) {
+        for frame in themeFrames { evaluatePageTheme("0;", in: frame, of: webView) }
     }
 
     private func pushPageTheme(_ update: String, to webView: LeanWebView) {
@@ -1411,6 +1417,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     private func releaseWebViewForSleep(_ webView: LeanWebView) {
+        themeFrames.removeAll()
         progressObserver?.invalidate()
         progressObserver = nil
         navigationObservers.forEach { $0.invalidate() }
@@ -1692,6 +1699,11 @@ extension LeanTab: WKScriptMessageHandler {
 
 extension LeanTab: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
+        // A new page is optimistic again: after a local file or PDF, the next site must not start grey.
+        if let web = webView as? LeanWebView, !committedPageIsThemeable {
+            committedPageIsThemeable = true
+            syncPageBackground(web)
+        }
         lastPublishedProgress = 0
         lastProgressPublishDate = Date()
         loadingProgress = 0

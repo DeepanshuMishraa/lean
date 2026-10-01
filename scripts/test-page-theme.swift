@@ -92,12 +92,21 @@ var palettes: [[String: String]] = regex.matches(in: definitions, range: NSRange
     for (index, key) in keys.enumerated() {
         if let range = Range(match.range(at: index + 1), in: definitions) { result[key] = String(definitions[range]) }
     }
+    // The opacity arguments trail the seven colours, up to the closing parenthesis.
+    if let whole = Range(match.range, in: definitions) {
+        let tail = definitions[whole.upperBound...].prefix { $0 != ")" }
+        for name in ["borderOpacity", "mutedOpacity"] {
+            if let found = tail.range(of: "\(name): ") {
+                result[name] = String(tail[found.upperBound...].prefix { $0.isNumber || $0 == "." })
+            }
+        }
+    }
     return result
 }
 try check(palettes.count == 18, "Expected both variants of the nine named themes")
 palettes += [
     [
-        "background": "#000000", "surface": "#262626", "raised": "#0a0a0a", "border": "#1f1f1f", "text": "#f0f0f0", "textMuted": "#8c8c8c",
+        "background": "#000000", "surface": "#171717", "raised": "#1f1f1f", "border": "#1f1f1f", "text": "#f0f0f0", "textMuted": "#8c8c8c",
         "accent": "#58a6ff",
     ],
     [
@@ -105,6 +114,52 @@ palettes += [
         "accent": "#0969da",
     ],
 ]
+// The browser ships opacity composited over the page and contrast floors on surface, raised and border
+// (PageTheme.init). Feed the interpreter those values, not the raw palette, so the harness sees what pages do.
+func channels(_ hex: String) -> [Double] {
+    let n = Int(hex.dropFirst(), radix: 16) ?? 0
+    return [Double(n >> 16), Double(n >> 8 & 255), Double(n & 255)]
+}
+func luminance(_ rgb: [Double]) -> Double {
+    let v = rgb.map { c -> Double in let x = c / 255; return x <= 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4) }
+    return v[0] * 0.2126 + v[1] * 0.7152 + v[2] * 0.0722
+}
+func contrastRatio(_ a: [Double], _ b: [Double]) -> Double {
+    (max(luminance(a), luminance(b)) + 0.05) / (min(luminance(a), luminance(b)) + 0.05)
+}
+func hexString(_ rgb: [Double]) -> String {
+    String(format: "#%02x%02x%02x", Int(rgb[0]), Int(rgb[1]), Int(rgb[2]))
+}
+func composite(_ hex: String, opacity: Double, over base: String) -> String {
+    hexString(zip(channels(hex), channels(base)).map { ($0 * opacity + $1 * (1 - opacity)).rounded() })
+}
+func separated(_ hex: String, from base: String, minimum: Double) -> String {
+    let color = channels(hex), ground = channels(base)
+    guard contrastRatio(color, ground) < minimum else { return hex }
+    let pole = contrastRatio([0, 0, 0], ground) > contrastRatio([255, 255, 255], ground) ? 0.0 : 255.0
+    func mixed(_ t: Double) -> [Double] { color.map { $0 + (pole - $0) * t } }
+    var low = 0.0, high = 1.0
+    for _ in 0..<12 {
+        let mid = (low + high) / 2
+        if contrastRatio(mixed(mid), ground) >= minimum { high = mid } else { low = mid }
+    }
+    return hexString(mixed(high).map { pole == 0 ? $0.rounded(.down) : $0.rounded(.up) })
+}
+for index in 0..<palettes.count {
+    guard let ground = palettes[index]["background"] else { continue }
+    if let opacity = palettes[index]["borderOpacity"].flatMap(Double.init), let border = palettes[index]["border"] {
+        palettes[index]["border"] = composite(border, opacity: opacity, over: ground)
+    }
+    if let opacity = palettes[index]["mutedOpacity"].flatMap(Double.init), let muted = palettes[index]["textMuted"] {
+        palettes[index]["textMuted"] = composite(muted, opacity: opacity, over: ground)
+    }
+    palettes[index]["borderOpacity"] = nil
+    palettes[index]["mutedOpacity"] = nil
+    // Index 18 is the system dark look, whose cards and dialogs are fixed steps above black.
+    for (key, floor) in [("surface", 1.15), ("raised", 1.05), ("border", 1.5)] where !(index == 18 && key != "border") {
+        if let value = palettes[index][key] { palettes[index][key] = separated(value, from: ground, minimum: floor) }
+    }
+}
 let semanticDefinitions = try String(contentsOf: root.appendingPathComponent("Lean/PageTheme.swift"), encoding: .utf8)
 let casePattern = #"case \.([A-Za-z]+)(?:, \.([A-Za-z]+))?:([\s\S]*?)(?=\n        case |\n        \})"#
 let cases = try NSRegularExpression(pattern: casePattern)
@@ -228,7 +283,9 @@ func saveSnapshot(_ url: URL) async throws {
 func performanceProbe() async throws {
     let rows = (0..<1000).map { "<article class='card'><h3><a href='#row'><span>Row \($0)</span></a></h3><p>Body text</p></article>" }.joined()
     webView.loadHTMLString("<html><head><style>body{background:#fff;color:#111}.card{background:#eee;padding:8px;border-radius:4px}</style></head><body>\(rows)</body></html>", baseURL: URL(string: "https://theme.test"))
-    while webView.isLoading { try await Task.sleep(for: .milliseconds(20)) }
+    let loadDeadline = Date(timeIntervalSinceNow: 10)
+    while webView.isLoading && Date() < loadDeadline { try await Task.sleep(for: .milliseconds(20)) }
+    try check(!webView.isLoading, "Performance fixture did not load within 10 seconds")
     _ = try await js("""
     (() => {
         const d = Object.getOwnPropertyDescriptor(StyleSheet.prototype, 'disabled');
@@ -304,6 +361,7 @@ Task { @MainActor in
             return
         }
         for (dark, csp) in [(false, false), (true, false), (true, true)] {
+            tracker.frames.removeAll()
             webView.loadHTMLString(fixture(dark: dark, csp: csp), baseURL: URL(string: "https://theme.test"))
             let deadline = Date(timeIntervalSinceNow: 10)
             while webView.isLoading && Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
@@ -390,6 +448,14 @@ Task { @MainActor in
                 as? String
             try check(shadow == expected, "Late shadow root did not receive surface token: \(shadow ?? "nil")")
             // Silent CSSOM edits must be observed without monkey-patching the page's JS realm.
+            // Seed a themed neutral background first, so the edit below can only pass if the engine notices it.
+            _ = try await webView.evaluateJavaScript(
+                "document.styleSheets[0].insertRule('.dynamic { background-color: #eeeeee; padding: 8px; border-radius: 6px; }', document.styleSheets[0].cssRules.length); void 0;"
+            )
+            try await Task.sleep(for: .milliseconds(3200))
+            try await waitForScan()
+            let seeded = try await js("document.querySelector('.dynamic').hasAttribute('data-lean-theme-background-color')") as? Bool
+            try check(seeded == true, "Seed rule must be themed before the CSSOM edit")
             _ = try await webView.evaluateJavaScript(
                 "document.styleSheets[0].insertRule('.dynamic { background-color: #ff00ff !important; }', document.styleSheets[0].cssRules.length); void 0;"
             )
@@ -397,6 +463,8 @@ Task { @MainActor in
             try await waitForScan()
             let cssom = try await js("getComputedStyle(document.querySelector('.dynamic')).backgroundColor") as? String
             try check(cssom == "rgb(255, 0, 255)", "CSSOM change must replace stale neutral-surface inference")
+            let stale = try await js("document.querySelector('.dynamic').hasAttribute('data-lean-theme-background-color')") as? Bool
+            try check(stale == false, "Engine kept its neutral-surface override after the CSSOM edit")
             // An author can update an important inline declaration while we are active.
             _ = try await webView.evaluateJavaScript(
                 "document.querySelector('.card').style.setProperty('border-top-color', '#666666', 'important');")
@@ -475,6 +543,18 @@ Task { @MainActor in
         try await waitForScan()
         let lastSurface = try await js("getComputedStyle(document.querySelector('article:last-child')).backgroundColor") as? String
         try check(lastSurface == rgbString(palettes[0]["surface"] ?? ""), "Scrolling did not promote the offscreen card into the theme graph")
+        // A change made while the card is offscreen must not leave the old theme in place when it scrolls back.
+        _ = try await webView.evaluateJavaScript("window.scrollTo(0, 0); void 0;")
+        try await Task.sleep(for: .milliseconds(300))
+        try await waitForScan()
+        _ = try await webView.evaluateJavaScript("document.querySelector('article:last-child').style.background = '#ff00ff'; void 0;")
+        try await Task.sleep(for: .milliseconds(300))
+        try await waitForScan()
+        _ = try await webView.evaluateJavaScript("window.scrollTo(0, document.body.scrollHeight); void 0;")
+        try await Task.sleep(for: .milliseconds(300))
+        try await waitForScan()
+        let recolored = try await js("getComputedStyle(document.querySelector('article:last-child')).backgroundColor") as? String
+        try check(recolored == "rgb(255, 0, 255)", "Offscreen change kept its stale theme: \(recolored ?? "nil")")
         print("Large fixture: \(nodes ?? 0) graph nodes, \(initialScanMS) ms visible-first scan; deferred scrolling passed")
         print(
             "Passed: 20 variants × light/dark/CSP pages; contrast, hierarchy, confidence, CSSOM/variables/OKLCH, inline-important restoration, alpha, SVG/media, pseudo-elements, shadow DOM, SPA mutations, isolated-frame switches, disable/re-enable"

@@ -184,7 +184,13 @@
             const record = records.get(current);
             if (record?.source?.background && record.source.background[3] > 0.9) return record.source.background;
         }
-        return [255, 255, 255, 1];
+        // Translucent layers (a dialog scrim) fall through to the page itself, not to white; on a dark
+        // page white made every dark panel look "distinct" and turned it into a card.
+        for (const root of [document.body, document.documentElement]) {
+            const page = root && records.get(root)?.source?.background;
+            if (page && page[3] > 0.9) return page;
+        }
+        return dominantCanvas || [255, 255, 255, 1];
     }
     function backdrop(el) {
         const stack = [];
@@ -277,7 +283,11 @@
                 if (source.interactive && !source.control && contrast(bg, parentBg) >= 4) { backgroundRole = 'text'; confidence = 0.95; }
                 else if (source.elevated || (source.fixed && !matchesPage)) { backgroundRole = 'raised'; confidence = 0.95; }
                 else if (source.control || (source.card && (distance > 6 || source.borders.some(color => color && color[3] > 0)))) {
-                    backgroundRole = 'surface'; confidence = 0.92;
+                    // Inside a dialog, a borderless padded panel is part of the dialog (its header, body and footer
+                    // should read as one sheet), not a card on it. Bordered panels and inputs stay cards.
+                    const part = !source.control && !source.borders.some(color => color && color[3] > 0)
+                        && el.closest('[role="dialog"], [aria-modal="true"], dialog, [popover]');
+                    backgroundRole = part ? 'raised' : 'surface'; confidence = 0.92;
                 }
                 else if (coverage > 0.45 || distance <= 6
                     || (dominantCanvas && Math.max(...bg.slice(0, 3).map((v, i) => Math.abs(v - dominantCanvas[i]))) <= 6)) {

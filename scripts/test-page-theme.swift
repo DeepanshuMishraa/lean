@@ -160,6 +160,9 @@ func fixture(dark: Bool, csp: Bool = false) -> String {
         .uncertain { background:#888; width:100px; height:40px; }
         .pinned { position:fixed; top:0; left:0; width:200px; height:40px; background:\(bg); }
         .warn-card { border-color:#661111; }
+        .scrim { position:fixed; top:0; right:0; width:120px; height:60px; background:rgba(0,0,0,.65); }
+        .dlg-part { background:\(bg); padding:4px; border-radius:4px; }
+        .dlg-body { background:\(surface); padding:4px; }
         .fade { height:40px; background-image:linear-gradient(rgba(0,0,0,0), rgb(0,0,0)); }
         </style></head><body style="background-color:\(bg) !important; color:\(fg) !important;"><h1>Heading</h1><div class="card" style="background-color:\(surface) !important; border-color:#777 !important;">Card <span class="muted">Muted</span>
         <div class="nested">Nested card</div></div><button class="danger">Delete</button>
@@ -175,7 +178,7 @@ func fixture(dark: Bool, csp: Bool = false) -> String {
         <svg id="inherited-art" width="80" height="80"><path d="M0 0h80v80H0z" fill="currentColor"/></svg>
         <div class="glass">Translucent</div><div class="modern">Modern CSS</div><div class="uncertain">Uncertain</div>
         <div class="pinned">Header</div>
-        <div class="warn-card card">Warning card</div><div class="fade"></div>
+        <div class="warn-card card">Warning card</div><div class="fade"></div><div class="scrim"><div role="dialog" class="dlg"><div class="dlg-part">Dialog panel</div><div class="dlg-body">Dialog body</div></div></div>
         <div id="host"></div><div id="late-host"></div><div class="dynamic">Dynamic</div>
         <script>document.querySelector('#host').attachShadow({mode:'open'}).innerHTML = '<style nonce="fixture">.panel{background:\(surface);padding:12px;border-radius:8px;color:\(fg)}</style><div class="panel">Shadow content</div>';</script>
         </body></html>
@@ -320,6 +323,8 @@ Task { @MainActor in
                         equal(style('.card').backgroundColor,rgb(p.surface),'surface');
                         equal(style('.nested').backgroundColor,rgb(p.raised),'nested surface');
                         equal(style('.card').borderTopColor,rgb(p.border),'border');
+                        equal(style('.dlg-part').backgroundColor,rgb(p.raised),'a dialog panel that matches the page is raised, not a card');
+                        equal(style('.dlg-body').backgroundColor,rgb(p.raised),'a borderless dialog body belongs to the dialog sheet');
                         equal(style('.pinned').backgroundColor,rgb(p.background),'pinned header must match the page background');
                         equal(style('.warn-card').borderTopColor,rgb(p.border),'tinted card border must match other cards');
                         if (!style('.fade').backgroundImage.includes(rgb(p.background).slice(4, -1))) failures.push('fade gradient kept the site colors: ' + style('.fade').backgroundImage);

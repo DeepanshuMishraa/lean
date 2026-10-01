@@ -28,8 +28,15 @@ struct PageTheme: Equatable, Encodable {
         else { return nil }
         self.isDark = colors.isDark
         self.background = background
-        self.surface = Self.separated(surface, from: background, minimum: 1.15)
-        self.raised = Self.separated(raised, from: background, minimum: 1.05)
+        if colors.palette == nil, colors.isDark {
+            // The system dark look is pure black: cards are a step above it, not the tab-bar grey, and a
+            // dialog sits another step up (a raised layer darker than its cards reads as a hole).
+            self.surface = "#171717"
+            self.raised = "#1f1f1f"
+        } else {
+            self.surface = Self.separated(surface, from: background, minimum: 1.15)
+            self.raised = Self.separated(raised, from: background, minimum: 1.05)
+        }
         self.text = text
         self.textMuted = muted
         self.border = Self.separated(border, from: background, minimum: 1.5)

@@ -529,8 +529,8 @@
                     discoverVariables(root);
                     refresh();
                 }
-                // Labels and data-* attributes do not restyle anything; skip the reread (and the sheet pause it forces).
-                if (change.type === 'attributes' && /^(aria-label|aria-describedby|title|alt|href|src|id|data-(?!theme|state|active|selected))/.test(change.attributeName)) continue;
+                // Descriptions, tooltips, image sources and most data-* do not restyle anything; skip the reread (and the sheet pause it forces).
+                if (change.type === 'attributes' && /^(aria-describedby|title|alt|src|data-(?!theme|state|active|selected))/.test(change.attributeName)) continue;
                 if (change.type === 'attributes') {
                     // An attribute flip rarely restyles a whole subtree; recheck the element and its direct children.
                     dirty.add(change.target);

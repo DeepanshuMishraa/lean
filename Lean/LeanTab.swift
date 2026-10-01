@@ -312,6 +312,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.add(self, name: PageScripts.passwordFieldMessageName)
         // Lean's own world: a page cannot post this message itself.
         webView.configuration.userContentController.add(self, contentWorld: LeanWeb.world, name: PageScripts.middleClickMessageName)
+        webView.configuration.userContentController.add(self, contentWorld: LeanWeb.world, name: PageScripts.themeFrameMessageName)
         webView.configuration.userContentController.add(self, name: PageScripts.mediaStateMessageName)
         addPasskeyHandler(to: webView.configuration.userContentController)
         webView.contextMenuHook = { [weak self] menu in
@@ -632,6 +633,32 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         }
     }
 
+    /// Open subframes, by frame. Frames tell Lean about themselves through a handler only Lean's world
+    /// can reach, and Lean pushes theme changes into them. Nothing is posted into the page, so sites
+    /// cannot see the theme or detect it.
+    private var themeFrames: [WKFrameInfo] = []
+
+    private func adoptThemeFrame(_ message: WKScriptMessage) {
+        guard let webView = storedWebView, message.webView === webView, !message.frameInfo.isMainFrame else { return }
+        themeFrames.append(message.frameInfo)
+        if themeFrames.count > 64 { themeFrames.removeFirst(themeFrames.count - 64) }
+        // The frame's own script carries the theme it was built with; catch up if it changed since.
+        if let update = PageScripts.pageThemeUpdate(pageTheme) { evaluatePageTheme(update, in: message.frameInfo, of: webView) }
+    }
+
+    private func pushPageTheme(_ update: String, to webView: LeanWebView) {
+        for frame in themeFrames { evaluatePageTheme(update, in: frame, of: webView) }
+    }
+
+    private func evaluatePageTheme(_ update: String, in frame: WKFrameInfo?, of webView: LeanWebView) {
+        webView.evaluateJavaScript(update, in: frame, in: LeanWeb.world) { [weak self] result in
+            guard case .failure(let error) = result else { return }
+            // A frame that navigated away or was removed is gone for good.
+            if let frame { self?.themeFrames.removeAll { $0 === frame } }
+            NSLog("Lean page theme update failed: %@", error.localizedDescription)
+        }
+    }
+
     func applyPageTheme(_ theme: PageTheme?) {
         guard theme != pageTheme else { return }
         pageTheme = theme
@@ -644,6 +671,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
                 NSLog("Lean page theme update failed: %@", error.localizedDescription)
             }
         }
+        pushPageTheme(live, to: webView)
     }
 
     func applyPageFont(_ font: LeanFont, headingWeight: Int = 0, bodyWeight: Int = 0) {
@@ -1172,6 +1200,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.passwordFormMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.passwordFieldMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.middleClickMessageName, contentWorld: LeanWeb.world)
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.themeFrameMessageName, contentWorld: LeanWeb.world)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.mediaStateMessageName)
         removePasskeyHandler(from: webView.configuration.userContentController)
         webView.configuration.userContentController.removeAllUserScripts()
@@ -1402,6 +1431,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         controller.removeScriptMessageHandler(forName: PageScripts.passwordFormMessageName)
         controller.removeScriptMessageHandler(forName: PageScripts.passwordFieldMessageName)
         controller.removeScriptMessageHandler(forName: PageScripts.middleClickMessageName, contentWorld: LeanWeb.world)
+        controller.removeScriptMessageHandler(forName: PageScripts.themeFrameMessageName, contentWorld: LeanWeb.world)
         controller.removeScriptMessageHandler(forName: PageScripts.mediaStateMessageName)
         removePasskeyHandler(from: controller)
         controller.removeAllUserScripts()
@@ -1470,6 +1500,10 @@ extension LeanTab: WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
+        if message.name == PageScripts.themeFrameMessageName {
+            adoptThemeFrame(message)
+            return
+        }
         if message.name == PageScripts.middleClickMessageName {
             guard message.webView === webView else { return }
             onCloseTab?()
@@ -1673,6 +1707,7 @@ extension LeanTab: WKNavigationDelegate {
         pendingMainFrameURL = nil
         if let web = webView as? LeanWebView {
             committedPageIsThemeable = web.url.map(Self.isThemeable) ?? false
+            themeFrames.removeAll()
             syncPageBackground(web)
         }
         refreshState()

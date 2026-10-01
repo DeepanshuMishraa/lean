@@ -722,11 +722,6 @@
             schedule();
         }
     }
-    function sendToChildren() {
-        for (let i = 0; i < window.frames.length; i++) {
-            window.frames[i].postMessage({type: 'lean-page-theme', theme}, '*');
-        }
-    }
     function raiseVeil() {
         if (veil || document.readyState !== 'loading' || !Array.isArray(document.adoptedStyleSheets)) return;
         veil = new CSSStyleSheet();
@@ -785,7 +780,6 @@
                 classify(record, record.pseudos[1], 'after-');
             }
             updateStyles();
-            sendToChildren();
             return;
         }
         stop();
@@ -822,16 +816,7 @@
             // catch silent CSSOM edits. Closed roots require a separate page-world bridge.
             scanTimer = setInterval(poll, 3000);
         }
-        sendToChildren();
     }
-    window.addEventListener('message', event => {
-        if (event.data?.type === 'lean-page-theme' && window !== window.top && event.source === window.parent) apply(event.data.theme);
-        if (event.data?.type === 'lean-page-theme-ready') {
-            for (let i = 0; i < window.frames.length; i++) {
-                if (event.source === window.frames[i]) event.source.postMessage({type: 'lean-page-theme', theme}, '*');
-            }
-        }
-    });
     globalThis.LeanPageTheme = {
         apply,
         // Diagnostics contain role counts and colors, never page text or URLs.
@@ -840,5 +825,9 @@
                 counts[record.role] = (counts[record.role] || 0) + 1; return counts;
             }, {}), palette: [...palette.keys()]})
     };
-    if (window !== window.top) window.parent.postMessage({type: 'lean-page-theme-ready'}, '*');
+    // Subframes announce themselves to Lean through a handler only this world can reach; Lean then
+    // pushes theme changes into each frame. Nothing here is observable by page scripts.
+    if (window !== window.top) {
+        try { window.webkit.messageHandlers.leanThemeFrame.postMessage(true); } catch (error) {}
+    }
 })();

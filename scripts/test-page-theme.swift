@@ -11,6 +11,15 @@ let configuration = WKWebViewConfiguration()
 configuration.websiteDataStore = .nonPersistent()
 configuration.userContentController.addUserScript(
     WKUserScript(source: engine, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: world))
+/// Mirrors LeanTab: subframes announce themselves from Lean's world and the host pushes theme changes in.
+final class FrameTracker: NSObject, WKScriptMessageHandler {
+    var frames: [WKFrameInfo] = []
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        if !message.frameInfo.isMainFrame { frames.append(message.frameInfo) }
+    }
+}
+let tracker = FrameTracker()
+configuration.userContentController.add(tracker, contentWorld: world, name: "leanThemeFrame")
 let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
 let window = NSWindow(contentRect: webView.frame, styleMask: [.borderless], backing: .buffered, defer: false)
 window.contentView = webView
@@ -40,6 +49,17 @@ func waitForScan() async throws {
         domain: "PageThemeTest", code: 2,
         userInfo: [NSLocalizedDescriptionKey: "Page scan did not complete within 3 seconds: \(state ?? "No diagnostics")"])
 }
+/// Applies a theme to the page and to every announced subframe, as the browser does.
+@MainActor
+func applyEverywhere(_ source: String) async throws {
+    _ = try await js(source)
+    for frame in tracker.frames {
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            webView.evaluateJavaScript(source, in: frame, in: world) { _ in done.resume() }
+        }
+    }
+}
+
 @MainActor
 func waitForFrame(_ expected: String) async throws {
     for _ in 0..<150 {
@@ -381,6 +401,10 @@ Task { @MainActor in
                 "<html><head><style nonce='fixture'>body{background:#fff;color:#111}</style></head><body>Sandboxed frame<script>setInterval(()=>parent.postMessage({type:'fixture-colors',background:getComputedStyle(document.body).backgroundColor,annotated:document.body.getAttribute('data-lean-theme-background-color'),sheets:document.adoptedStyleSheets.length,styles:document.querySelectorAll('[data-lean-theme-sheet]').length},'*'),50)</script></body></html>"
             _ = try await webView.evaluateJavaScript(
                 """
+                window.__themeLeaks = [];
+                window.addEventListener('message', event => {
+                    if (String(event.data?.type || '').startsWith('lean-page-theme')) window.__themeLeaks.push(event.data.type);
+                });
                 window.addEventListener('message', event => {
                     if (event.data?.type === 'fixture-colors' && document.body.dataset.frameBackground !== event.data.background)
                         document.body.dataset.frameBackground = event.data.background;
@@ -393,16 +417,20 @@ Task { @MainActor in
                 child.sandbox = 'allow-scripts'; child.srcdoc = \(try json(["html": frameHTML])).html;
                 document.body.appendChild(child); void 0;
                 """)
+            for _ in 0..<100 where tracker.frames.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+            try check(!tracker.frames.isEmpty, "Subframe never announced itself to the host")
             try await waitForFrame("rgb(255, 255, 255)")
             let isolated =
                 try await js(
                     "(()=>{try {document.querySelector('#fixture-frame').contentWindow.document;return false;}catch{return true;}})()")
                 as? Bool
             try check(isolated == true, "Fixture must exercise the cross-origin DOM boundary")
-            _ = try await js("LeanPageTheme.apply(\(try json(palettes[0])))")
+            try await applyEverywhere("LeanPageTheme.apply(\(try json(palettes[0])))")
             try await waitForFrame(rgbString(palettes[0]["background"] ?? ""))
-            _ = try await js("LeanPageTheme.apply(null)")
+            try await applyEverywhere("LeanPageTheme.apply(null)")
             try await waitForFrame("rgb(255, 255, 255)")
+            let leaks = try await webView.evaluateJavaScript("window.__themeLeaks.length") as? Int
+            try check(leaks == 0, "Page scripts observed \(leaks ?? -1) theme messages; theme state must not be page-visible")
             let restored =
                 try await js(
                     "document.querySelectorAll('[data-lean-theme-background-color],[data-lean-theme-color],[data-lean-theme-sheet]').length"

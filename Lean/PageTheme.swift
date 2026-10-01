@@ -143,6 +143,9 @@ extension BrowserTheme {
 }
 
 extension PageScripts {
+    /// Posted by every subframe from Lean's own world (see page-theme.js); keep the two names in step.
+    static let themeFrameMessageName = "leanThemeFrame"
+
     private static let pageInterpreter: String? = {
         guard let url = Bundle.main.url(forResource: "page-theme", withExtension: "js") else { return nil }
         return try? String(contentsOf: url, encoding: .utf8)

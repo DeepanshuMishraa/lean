@@ -445,12 +445,17 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     /// Until a page paints, WebKit shows its own grey (or white). With a page theme the web view is
     /// transparent instead, so the themed card behind it shows through from the first frame.
+    /// Whether the committed page is one the engine themes. Optimistic until the first commit, so a
+    /// page that is still loading shows the theme; a commit with no http(s) URL (local file, source
+    /// view, PDF) turns it off.
+    private var committedPageIsThemeable = true
+
     private func syncPageBackground(_ webView: LeanWebView) {
         if #available(macOS 12.0, *) {
             webView.underPageBackgroundColor = pageBackgroundColor
         }
         // The theme engine only runs on http(s); other pages (local files, PDFs) must keep their own paper.
-        let themed = pageTheme != nil && (webView.url.map(Self.isThemeable) ?? true)
+        let themed = pageTheme != nil && committedPageIsThemeable
         webView.setValue(!themed, forKey: "drawsBackground")
     }
 
@@ -1666,7 +1671,10 @@ extension LeanTab: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation?) {
         pageError = nil
         pendingMainFrameURL = nil
-        if let web = webView as? LeanWebView { syncPageBackground(web) }
+        if let web = webView as? LeanWebView {
+            committedPageIsThemeable = web.url.map(Self.isThemeable) ?? false
+            syncPageBackground(web)
+        }
         refreshState()
         // No script rebuild here: the 12 user scripts registered at
         // createWebView persist per-configuration and already cover new

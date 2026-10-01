@@ -123,6 +123,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     var onStateChange: (() -> Void)?
     var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
     var onCloseTab: (() -> Void)?
+    /// The system picture-in-picture window for this page went away; true if the video is still playing.
+    var onNativePictureInPictureLeft: ((Bool) -> Void)?
     var onOpenURLInNewTab: ((URL, Bool) -> Void)?
     var onOpenSourceTab: ((String, String?) -> LeanTab?)?
     /// Shift-clicked link, for a peek over the page. Set by the store.
@@ -246,6 +248,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             configuration.webExtensionController = BrowserExtensionManager.shared.controller
         }
         configuration.preferences.isElementFullscreenEnabled = true
+        NativePiP.allow(on: configuration.preferences)
         // Only user gestures may open windows: no popup spam or pop-unders.
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         // WebKit's "developer extras": Inspect Element in a page's
@@ -312,6 +315,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.add(self, name: PageScripts.passwordFieldMessageName)
         // Lean's own world: a page cannot post this message itself.
         webView.configuration.userContentController.add(self, contentWorld: LeanWeb.world, name: PageScripts.middleClickMessageName)
+        webView.configuration.userContentController.add(self, contentWorld: LeanWeb.world, name: NativePiP.leftMessageName)
         webView.configuration.userContentController.add(self, name: PageScripts.mediaStateMessageName)
         addPasskeyHandler(to: webView.configuration.userContentController)
         webView.contextMenuHook = { [weak self] menu in
@@ -443,6 +447,23 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             self.contentRuleListsInstalled = true
             completion?()
         }
+    }
+
+    /// Asks the page to hand its best video to the system picture-in-picture window.
+    /// Answers whether one went; false (no video, or the page refused) means nothing changed.
+    func enterNativePictureInPicture(strict: Bool, completion: @escaping (Bool) -> Void) {
+        guard let webView = storedWebView else { return completion(false) }
+        webView.callAsyncJavaScript(NativePiP.enter(strict: strict), arguments: [:], in: nil, in: LeanWeb.world) { result in
+            if case .success(let value) = result, (value as? Bool) == true {
+                completion(true)
+            } else {
+                completion(false)
+            }
+        }
+    }
+
+    func exitNativePictureInPicture() {
+        storedWebView?.callAsyncJavaScript(NativePiP.exit, arguments: [:], in: nil, in: LeanWeb.world) { _ in }
     }
 
     func applyTheme(isDark: Bool) {
@@ -1096,6 +1117,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         onStateChange = nil
         onOpenNewTab = nil
         onCloseTab = nil
+        onNativePictureInPictureLeft = nil
         onOpenURLInNewTab = nil
         onOpenSourceTab = nil
         onPeekLink = nil
@@ -1147,6 +1169,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.passwordFormMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.passwordFieldMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.middleClickMessageName, contentWorld: LeanWeb.world)
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: NativePiP.leftMessageName, contentWorld: LeanWeb.world)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.mediaStateMessageName)
         removePasskeyHandler(from: webView.configuration.userContentController)
         webView.configuration.userContentController.removeAllUserScripts()
@@ -1377,6 +1400,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         controller.removeScriptMessageHandler(forName: PageScripts.passwordFormMessageName)
         controller.removeScriptMessageHandler(forName: PageScripts.passwordFieldMessageName)
         controller.removeScriptMessageHandler(forName: PageScripts.middleClickMessageName, contentWorld: LeanWeb.world)
+        controller.removeScriptMessageHandler(forName: NativePiP.leftMessageName, contentWorld: LeanWeb.world)
         controller.removeScriptMessageHandler(forName: PageScripts.mediaStateMessageName)
         removePasskeyHandler(from: controller)
         controller.removeAllUserScripts()
@@ -1445,6 +1469,11 @@ extension LeanTab: WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
+        if message.name == NativePiP.leftMessageName {
+            guard message.webView === storedWebView else { return }
+            onNativePictureInPictureLeft?((message.body as? Bool) ?? false)
+            return
+        }
         if message.name == PageScripts.middleClickMessageName {
             guard message.webView === webView else { return }
             onCloseTab?()

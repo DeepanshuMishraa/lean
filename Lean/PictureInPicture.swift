@@ -1372,3 +1372,58 @@ enum Isolate {
     })();
     """
 }
+
+/// The system's own picture-in-picture window for a page's video: macOS draws it, so it resizes,
+/// mutes, skips and returns to the tab like any other app's. It needs no lift, and it covers sites
+/// that stream with WebRTC (calls) as well as ones that play files.
+///
+/// Where a page has no video to hand over (a call with every camera off, a screen of controls),
+/// nothing happens and the caller falls back to `PictureInPicture`, the lifted page.
+enum NativePiP {
+    /// Posted from Lean's content world when the window goes away; the body is whether the video
+    /// is still playing, which is how "back to tab" is told from "close" (close pauses it).
+    static let leftMessageName = "leanPipLeft"
+
+    /// WebKit hides the system PiP window from web views unless this preference is on. It has no
+    /// public property on macOS, so it is set by key, and only where this WebKit answers to it.
+    static func allow(on preferences: WKPreferences) {
+        let key = "allowsPictureInPictureMediaPlayback"
+        let setters = ["setAllowsPictureInPictureMediaPlayback:", "_setAllowsPictureInPictureMediaPlayback:"]
+        guard setters.contains(where: { preferences.responds(to: NSSelectorFromString($0)) }) else { return }
+        preferences.setValue(true, forKey: key)
+    }
+
+    /// Hands the best video on the page to the system window and answers whether one went.
+    ///
+    /// On the sites people go to watch, any playing video will do. Elsewhere a playing video is as
+    /// likely a muted hero loop, so only one with sound, or a live stream (a call), qualifies.
+    static func enter(strict: Bool) -> String {
+        """
+        const strict = \(strict ? "true" : "false");
+        if (document.pictureInPictureElement) return true;
+        if (!document.pictureInPictureEnabled) return false;
+        const live = v => typeof MediaStream !== 'undefined' && v.srcObject instanceof MediaStream;
+        const eligible = v => !v.paused && !v.ended && v.readyState >= 2 && v.videoWidth > 0
+            && !v.disablePictureInPicture
+            && (!strict || (live(v) ? v.videoWidth >= 160 : (!v.muted && v.volume > 0 && v.videoWidth >= 240)));
+        const area = v => { const r = v.getBoundingClientRect(); return r.width * r.height; };
+        const video = [...document.querySelectorAll('video')].filter(eligible)
+            .sort((a, b) => ((b.muted ? 0 : 1e9) + area(b)) - ((a.muted ? 0 : 1e9) + area(a)))[0];
+        if (!video) return false;
+        try {
+            await video.requestPictureInPicture();
+        } catch (error) {
+            return false;
+        }
+        video.addEventListener('leavepictureinpicture', () => {
+            try { window.webkit.messageHandlers.\(leftMessageName).postMessage(!video.paused); } catch (error) {}
+        }, {once: true});
+        return true;
+        """
+    }
+
+    static let exit = """
+    if (document.pictureInPictureElement) { try { await document.exitPictureInPicture(); } catch (error) {} }
+    return true;
+    """
+}

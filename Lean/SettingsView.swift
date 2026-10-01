@@ -741,6 +741,20 @@ private struct GeneralSection: View {
                 }
             }
 
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Picture in Picture", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+
+                SettingsGroup(isDark: store.isDarkMode) {
+                    CustomToggleRow(
+                        title: "Use the macOS picture-in-picture window",
+                        subtitle: "Leaving a tab with a playing video or a call moves it to the system's own mini player: resize it, mute it, skip, or go back to the tab. Pages with no video to hand over, such as a call with every camera off, still use Lean's own floating page.",
+                        isOn: $store.usesNativePictureInPicture,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
+                }
+            }
+
             SettingsGroup(isDark: store.isDarkMode) {
                 CustomToggleRow(
                     title: "Automatically check for updates",

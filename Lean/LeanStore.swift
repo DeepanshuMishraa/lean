@@ -391,6 +391,12 @@ final class LeanStore: ObservableObject {
     /// asked for, in Settings › General.
     @Published var peekTab: LeanTab?
 
+    /// Leaving a tab with a video or a call hands it to the system picture-in-picture window,
+    /// falling back to Lean's own lifted page when the page has nothing to hand over.
+    @Published var usesNativePictureInPicture: Bool {
+        didSet { persist(usesNativePictureInPicture, forKey: Self.nativePictureInPictureKey) }
+    }
+
     /// Shift-click on a link opens it in a panel over the page. Off unless
     /// asked for.
     @Published var peeksLinks: Bool {
@@ -568,6 +574,8 @@ final class LeanStore: ObservableObject {
     /// stale completion must un-isolate, never lift.
     private var pipGeneration = 0
     private var pipUserPaused = false
+    /// The tab whose video is in the system picture-in-picture window, if any.
+    private var nativePictureInPictureTabID: LeanTab.ID?
     /// Coalesced history+session persistence. `onStateChange` fires 6-10x
     /// per page load (progress, canGoBack/Forward, title); each used to do
     /// 2 full SQLite encodes on the main thread. Now debounced to one
@@ -702,6 +710,10 @@ final class LeanStore: ObservableObject {
         FrameRate.fast = savedHighFrameRate
 
         // Peek at a link with a shift-click (default off).
+        self.usesNativePictureInPicture = databaseValue(self.database, Bool.self, forKey: Self.nativePictureInPictureKey)
+            ?? UserDefaults.standard.object(forKey: Self.nativePictureInPictureKey) as? Bool
+            ?? true
+
         let savedPeeksLinks = databaseValue(self.database, Bool.self, forKey: Self.peeksLinksKey)
             ?? UserDefaults.standard.object(forKey: Self.peeksLinksKey) as? Bool
             ?? false
@@ -1041,7 +1053,40 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    /// Leaving a tab: hand its video to the system window if it has one, else lift the page.
     private func showPictureInPicture(for tab: LeanTab) {
+        if let id = nativePictureInPictureTabID, !tabs.contains(where: { $0.id == id }) { nativePictureInPictureTabID = nil }
+        guard !pictureInPicture.showing, nativePictureInPictureTabID == nil, !tab.isSleeping else { return }
+        guard usesNativePictureInPicture else { return liftPictureInPicture(for: tab) }
+        let generation = pipGeneration
+        tab.enterNativePictureInPicture(strict: !Players.knows(tab.url)) { [weak self, weak tab] entered in
+            DispatchQueue.main.async {
+                guard let self, let tab, self.pipGeneration == generation else { return }
+                guard entered else {
+                    if !self.pictureInPicture.showing, self.nativePictureInPictureTabID == nil { self.liftPictureInPicture(for: tab) }
+                    return
+                }
+                // Back on the tab already, or another window took over while this was in flight.
+                guard self.selectedID != tab.id, !self.pictureInPicture.showing else {
+                    tab.exitNativePictureInPicture()
+                    return
+                }
+                self.nativePictureInPictureTabID = tab.id
+            }
+        }
+    }
+
+    /// The system window closed. "Back to tab" leaves the video playing and takes you to it; the close
+    /// button pauses it and does nothing more.
+    private func nativePictureInPictureEnded(for tab: LeanTab, stillPlaying: Bool) {
+        guard nativePictureInPictureTabID == tab.id else { return }
+        nativePictureInPictureTabID = nil
+        guard stillPlaying, selectedID != tab.id else { return }
+        selectedID = tab.id
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func liftPictureInPicture(for tab: LeanTab) {
         guard !pictureInPicture.showing, !tab.isSleeping else { return }
         // Automatic float only from places people go to watch: anywhere
         // else a technically-playing video is as likely a muted hero loop
@@ -1187,6 +1232,11 @@ final class LeanStore: ObservableObject {
         guard previous != current else { return }
         if #available(macOS 15.4, *), let tab = tabs.first(where: { $0.id == current }) {
             BrowserExtensionManager.shared.tabActivated(tab, previous: tabs.first { $0.id == previous })
+        }
+        if let current, current == nativePictureInPictureTabID, let tab = tabs.first(where: { $0.id == current }) {
+            // Cleared first, so the window closing is not mistaken for "back to tab".
+            nativePictureInPictureTabID = nil
+            tab.exitNativePictureInPicture()
         }
         let isReturningToPictureInPictureTab = current == pictureInPictureTabID
         if isReturningToPictureInPictureTab {
@@ -1811,6 +1861,10 @@ final class LeanStore: ObservableObject {
         }
         tab.downloadManager = downloadManager
         tab.mediaPermissionStore = mediaPermissionStore
+        tab.onNativePictureInPictureLeft = { [weak self, weak tab] stillPlaying in
+            guard let self, let tab else { return }
+            self.nativePictureInPictureEnded(for: tab, stillPlaying: stillPlaying)
+        }
         tab.peeksLinks = peeksLinks
         tab.onPeekLink = { [weak self, weak tab] url in
             guard let self, let tab else { return }
@@ -2360,6 +2414,7 @@ final class LeanStore: ObservableObject {
         persist(themedTabBar, forKey: Self.themedTabBarKey)
         persist(themesWebPages, forKey: Self.themesWebPagesKey)
         persist(peeksLinks, forKey: Self.peeksLinksKey)
+        persist(usesNativePictureInPicture, forKey: Self.nativePictureInPictureKey)
         persist(showFullTitleOnActiveTab, forKey: Self.showFullTitleKey)
         persist(leanUIFont.rawValue, forKey: Self.leanUIFontKey)
         persist(uiHeadingWeight.rawValue, forKey: Self.uiHeadingWeightKey)
@@ -2411,6 +2466,7 @@ final class LeanStore: ObservableObject {
     private static let isSidebarCollapsedKey = "isSidebarCollapsed"
     private static let thumbnailsSwitcherKey = "enableThumbnailsInTabSwitcher"
     private static let peeksLinksKey = "links.peek"
+    private static let nativePictureInPictureKey = "pip.native"
     private static let themedTabBarKey = "themedTabBar"
     private static let themesWebPagesKey = "themesWebPages"
     private static let highFrameRatePagesKey = "highFrameRatePages"

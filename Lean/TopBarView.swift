@@ -392,9 +392,9 @@ private struct TopBarTabItem: View {
             // The tab opens up for the close button; it eases open and shut.
             .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: shouldShowClose)
             .frame(
-                minWidth: showURLBar ? store.scaled(260) : (tab.isSplit ? store.scaled(CGFloat(90 * tab.splitTabs.count)) : nil),
-                idealWidth: showURLBar ? store.scaled(320) : (tab.isSplit ? store.scaled(CGFloat(130 * tab.splitTabs.count)) : nil),
-                maxWidth: showURLBar ? store.scaled(440) : (tab.isSplit ? store.scaled(CGFloat(180 * tab.splitTabs.count)) : tabTitleMaxWidth)
+                minWidth: showURLBar ? store.scaled(260) : (tab.isSplit ? (store.tabDisplayMode == .iconOnly ? nil : store.scaled(CGFloat(90 * tab.splitTabs.count))) : nil),
+                idealWidth: showURLBar ? store.scaled(320) : (tab.isSplit ? (store.tabDisplayMode == .iconOnly ? nil : store.scaled(CGFloat(130 * tab.splitTabs.count))) : nil),
+                maxWidth: showURLBar ? store.scaled(440) : (tab.isSplit ? (store.tabDisplayMode == .iconOnly ? nil : store.scaled(CGFloat(180 * tab.splitTabs.count))) : tabTitleMaxWidth)
             )
             .frame(height: store.scaled(store.enableWindowBorder ? 27 : 26))
         }
@@ -635,15 +635,13 @@ private struct TopBarTabItem: View {
                     }
                 }
 
-                Spacer(minLength: 0)
-
                 if tab.isPlayingMedia {
                     TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: false)
                         .transition(.opacity.combined(with: .scale(scale: 0.85)))
                 }
             }
             .padding(.leading, 6)
-            .padding(.trailing, shouldShowClose ? Self.closeRoom : (tab.isPlayingMedia ? 8 : 10))
+            .padding(.trailing, shouldShowClose ? Self.closeRoom : 6)
 
         case .iconOnly:
             HStack(spacing: 4) {
@@ -695,14 +693,12 @@ private struct TopBarTabItem: View {
                     }
                 }
 
-                Spacer(minLength: 0)
-
                 if tab.isPlayingMedia {
                     TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: false)
                 }
             }
             .padding(.leading, 8)
-            .padding(.trailing, shouldShowClose ? Self.closeRoom : (tab.isPlayingMedia ? 8 : 10))
+            .padding(.trailing, shouldShowClose ? Self.closeRoom : 8)
         }
     }
 
@@ -717,18 +713,18 @@ private struct TopBarTabItem: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.85)))
             }
 
-            Text(tab.displayTitle(isSelected: isSelected, showFullTitle: store.showFullTitleOnActiveTab))
-                .font(store.tabTitleFont(size: 12.5))
-                .foregroundColor(
-                    isSelected
-                        ? store.adaptiveTheme.activeTabText
-                        : store.adaptiveTheme.inactiveTabText
-                )
-                .scaleEffect(isSelected ? 1.0 : 0.985)
-
-                .lineLimit(1)
-
-            Spacer(minLength: 0)
+            let title = tab.displayTitle(isSelected: isSelected, showFullTitle: store.showFullTitleOnActiveTab)
+            if !title.isEmpty {
+                Text(title)
+                    .font(store.tabTitleFont(size: 12.5))
+                    .foregroundColor(
+                        isSelected
+                            ? store.adaptiveTheme.activeTabText
+                            : store.adaptiveTheme.inactiveTabText
+                    )
+                    .scaleEffect(isSelected ? 1.0 : 0.985)
+                    .lineLimit(1)
+            }
 
             if tab.isPlayingMedia {
                 TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: false)
@@ -737,7 +733,7 @@ private struct TopBarTabItem: View {
         }
         .animation(.spring(response: 0.30, dampingFraction: 0.84), value: tab.isLoading)
         .padding(.leading, 10)
-        .padding(.trailing, shouldShowClose ? Self.closeRoom : (tab.isPlayingMedia ? 8 : 12))
+        .padding(.trailing, shouldShowClose ? Self.closeRoom : 10)
     }
 
     @ViewBuilder
@@ -788,18 +784,18 @@ private struct TopBarTabItem: View {
 
             .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
 
-            Text(tab.displayTitle(isSelected: isSelected, showFullTitle: store.showFullTitleOnActiveTab))
-                .font(store.tabTitleFont(size: 12.5))
-                .foregroundColor(
-                    isSelected
-                        ? store.adaptiveTheme.activeTabText
-                        : store.adaptiveTheme.inactiveTabText
-                )
-                .scaleEffect(isSelected ? 1.0 : 0.985)
-
-                .lineLimit(1)
-
-            Spacer(minLength: 0)
+            let title = tab.displayTitle(isSelected: isSelected, showFullTitle: store.showFullTitleOnActiveTab)
+            if !title.isEmpty {
+                Text(title)
+                    .font(store.tabTitleFont(size: 12.5))
+                    .foregroundColor(
+                        isSelected
+                            ? store.adaptiveTheme.activeTabText
+                            : store.adaptiveTheme.inactiveTabText
+                    )
+                    .scaleEffect(isSelected ? 1.0 : 0.985)
+                    .lineLimit(1)
+            }
 
             if tab.isPlayingMedia {
                 TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: false)
@@ -807,7 +803,7 @@ private struct TopBarTabItem: View {
             }
         }
         .padding(.leading, 10)
-        .padding(.trailing, shouldShowClose ? Self.closeRoom : (tab.isPlayingMedia ? 8 : 12))
+        .padding(.trailing, shouldShowClose ? Self.closeRoom : 10)
     }
 
     /// In: waits a beat for the tab to open, then fades and settles from a

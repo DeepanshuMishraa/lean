@@ -343,11 +343,7 @@ final class LeanStore: ObservableObject {
     /// The page theme the tabs should wear now, or nil for pages as made.
     var pageTheme: PageTheme? {
         guard themesWebPages else { return nil }
-        return PageTheme(
-            background: themeColors.windowBackground,
-            text: themeColors.primaryText,
-            isDark: isDarkMode
-        )
+        return PageTheme(colors: themeColors, semantic: colorTheme.pageSemanticColors(isDark: isDarkMode))
     }
 
     @Published var scrollbarStyle: ScrollbarStyle {

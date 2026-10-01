@@ -1,113 +1,167 @@
 import AppKit
 import SwiftUI
-import WebKit
 
-/// Recolours web pages to the browser's colour theme with Dark Reader's
-/// engine (MIT, vendored as `darkreader.js`). It rewrites the page's own
-/// colours, stylesheet rule by rule, so hover states, shadow DOM, images and
-/// single-page apps keep working, and every surface takes the theme's
-/// background and text colour rather than a generic dark or light.
-///
-/// The engine runs in Lean's content world: the page cannot see it and the
-/// globals it sets stay out of the page's reach.
-struct PageTheme: Equatable {
-    /// Whether the target is the dark variant of the theme.
+/// Semantic tokens consumed by the page interpreter. The site's role graph
+/// stays independent of the chosen palette, so a live switch can reuse it.
+struct PageTheme: Equatable, Encodable {
     let isDark: Bool
-    /// `#rrggbb`.
     let background: String
-    /// `#rrggbb`.
+    let surface: String
+    let raised: String
     let text: String
+    let textMuted: String
+    let border: String
+    let accent: String
+    let danger: String
+    let success: String
+    let warning: String
+    let info: String
 
-    init?(background: Color, text: Color, isDark: Bool) {
-        guard let background = Self.hex(background), let text = Self.hex(text) else { return nil }
-        self.isDark = isDark
+    init?(colors: ThemeColors, semantic: PageSemanticColors) {
+        guard let background = Self.hex(colors.windowBackground),
+            let surface = Self.hex(colors.palette?.surface ?? colors.activeTabBackground),
+            let raised = Self.hex(colors.palette?.raised ?? colors.settingsSidebarBackground),
+            let text = Self.hex(colors.primaryText),
+            let muted = Self.hex(colors.secondaryText, over: colors.windowBackground),
+            let border = Self.hex(colors.omnibarBorder, over: colors.windowBackground),
+            let accent = Self.hex(colors.accent ?? Color.accentColor)
+        else { return nil }
+        self.isDark = colors.isDark
         self.background = background
+        self.surface = Self.separated(surface, from: background, minimum: 1.15)
+        self.raised = raised
         self.text = text
+        self.textMuted = muted
+        self.border = Self.separated(border, from: background, minimum: 1.5)
+        self.accent = accent
+        self.danger = semantic.danger
+        self.success = semantic.success
+        self.warning = semantic.warning
+        self.info = semantic.info
     }
 
-    private static func hex(_ color: Color) -> String? {
+    private static func channels(_ hex: String) -> [Double]? {
+        guard hex.count == 7, hex.first == "#", let value = Int(hex.dropFirst(), radix: 16) else { return nil }
+        return [Double(value >> 16 & 255), Double(value >> 8 & 255), Double(value & 255)]
+    }
+
+    private static func luminance(_ rgb: [Double]) -> Double {
+        let linear = rgb.map { channel -> Double in
+            let v = channel / 255
+            return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+        }
+        return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722
+    }
+
+    private static func contrast(_ a: [Double], _ b: [Double]) -> Double {
+        let x = luminance(a), y = luminance(b)
+        return (max(x, y) + 0.05) / (min(x, y) + 0.05)
+    }
+
+    /// Cards and hairlines that sit almost on the page colour vanish on the page. Moves `hex`
+    /// away from `background` along its own hue until it is `minimum`:1 apart; palettes that
+    /// already clear the bar are returned unchanged.
+    static func separated(_ hex: String, from background: String, minimum: Double) -> String {
+        guard let color = channels(hex), let base = channels(background), contrast(color, base) < minimum else { return hex }
+        let black = [0.0, 0, 0], white = [255.0, 255, 255]
+        let pole = contrast(black, base) > contrast(white, base) ? black : white
+        func mixed(_ t: Double) -> [Double] { zip(color, pole).map { $0 + ($1 - $0) * t } }
+        var low = 0.0, high = 1.0
+        for _ in 0..<12 {
+            let mid = (low + high) / 2
+            if contrast(mixed(mid), base) >= minimum { high = mid } else { low = mid }
+        }
+        let result = mixed(high).map { Int(pole[0] == 0 ? $0.rounded(.down) : $0.rounded(.up)) }
+        return String(format: "#%02x%02x%02x", result[0], result[1], result[2])
+    }
+
+    private static func hex(_ color: Color, over background: Color? = nil) -> String? {
         guard let rgb = NSColor(color).usingColorSpace(.sRGB) else { return nil }
-        func byte(_ value: CGFloat) -> Int { Int((value * 255).rounded()) }
-        return String(format: "#%02x%02x%02x", byte(rgb.redComponent), byte(rgb.greenComponent), byte(rgb.blueComponent))
+        let base = background.flatMap { NSColor($0).usingColorSpace(.sRGB) }
+        func byte(_ value: CGFloat, _ behind: CGFloat?) -> Int {
+            let composited = behind.map { value * rgb.alphaComponent + $0 * (1 - rgb.alphaComponent) } ?? value
+            return max(0, min(255, Int((composited * 255).rounded())))
+        }
+        return String(
+            format: "#%02x%02x%02x", byte(rgb.redComponent, base?.redComponent),
+            byte(rgb.greenComponent, base?.greenComponent), byte(rgb.blueComponent, base?.blueComponent))
+    }
+}
+
+struct PageSemanticColors {
+    let danger: String
+    let success: String
+    let warning: String
+    let info: String
+
+    init(_ danger: String, _ success: String, _ warning: String, _ info: String) {
+        self.danger = danger
+        self.success = success
+        self.warning = warning
+        self.info = info
+    }
+}
+
+extension BrowserTheme {
+    /// Semantic hues from each theme's palette; text contrast is checked by the interpreter.
+    func pageSemanticColors(isDark: Bool) -> PageSemanticColors {
+        switch self {
+        case .catppuccin:
+            return isDark
+                ? PageSemanticColors("#f38ba8", "#a6e3a1", "#f9e2af", "#89b4fa")
+                : PageSemanticColors("#d20f39", "#40a02b", "#df8e1d", "#1e66f5")
+        case .tokyoNight:
+            return isDark
+                ? PageSemanticColors("#f7768e", "#9ece6a", "#e0af68", "#7aa2f7")
+                : PageSemanticColors("#f52a65", "#587539", "#8c6c3e", "#2e7de9")
+        case .dracula:
+            return isDark
+                ? PageSemanticColors("#ff5555", "#50fa7b", "#f1fa8c", "#8be9fd")
+                : PageSemanticColors("#cb3a2a", "#14710a", "#846e15", "#036a96")
+        case .one:
+            return isDark
+                ? PageSemanticColors("#e06c75", "#98c379", "#e5c07b", "#61afef")
+                : PageSemanticColors("#e45649", "#50a14f", "#986801", "#4078f2")
+        case .nord:
+            return PageSemanticColors("#bf616a", "#a3be8c", "#ebcb8b", "#5e81ac")
+        case .gruvbox:
+            return isDark
+                ? PageSemanticColors("#fb4934", "#b8bb26", "#fabd2f", "#83a598")
+                : PageSemanticColors("#9d0006", "#79740e", "#b57614", "#076678")
+        case .rosePine:
+            return isDark
+                ? PageSemanticColors("#eb6f92", "#9ccfd8", "#f6c177", "#31748f")
+                : PageSemanticColors("#b4637a", "#56949f", "#ea9d34", "#286983")
+        case .solarized:
+            return PageSemanticColors("#dc322f", "#859900", "#b58900", "#268bd2")
+        case .github, .standard:
+            return isDark
+                ? PageSemanticColors("#f85149", "#3fb950", "#d29922", "#58a6ff")
+                : PageSemanticColors("#cf222e", "#1a7f37", "#9a6700", "#0969da")
+        }
     }
 }
 
 extension PageScripts {
-    static let themeFetchMessageName = "leanThemeFetch"
-
-    private static let darkReaderSource: String = {
-        guard let url = Bundle.main.url(forResource: "darkreader", withExtension: "js"),
-              let source = try? String(contentsOf: url, encoding: .utf8)
-        else { return "" }
-        return source
+    private static let pageInterpreter: String? = {
+        guard let url = Bundle.main.url(forResource: "page-theme", withExtension: "js") else { return nil }
+        return try? String(contentsOf: url, encoding: .utf8)
     }()
 
-    /// The engine plus its settings, or nil when there is no theme or the
-    /// engine file is missing from the bundle.
+    /// Installed even when disabled so already-loaded subframes can be toggled.
     static func pageThemeSource(_ theme: PageTheme?) -> String? {
-        guard let theme, !darkReaderSource.isEmpty else { return nil }
-        return darkReaderSource + "\n" + """
-        (function() {
-            if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
-            var DR = globalThis.DarkReader;
-            if (!DR) return;
-
-            // Stylesheets from other origins can't be read by the page. Try
-            // the page's own fetch, then ask Lean to download the file.
-            DR.setFetchMethod(function(url) {
-                return fetch(url, { credentials: 'omit' }).catch(function() {
-                    return window.webkit.messageHandlers.\(themeFetchMessageName).postMessage(String(url)).then(function(reply) {
-                        var binary = atob(reply.base64);
-                        var bytes = new Uint8Array(binary.length);
-                        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-                        return new Response(bytes, { status: 200, headers: { 'Content-Type': reply.type || '' } });
-                    });
-                });
-            });
-
-            DR.enable({
-                mode: \(theme.isDark ? 1 : 0),
-                brightness: 100,
-                contrast: 100,
-                sepia: 0,
-                grayscale: 0,
-                darkSchemeBackgroundColor: '\(theme.background)',
-                darkSchemeTextColor: '\(theme.text)',
-                lightSchemeBackgroundColor: '\(theme.background)',
-                lightSchemeTextColor: '\(theme.text)'
-            });
-        })();
-        """
+        guard let pageInterpreter, let update = pageThemeUpdate(theme) else { return nil }
+        return pageInterpreter + "\n" + update
     }
 
-    /// Takes the theme off a loaded page.
-    static let pageThemeOff = "(function(){ var DR = globalThis.DarkReader; if (DR) DR.disable(); })();"
-}
-
-/// Downloads a file for the theme engine when the page itself may not
-/// (cross-origin CSS and images). Lives in Lean's content world, so page
-/// scripts cannot call it. Only http(s), no cookies, size-capped.
-final class PageThemeFetch: NSObject, WKScriptMessageHandlerWithReply {
-    static let shared = PageThemeFetch()
-    private static let maxBytes = 10_000_000
-
-    func userContentController(
-        _ userContentController: WKUserContentController,
-        didReceive message: WKScriptMessage
-    ) async -> (Any?, String?) {
-        guard let string = message.body as? String,
-              let url = URL(string: string),
-              url.scheme == "http" || url.scheme == "https"
-        else { return (nil, "Not an http(s) URL.") }
-        var request = URLRequest(url: url)
-        request.httpShouldHandleCookies = false
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard data.count <= Self.maxBytes else { return (nil, "File is larger than 10 MB.") }
-            let type = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") ?? ""
-            return (["base64": data.base64EncodedString(), "type": type], nil)
-        } catch {
-            return (nil, error.localizedDescription)
+    static func pageThemeUpdate(_ theme: PageTheme?) -> String? {
+        let json: String
+        if let theme {
+            guard let data = try? JSONEncoder().encode(theme), let encoded = String(data: data, encoding: .utf8) else { return nil }
+            json = encoded
+        } else {
+            json = "null"
         }
+        return "globalThis.LeanPageTheme?.apply(\(json));"
     }
 }

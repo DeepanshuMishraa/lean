@@ -52,6 +52,7 @@
             <key>LSItemContentTypes</key>
             <array>
                 <string>public.html</string>
+                <string>public.xhtml</string>
                 <string>com.apple.web-internet-location</string>
             </array>
         </dict>

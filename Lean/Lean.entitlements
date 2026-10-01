@@ -16,6 +16,14 @@
     <array>
         <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     </array>
+    <!-- Local pages: a sandboxed app that is handed index.html can read only
+         that one file, so the stylesheets, scripts and images beside it fail
+         to load. Read-only access to the home folder lets a page's own
+         folder be granted to the web view (see LeanTab.load). -->
+    <key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+    <array>
+        <string>/</string>
+    </array>
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
     <key>com.apple.security.files.downloads.read-write</key>

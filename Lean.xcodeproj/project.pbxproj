@@ -12,6 +12,7 @@
 		07BADA601280A70ABC9E1F70 /* ColorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 375BB03B356BB64280D766C7 /* ColorTheme.swift */; };
 		07EEEDFF91357146BB859A71 /* ThemeColorStripTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43567E8730B2E1365D35F1F1 /* ThemeColorStripTests.swift */; };
 		080D2BBC4E6013BEE7B5357F /* AdBlockFilterConverterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A52B464DE485174355D358 /* AdBlockFilterConverterTests.swift */; };
+		08B0A8D1650066BAF244627B /* AddressResolverFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DC58202C39A3CB2E417CF85 /* AddressResolverFileTests.swift */; };
 		08D3AB575B6D8D914E5C10BF /* BookmarkConfirmationDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21BC5531018AEFC3A474C39C /* BookmarkConfirmationDialog.swift */; };
 		099C3F07574FA15E03AB213A /* ContentBlocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14191AAB2D796CC5DE1EA6CB /* ContentBlocker.swift */; };
 		0A0BC6E7AEA90A17D3113FD7 /* ExtensionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A60E0E2C03D202AC428D083 /* ExtensionsView.swift */; };
@@ -185,6 +186,7 @@
 		39FC7F01364675372F09FA78 /* NativeHostService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHostService.swift; sourceTree = "<group>"; };
 		3C5D4D8DEB1CDF3566C81D1D /* BrowserIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserIcons.swift; sourceTree = "<group>"; };
 		3CABED7395D472182B5B8279 /* LeanStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeanStore.swift; sourceTree = "<group>"; };
+		3DC58202C39A3CB2E417CF85 /* AddressResolverFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressResolverFileTests.swift; sourceTree = "<group>"; };
 		3E5E9C3E208BB37AB88D6EE1 /* Inspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Inspector.swift; sourceTree = "<group>"; };
 		4264638C28E8CE1683A21A92 /* ExtensionImportReviewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionImportReviewer.swift; sourceTree = "<group>"; };
 		43567E8730B2E1365D35F1F1 /* ThemeColorStripTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeColorStripTests.swift; sourceTree = "<group>"; };
@@ -441,6 +443,7 @@
 			isa = PBXGroup;
 			children = (
 				C5A52B464DE485174355D358 /* AdBlockFilterConverterTests.swift */,
+				3DC58202C39A3CB2E417CF85 /* AddressResolverFileTests.swift */,
 				329359943D08761604195E40 /* AddressResolverTests.swift */,
 				0658473FF4694836C4819D30 /* AppDatabaseTests.swift */,
 				851AF70584565C856B01F7DA /* BookmarkTests.swift */,
@@ -649,6 +652,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				080D2BBC4E6013BEE7B5357F /* AdBlockFilterConverterTests.swift in Sources */,
+				08B0A8D1650066BAF244627B /* AddressResolverFileTests.swift in Sources */,
 				6082FA83A361BE568DBBD304 /* AddressResolverTests.swift in Sources */,
 				259D7F72A1115CC3CF9EF155 /* AppDatabaseTests.swift in Sources */,
 				146EDE621BDBC717E0D413F2 /* BookmarkTests.swift in Sources */,

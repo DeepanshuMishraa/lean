@@ -692,7 +692,13 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         Task { @MainActor [weak self] in
             if #available(macOS 15.4, *) { await BrowserExtensionManager.shared.waitUntilReady() }
             guard let self, self.pendingNavigationID == navigationID, self.url == url else { return }
-            self.webView.load(URLRequest(url: url))
+            if url.isFileURL {
+                // A local page needs read access to its folder or its
+                // stylesheets, scripts and images next to it stay blocked.
+                self.webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+            } else {
+                self.webView.load(URLRequest(url: url))
+            }
         }
     }
 

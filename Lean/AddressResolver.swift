@@ -43,6 +43,10 @@ enum AddressResolver {
             return URL(string: "lean://settings")
         }
 
+        if let url = fileURL(from: value) {
+            return url
+        }
+
         if let url = webURL(from: value) {
             return url
         }
@@ -50,6 +54,24 @@ enum AddressResolver {
         var components = searchEngine.searchURL.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
         components?.queryItems = [URLQueryItem(name: "q", value: value)]
         return components?.url
+    }
+
+    /// A local file typed or pasted as an address: an explicit `file://`
+    /// URL, or an absolute (`/Users/me/index.html`) or home-relative
+    /// (`~/site/index.html`) path that exists. Anything else is not a file,
+    /// so `index.html` alone still reads as a host and `/nope` as search.
+    static func fileURL(from value: String) -> URL? {
+        if value.lowercased().hasPrefix("file://") {
+            guard let url = URL(string: value), url.isFileURL else { return nil }
+            return url
+        }
+        guard value.hasPrefix("/") || value.hasPrefix("~") else { return nil }
+        let path = (value as NSString).expandingTildeInPath
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+              !isDirectory.boolValue
+        else { return nil }
+        return URL(fileURLWithPath: path)
     }
 
     static func webURL(from value: String) -> URL? {

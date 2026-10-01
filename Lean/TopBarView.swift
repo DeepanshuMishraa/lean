@@ -129,6 +129,7 @@ struct TopBarView: View {
                 ) {
                     _ = store.newTab()
                 }
+                .padding(.leading, 8)
             }
 
             Spacer()

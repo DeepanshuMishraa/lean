@@ -190,7 +190,27 @@ final class OmnibarService {
             let isHomePage = item.url.path.isEmpty || item.url.path == "/"
             return !isHomePage
         }
-        for item in historyMatches.prefix(5) {
+        // Rank like other browsers: site homepages whose host starts with the
+        // query first (youtube.com for "yout"), then other host matches, then
+        // title-only matches. Ties keep the incoming (recency) order.
+        func rank(_ item: (url: URL, title: String)) -> Int {
+            let host = item.url.host?.lowercased().droppingWWWPrefix ?? ""
+            let hostLabel = host.split(separator: ".").first.map(String.init) ?? host
+            let isHomePage = item.url.path.isEmpty || item.url.path == "/"
+            let hostStarts = host.hasPrefix(lower) || hostLabel.hasPrefix(lower)
+            switch (hostStarts, isHomePage) {
+            case (true, true): return 0
+            case (true, false): return 1
+            default: return host.contains(lower) ? 2 : 3
+            }
+        }
+        let rankedHistory = historyMatches.enumerated()
+            .sorted { a, b in
+                let ra = rank(a.element), rb = rank(b.element)
+                return ra != rb ? ra < rb : a.offset < b.offset
+            }
+            .map(\.element)
+        for item in rankedHistory.prefix(5) {
             results.append(OmnibarSuggestion(
                 primaryText: item.title.isEmpty ? (item.url.host ?? trimmed) : item.title,
                 secondaryText: item.url.host ?? "",

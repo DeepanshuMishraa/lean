@@ -332,6 +332,24 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    /// Recolour web pages to the colour theme. On unless turned off.
+    @Published var themesWebPages: Bool {
+        didSet {
+            persist(themesWebPages, forKey: Self.themesWebPagesKey)
+            updateAllTabsTheme()
+        }
+    }
+
+    /// The page theme the tabs should wear now, or nil for pages as made.
+    var pageTheme: PageTheme? {
+        guard themesWebPages else { return nil }
+        return PageTheme(
+            background: themeColors.windowBackground,
+            text: themeColors.primaryText,
+            isDark: isDarkMode
+        )
+    }
+
     @Published var scrollbarStyle: ScrollbarStyle {
         didSet {
             persist(scrollbarStyle.rawValue, forKey: Self.scrollbarKey)
@@ -670,6 +688,11 @@ final class LeanStore: ObservableObject {
             ?? false
         self.themedTabBar = savedThemedTabBar
 
+        // Recolour pages to the colour theme (default on).
+        self.themesWebPages = databaseValue(self.database, Bool.self, forKey: Self.themesWebPagesKey)
+            ?? UserDefaults.standard.object(forKey: Self.themesWebPagesKey) as? Bool
+            ?? true
+
         // Pages at 120 Hz (default off: it costs energy, and a still page
         // costs nothing either way). Takes effect for new pages at once.
         let savedHighFrameRate = databaseValue(self.database, Bool.self, forKey: Self.highFrameRatePagesKey)
@@ -958,8 +981,10 @@ final class LeanStore: ObservableObject {
 
     func updateAllTabsTheme() {
         let isDark = isDarkMode
+        let pageTheme = pageTheme
         for tab in tabs {
             tab.applyTheme(isDark: isDark)
+            tab.applyPageTheme(pageTheme)
         }
     }
 
@@ -1743,6 +1768,7 @@ final class LeanStore: ObservableObject {
             isDark: isDarkMode,
             scrollbarStyle: scrollbarStyle,
             pageFont: webPageFont,
+            pageTheme: pageTheme,
             adBlockingEnabled: adBlockingEnabled,
             adBlockingExcludedHosts: adBlockingExcludedHosts,
             passwordSavePromptsEnabled: passwordSavePromptsEnabled,
@@ -2332,6 +2358,7 @@ final class LeanStore: ObservableObject {
         persist(isSidebarCollapsed, forKey: Self.isSidebarCollapsedKey)
         persist(enableThumbnailsInTabSwitcher, forKey: Self.thumbnailsSwitcherKey)
         persist(themedTabBar, forKey: Self.themedTabBarKey)
+        persist(themesWebPages, forKey: Self.themesWebPagesKey)
         persist(peeksLinks, forKey: Self.peeksLinksKey)
         persist(showFullTitleOnActiveTab, forKey: Self.showFullTitleKey)
         persist(leanUIFont.rawValue, forKey: Self.leanUIFontKey)
@@ -2385,6 +2412,7 @@ final class LeanStore: ObservableObject {
     private static let thumbnailsSwitcherKey = "enableThumbnailsInTabSwitcher"
     private static let peeksLinksKey = "links.peek"
     private static let themedTabBarKey = "themedTabBar"
+    private static let themesWebPagesKey = "themesWebPages"
     private static let highFrameRatePagesKey = "highFrameRatePages"
     private static let showFullTitleKey = "showFullTitleOnActiveTab"
     private static let leanUIFontKey = "leanUIFont"

@@ -1153,6 +1153,15 @@ private struct AppearanceSection: View {
                     isDark: store.isDarkMode
                 )
                 ColorThemePicker(store: store)
+                SettingsGroup(isDark: store.isDarkMode) {
+                    CustomToggleRow(
+                        title: "Apply the theme to web pages",
+                        subtitle: "Rewrites each page's colours to the theme's background and text. Every surface, text colour and border on the page is remapped to the theme; hover states and images are preserved.",
+                        isOn: $store.themesWebPages,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
+                }
             }
 
             // Theme Selector

@@ -92,6 +92,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     private(set) var scrollbarStyle: ScrollbarStyle
     private(set) var pageFont: LeanFont
+    private(set) var pageTheme: PageTheme?
     private(set) var pageHeadingWeight: Int
     private(set) var pageBodyWeight: Int
     private(set) var adBlockingEnabled: Bool
@@ -183,6 +184,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         isDark: Bool = false,
         scrollbarStyle: ScrollbarStyle = .normal,
         pageFont: LeanFont = .system,
+        pageTheme: PageTheme? = nil,
         pageHeadingWeight: Int = 0,
         pageBodyWeight: Int = 0,
         adBlockingEnabled: Bool = true,
@@ -203,6 +205,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         self.isDark = isDark
         self.scrollbarStyle = scrollbarStyle
         self.pageFont = pageFont
+        self.pageTheme = pageTheme
         self.pageHeadingWeight = pageHeadingWeight
         self.pageBodyWeight = pageBodyWeight
         self.adBlockingEnabled = adBlockingEnabled
@@ -266,6 +269,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             forMainFrameOnly: false
         )
         configuration.userContentController.addUserScript(fontScript)
+        if let themeScript = pageThemeScript() { configuration.userContentController.addUserScript(themeScript) }
 
         let youtubeAdsScript = WKUserScript(
             source: PageScripts.youtubeAds(enabled: isBlockingEnabledForCurrentHost),
@@ -490,6 +494,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         // Registering a name twice is a hard crash, so clear before claiming.
         removePasskeyHandler(from: controller)
         controller.addScriptMessageHandler(passkeyRelay, contentWorld: LeanWeb.world, name: PasskeyRelay.name)
+        controller.addScriptMessageHandler(PageThemeFetch.shared, contentWorld: LeanWeb.world, name: PageScripts.themeFetchMessageName)
     }
 
     private func removePasskeyHandler(from controller: WKUserContentController) {
@@ -498,6 +503,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         // worlds before claiming, and on teardown.
         controller.removeScriptMessageHandler(forName: PasskeyRelay.name, contentWorld: LeanWeb.world)
         controller.removeScriptMessageHandler(forName: PasskeyRelay.name, contentWorld: .page)
+        controller.removeScriptMessageHandler(forName: PageScripts.themeFetchMessageName, contentWorld: LeanWeb.world)
     }
 
     func applyPasskeysPreferences(enabled: Bool) {
@@ -545,6 +551,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             forMainFrameOnly: false
         )
         webView.configuration.userContentController.addUserScript(fontScript)
+        if let themeScript = pageThemeScript() { webView.configuration.userContentController.addUserScript(themeScript) }
 
         let youtubeAdsScript = WKUserScript(
             source: PageScripts.youtubeAds(enabled: isBlockingEnabledForCurrentHost),
@@ -596,6 +603,22 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     func applyHighFrameRate() {
         guard let webView = storedWebView else { return }
         FrameRate.apply(to: webView.configuration.preferences)
+    }
+
+    /// The theme engine, in Lean's world, in every frame so embeds match.
+    private func pageThemeScript() -> WKUserScript? {
+        PageScripts.pageThemeSource(pageTheme).map {
+            WKUserScript(source: $0, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: LeanWeb.world)
+        }
+    }
+
+    func applyPageTheme(_ theme: PageTheme?) {
+        guard theme != pageTheme else { return }
+        pageTheme = theme
+        guard let webView = storedWebView else { return }
+        rebuildUserScripts()
+        let live = PageScripts.pageThemeSource(theme) ?? PageScripts.pageThemeOff
+        webView.evaluateJavaScript(live, in: nil, in: LeanWeb.world) { _ in }
     }
 
     func applyPageFont(_ font: LeanFont, headingWeight: Int = 0, bodyWeight: Int = 0) {

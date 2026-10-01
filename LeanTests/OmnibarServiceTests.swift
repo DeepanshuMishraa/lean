@@ -15,6 +15,16 @@ struct OmnibarServiceTests {
         #expect(searchSuggestion?.secondaryText == "Google")
     }
 
+    @Test("Site homepage outranks deep pages from the same site")
+    func homepageOutranksVideo() {
+        let history = [
+            (url: URL(string: "https://www.youtube.com/watch?v=abc")!, title: "Some video - YouTube"),
+            (url: URL(string: "https://www.youtube.com/")!, title: "YouTube"),
+        ]
+        let suggestions = OmnibarService.shared.suggestions(for: "yout", history: history)
+        #expect(suggestions.first?.targetURL.absoluteString == "https://www.youtube.com/")
+    }
+
     @Test("Suggests direct domain when typing domain")
     func suggestsDomain() {
         let suggestions = OmnibarService.shared.suggestions(for: "officecommun.com")

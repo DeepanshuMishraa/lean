@@ -346,10 +346,15 @@ private struct TopBarTabItem: View {
     @State private var isCloseHovered = false
     @State private var isFieldFocused = false
     @State private var isDropTarget = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var showURLBar: Bool {
         isSelected && (store.isInlineURLEditing || isFieldFocused)
     }
+
+    /// Trailing room a hovered tab opens up for the close button: its 18pt
+    /// circle, 6pt from the edge, and a small gap after the title.
+    private static let closeRoom: CGFloat = 30
 
     private var shouldShowClose: Bool {
         isHovered && !showURLBar
@@ -383,6 +388,8 @@ private struct TopBarTabItem: View {
                         .transition(.opacity)
                 }
             }
+            // The tab opens up for the close button; it eases open and shut.
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: shouldShowClose)
             .frame(
                 minWidth: showURLBar ? store.scaled(260) : (tab.isSplit ? store.scaled(CGFloat(90 * tab.splitTabs.count)) : nil),
                 idealWidth: showURLBar ? store.scaled(320) : (tab.isSplit ? store.scaled(CGFloat(130 * tab.splitTabs.count)) : nil),
@@ -450,9 +457,10 @@ private struct TopBarTabItem: View {
             if shouldShowClose && store.tabDisplayMode != .iconOnly {
                 closeButton
                     .padding(.trailing, 6)
-                    .transition(.opacity)
+                    .transition(closeTransition)
             }
         }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: shouldShowClose)
         .overlay(alignment: .topTrailing) {
             // Sleek floating micro badge for iconOnly mode — never blocks tab selection
             if shouldShowClose && store.tabDisplayMode == .iconOnly {
@@ -469,6 +477,10 @@ private struct TopBarTabItem: View {
                 store.dismissInlineURLEditing()
             }
         }
+        // The inline URL field covers the tab while editing and can swallow
+        // the pointer's exit, leaving the close-button gap on a tab nobody
+        // is over. Hover starts over from the next pointer move.
+        .onChange(of: showURLBar) { _, _ in isHovered = false }
         .animation(Motion.tabSwitch, value: showURLBar)
         .zIndex(isHovered ? 15 : (isSelected ? 10 : 1))
         .contextMenu {
@@ -630,7 +642,7 @@ private struct TopBarTabItem: View {
                 }
             }
             .padding(.leading, 6)
-            .padding(.trailing, shouldShowClose ? 26 : (tab.isPlayingMedia ? 8 : 10))
+            .padding(.trailing, shouldShowClose ? Self.closeRoom : (tab.isPlayingMedia ? 8 : 10))
 
         case .iconOnly:
             HStack(spacing: 4) {
@@ -689,7 +701,7 @@ private struct TopBarTabItem: View {
                 }
             }
             .padding(.leading, 8)
-            .padding(.trailing, shouldShowClose ? 26 : (tab.isPlayingMedia ? 8 : 10))
+            .padding(.trailing, shouldShowClose ? Self.closeRoom : (tab.isPlayingMedia ? 8 : 10))
         }
     }
 
@@ -724,7 +736,7 @@ private struct TopBarTabItem: View {
         }
         .animation(.spring(response: 0.30, dampingFraction: 0.84), value: tab.isLoading)
         .padding(.leading, 10)
-        .padding(.trailing, shouldShowClose ? 26 : (tab.isPlayingMedia ? 8 : 12))
+        .padding(.trailing, shouldShowClose ? Self.closeRoom : (tab.isPlayingMedia ? 8 : 12))
     }
 
     @ViewBuilder
@@ -794,7 +806,20 @@ private struct TopBarTabItem: View {
             }
         }
         .padding(.leading, 10)
-        .padding(.trailing, shouldShowClose ? 26 : (tab.isPlayingMedia ? 8 : 12))
+        .padding(.trailing, shouldShowClose ? Self.closeRoom : (tab.isPlayingMedia ? 8 : 12))
+    }
+
+    /// In: waits a beat for the tab to open, then fades and settles from a
+    /// slight scale (never from zero). Out: faster than in, a plain fade,
+    /// so sweeping across tabs never leaves a trail of buttons.
+    private var closeTransition: AnyTransition {
+        if reduceMotion { return .opacity }
+        return .asymmetric(
+            insertion: .opacity
+                .combined(with: .scale(scale: 0.8))
+                .animation(.easeOut(duration: 0.14).delay(0.05)),
+            removal: .opacity.animation(.easeOut(duration: 0.08))
+        )
     }
 
     private var closeButton: some View {
@@ -806,14 +831,17 @@ private struct TopBarTabItem: View {
                 .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
                 .frame(width: store.scaled(18), height: store.scaled(18))
                 .background(
-                    store.adaptiveTheme.tabCloseButtonHoverBackground,
+                    store.adaptiveTheme.tabCloseButtonHoverBackground
+                        .opacity(isCloseHovered ? 1 : 0),
                     in: Circle()
                 )
                 // Rectangular hit area is larger and stable at the edges.
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.hitArea)
+        .buttonStyle(TabCloseButtonStyle(reduceMotion: reduceMotion))
         .contentShape(Rectangle())
+        .onHover { isCloseHovered = $0 }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isCloseHovered)
     }
 
     private var iconOnlyCloseBadge: some View {

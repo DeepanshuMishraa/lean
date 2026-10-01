@@ -1400,7 +1400,18 @@ enum NativePiP {
     static func enter(strict: Bool) -> String {
         """
         const strict = \(strict ? "true" : "false");
-        if (document.pictureInPictureElement) return true;
+        // One listener per video, however many times this runs (globals persist in Lean's world).
+        const watched = globalThis.leanPipWatched || (globalThis.leanPipWatched = new WeakSet());
+        const watch = video => {
+            if (watched.has(video)) return;
+            watched.add(video);
+            video.addEventListener('leavepictureinpicture', () => {
+                watched.delete(video);
+                try { window.webkit.messageHandlers.\(leftMessageName).postMessage(!video.paused); } catch (error) {}
+            }, {once: true});
+        };
+        // A window the page opened itself is ours to report on too.
+        if (document.pictureInPictureElement) { watch(document.pictureInPictureElement); return true; }
         if (!document.pictureInPictureEnabled) return false;
         const live = v => typeof MediaStream !== 'undefined' && v.srcObject instanceof MediaStream;
         const eligible = v => !v.paused && !v.ended && v.readyState >= 2 && v.videoWidth > 0
@@ -1415,9 +1426,7 @@ enum NativePiP {
         } catch (error) {
             return false;
         }
-        video.addEventListener('leavepictureinpicture', () => {
-            try { window.webkit.messageHandlers.\(leftMessageName).postMessage(!video.paused); } catch (error) {}
-        }, {once: true});
+        watch(video);
         return true;
         """
     }

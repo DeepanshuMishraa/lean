@@ -1059,19 +1059,27 @@ final class LeanStore: ObservableObject {
         guard !pictureInPicture.showing, nativePictureInPictureTabID == nil, !tab.isSleeping else { return }
         guard usesNativePictureInPicture else { return liftPictureInPicture(for: tab) }
         let generation = pipGeneration
+        // Claimed before the request goes out. This is the only request in flight (a second tab switch
+        // finds the claim and stops), and an early "window closed" report finds an owner to clear.
+        nativePictureInPictureTabID = tab.id
         tab.enterNativePictureInPicture(strict: !Players.knows(tab.url)) { [weak self, weak tab] entered in
             DispatchQueue.main.async {
-                guard let self, let tab, self.pipGeneration == generation else { return }
-                guard entered else {
-                    if !self.pictureInPicture.showing, self.nativePictureInPictureTabID == nil { self.liftPictureInPicture(for: tab) }
+                guard let self, let tab else { return }
+                // Returned to the tab, or it was closed, while the request was out: nothing owns the window now.
+                guard self.nativePictureInPictureTabID == tab.id else {
+                    if entered { tab.exitNativePictureInPicture() }
                     return
                 }
-                // Back on the tab already, or another window took over while this was in flight.
-                guard self.selectedID != tab.id, !self.pictureInPicture.showing else {
-                    tab.exitNativePictureInPicture()
+                let superseded = self.pipGeneration != generation || self.selectedID == tab.id || self.pictureInPicture.showing
+                if entered {
+                    if superseded {
+                        self.nativePictureInPictureTabID = nil
+                        tab.exitNativePictureInPicture()
+                    }
                     return
                 }
-                self.nativePictureInPictureTabID = tab.id
+                self.nativePictureInPictureTabID = nil
+                if !superseded { self.liftPictureInPicture(for: tab) }
             }
         }
     }
@@ -1293,11 +1301,12 @@ final class LeanStore: ObservableObject {
 
     private func attemptAutoSleep(_ tab: LeanTab) {
         guard autoSleepTabsEnabled, selectedID != tab.id,
-              tab.id != pictureInPictureTabID,
+              tab.id != pictureInPictureTabID, tab.id != nativePictureInPictureTabID,
               tabs.contains(where: { $0.id == tab.id }) else { return }
         tab.requestSleep(while: { [weak self, weak tab] in
             guard let self, let tab else { return false }
             return self.autoSleepTabsEnabled && self.selectedID != tab.id
+                && self.nativePictureInPictureTabID != tab.id
                 && self.tabs.contains(where: { $0.id == tab.id })
         }) { [weak self, weak tab] slept in
             guard let self, let tab, !slept else { return }
@@ -2060,6 +2069,7 @@ final class LeanStore: ObservableObject {
     private func closeImmediately(_ tab: LeanTab) {
         guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
         if pictureInPictureTabID == tab.id { dismissPictureInPicture() }
+        if nativePictureInPictureTabID == tab.id { nativePictureInPictureTabID = nil }
         if let url = tab.url {
             recentlyClosed.append(url)
             recentlyClosed = Array(recentlyClosed.suffix(10))

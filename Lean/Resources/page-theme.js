@@ -851,8 +851,11 @@
             scanTimer = setInterval(poll, 3000);
         }
     }
+    // Names this document to Lean (a subframe only): a navigated frame keeps its identity but gets a new token.
+    const frameToken = window !== window.top ? Math.random().toString(36).slice(2) : null;
     globalThis.LeanPageTheme = {
         apply,
+        frame: frameToken,
         // Diagnostics contain role counts and colors, never page text or URLs.
         inspect: () => ({generation, pending: dirty.size + scanning.length, nodes: records.size,
             roles: [...records.values()].reduce((counts, record) => {
@@ -861,7 +864,7 @@
     };
     // Subframes announce themselves to Lean through a handler only this world can reach; Lean then
     // pushes theme changes into each frame. Nothing here is observable by page scripts.
-    if (window !== window.top) {
-        try { window.webkit.messageHandlers.leanThemeFrame.postMessage(true); } catch (error) {}
+    if (frameToken) {
+        try { window.webkit.messageHandlers.leanThemeFrame.postMessage(frameToken); } catch (error) {}
     }
 })();

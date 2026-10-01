@@ -13,9 +13,12 @@ configuration.userContentController.addUserScript(
     WKUserScript(source: engine, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: world))
 /// Mirrors LeanTab: subframes announce themselves from Lean's world and the host pushes theme changes in.
 final class FrameTracker: NSObject, WKScriptMessageHandler {
-    var frames: [WKFrameInfo] = []
+    var frames: [(info: WKFrameInfo, token: String)] = []
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        if !message.frameInfo.isMainFrame { frames.append(message.frameInfo) }
+        if !message.frameInfo.isMainFrame, let token = message.body as? String {
+            frames.removeAll { $0.token == token }
+            frames.append((message.frameInfo, token))
+        }
     }
 }
 let tracker = FrameTracker()
@@ -55,7 +58,8 @@ func applyEverywhere(_ source: String) async throws {
     _ = try await js(source)
     for frame in tracker.frames {
         await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
-            webView.evaluateJavaScript(source, in: frame, in: world) { _ in done.resume() }
+            let guarded = "(function(){ if (globalThis.LeanPageTheme?.frame !== \"\(frame.token)\") return false; \(source); return true; })()"
+            webView.evaluateJavaScript(guarded, in: frame.info, in: world) { _ in done.resume() }
         }
     }
 }

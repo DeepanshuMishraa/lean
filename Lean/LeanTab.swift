@@ -636,32 +636,42 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     /// Open subframes, by frame. Frames tell Lean about themselves through a handler only Lean's world
     /// can reach, and Lean pushes theme changes into them. Nothing is posted into the page, so sites
     /// cannot see the theme or detect it.
-    private var themeFrames: [WKFrameInfo] = []
-
-    private func adoptThemeFrame(_ message: WKScriptMessage) {
-        guard let webView = storedWebView, message.webView === webView, !message.frameInfo.isMainFrame else { return }
-        themeFrames.append(message.frameInfo)
-        // Frames that were removed never report in, so probe them when the list gets long rather than
-        // dropping the oldest, which may still be alive.
-        if themeFrames.count > 64, themeFrames.count % 16 == 1 { prunePageThemeFrames(of: webView) }
-        // The frame's own script carries the theme it was built with; catch up if it changed since.
-        if let update = PageScripts.pageThemeUpdate(pageTheme) { evaluatePageTheme(update, in: message.frameInfo, of: webView) }
+    private struct ThemeFrame {
+        let info: WKFrameInfo
+        /// Chosen by the frame's own script: a frame that navigates keeps its WKFrameInfo but gets a new
+        /// document, and its old entry then answers "not mine" and is dropped instead of stacking pushes.
+        let token: String
     }
 
-    private func prunePageThemeFrames(of webView: LeanWebView) {
-        for frame in themeFrames { evaluatePageTheme("0;", in: frame, of: webView) }
+    private var themeFrames: [ThemeFrame] = []
+
+    private func adoptThemeFrame(_ message: WKScriptMessage) {
+        guard let webView = storedWebView, message.webView === webView, !message.frameInfo.isMainFrame,
+              let token = message.body as? String, !token.isEmpty, token.allSatisfy({ $0.isLetter || $0.isNumber })
+        else { return }
+        themeFrames.removeAll { $0.token == token }
+        let frame = ThemeFrame(info: message.frameInfo, token: token)
+        themeFrames.append(frame)
+        // The frame's own script carries the theme it was built with; catch up if it changed since.
+        if let update = PageScripts.pageThemeUpdate(pageTheme) { evaluatePageTheme(update, in: frame, of: webView) }
     }
 
     private func pushPageTheme(_ update: String, to webView: LeanWebView) {
         for frame in themeFrames { evaluatePageTheme(update, in: frame, of: webView) }
     }
 
-    private func evaluatePageTheme(_ update: String, in frame: WKFrameInfo?, of webView: LeanWebView) {
-        webView.evaluateJavaScript(update, in: frame, in: LeanWeb.world) { [weak self] result in
-            guard case .failure(let error) = result else { return }
-            // A frame that navigated away or was removed is gone for good.
-            if let frame { self?.themeFrames.removeAll { $0 === frame } }
-            NSLog("Lean page theme update failed: %@", error.localizedDescription)
+    /// Runs `update` in one frame, only if that frame is still the document that announced the token.
+    private func evaluatePageTheme(_ update: String, in frame: ThemeFrame, of webView: LeanWebView) {
+        let guarded = "(function(){ if (globalThis.LeanPageTheme?.frame !== \"\(frame.token)\") return false; \(update) return true; })()"
+        webView.evaluateJavaScript(guarded, in: frame.info, in: LeanWeb.world) { [weak self] result in
+            switch result {
+            case .success(let answer):
+                if (answer as? Bool) != true { self?.themeFrames.removeAll { $0.token == frame.token } }
+            case .failure(let error):
+                // A frame that was removed is gone for good.
+                self?.themeFrames.removeAll { $0.token == frame.token }
+                NSLog("Lean page theme update failed: %@", error.localizedDescription)
+            }
         }
     }
 

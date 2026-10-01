@@ -450,8 +450,14 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             webView.underPageBackgroundColor = pageBackgroundColor
         }
         // The theme engine only runs on http(s); other pages (local files, PDFs) must keep their own paper.
-        let themed = pageTheme != nil && (webView.url.map { $0.scheme == "http" || $0.scheme == "https" } ?? true)
+        let themed = pageTheme != nil && (webView.url.map(Self.isThemeable) ?? true)
         webView.setValue(!themed, forKey: "drawsBackground")
+    }
+
+    /// http(s) pages the engine runs on, minus PDFs (by extension), which draw their own paper.
+    private static func isThemeable(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return false }
+        return url.pathExtension.lowercased() != "pdf"
     }
 
     private var pageBackgroundColor: NSColor {

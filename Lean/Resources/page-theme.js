@@ -313,7 +313,8 @@
         const on = css(effective).replace(/[^\w.-]/g, '-');
         const minimum = source.large ? 3 : 4.5;
         const color = source.color;
-        if (color && (source.text || source.interactive || source.heading || source.icon || isRoot)) {
+        // Fully transparent text is hidden on purpose (fades, screen-reader copies); never make it visible.
+        if (color && color[3] > 0 && (source.text || source.interactive || source.heading || source.icon || isRoot)) {
             let foreground = null;
             // Only links the site itself colored are accent; neutral link text (titles, nav) is body text.
             let inverted = backgroundRole === 'text';
@@ -469,9 +470,29 @@
         const sheets = root === document ? document.styleSheets : [...root.querySelectorAll('style, link')].map(el => el.sheet);
         return [...sheets, ...(root.adoptedStyleSheets || [])].map(sheet => {
             if (!sheet || constructedSheets.has(sheet) || sheet.ownerNode?.hasAttribute('data-lean-theme-sheet')) return '';
-            try { return `${sheet.href || ''}:${sheet.cssRules.length}`; }
+            // Full rule text is too costly on large sites. The count plus three sampled rules catches
+            // replaced, inserted and removed rules; an in-place edit of an unsampled rule goes unseen.
+            try {
+                const list = sheet.cssRules, n = list.length;
+                return `${sheet.href || ''}:${n}:${n ? list[0].cssText + list[n >> 1].cssText + list[n - 1].cssText : ''}`;
+            }
             catch (error) { if (error.name === 'SecurityError') return sheet.href || ''; throw error; }
         }).join('\n');
+    }
+    // Drops records for a removed subtree, including open shadow roots and their observers.
+    // Walks only that subtree; scanning every record per removal is quadratic.
+    function forget(top) {
+        const walker = document.createTreeWalker(top, NodeFilter.SHOW_ELEMENT);
+        for (let el = top; el; el = walker.nextNode()) {
+            const record = records.get(el);
+            if (record) { unregisterColors(record); restore(record); visibility.unobserve(el); records.delete(el); }
+            const shadow = el.shadowRoot;
+            if (shadow) {
+                const scope = scopes.get(shadow);
+                if (scope) { scope.observer.disconnect(); scopes.delete(shadow); }
+                for (const child of shadow.children) forget(child);
+            }
+        }
     }
     function addScope(root) {
         if (scopes.has(root)) return;
@@ -496,13 +517,7 @@
                     change.addedNodes.forEach(node => { if (node.nodeType === Node.ELEMENT_NODE && node !== style) enqueueTree(node); });
                     change.removedNodes.forEach(node => {
                         if (node.nodeType !== Node.ELEMENT_NODE || node.isConnected) return;
-                        // Walk only the removed subtree; scanning every record per removal is quadratic.
-                        const walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT);
-                        for (let el = node; el; el = walker.nextNode()) {
-                            const record = records.get(el);
-                            if (!record) continue;
-                            unregisterColors(record); restore(record); visibility.unobserve(el); records.delete(el);
-                        }
+                        forget(node);
                     });
                 }
                 if (change.target.nodeType === Node.ELEMENT_NODE
@@ -684,8 +699,11 @@
     }
     function refresh() {
         if (!theme || scanning.length) return;
-        for (const root of scopes.keys()) discoverVariables(root);
-        enqueueTree(document.documentElement);
+        for (const root of scopes.keys()) {
+            discoverVariables(root);
+            // A shadow root's styles changed too: its content needs rereading, not just the document's.
+            enqueueTree(root === document ? document.documentElement : root);
+        }
         schedule();
     }
     function poll() {

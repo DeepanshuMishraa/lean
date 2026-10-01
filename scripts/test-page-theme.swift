@@ -51,6 +51,12 @@ func waitForFrame(_ expected: String) async throws {
     let details = try await js("document.body.dataset.frameDetails") as? String
     try check(false, "Subframe background \(color ?? "nil") did not become \(expected): \(details ?? "No details")")
 }
+/// `#rrggbb` as the computed-style form `rgb(r, g, b)`.
+func rgbString(_ hex: String) -> String {
+    let n = Int(hex.dropFirst(), radix: 16) ?? 0
+    return "rgb(\(n >> 16), \(n >> 8 & 255), \(n & 255))"
+}
+
 func json(_ value: [String: String]) throws -> String {
     String(decoding: try JSONSerialization.data(withJSONObject: value), as: UTF8.self)
 }
@@ -175,6 +181,8 @@ let liveContrastAudit = """
             checked++;if(ratio<(large?3:4.5)-.01)failures.push({tag:el.tagName,foreground:style.color,background:bg.slice(0,3),ratio});
         }
         globalThis.__leanAuditViolations=failures.length;
+        globalThis.__leanAuditChecked=checked;
+        globalThis.__leanAuditSkipped=skipped;
         return JSON.stringify({checked,skipped,failures:failures.slice(0,8),graph:LeanPageTheme.inspect()});
     })()
     """
@@ -224,6 +232,8 @@ func performanceProbe() async throws {
         """)
         try await Task.sleep(for: .milliseconds(30))
     }
+    // The hover debounce is 150 ms; let it fire before reading the counter.
+    try await Task.sleep(for: .milliseconds(300))
     try await waitForScan()
     let pauses = try await js("globalThis.__themeSheetPauses") as? Int
     print("Interaction probe: \(Int(Date().timeIntervalSince(start) * 1000)) ms, \(pauses ?? -1) whole-sheet pauses")
@@ -255,10 +265,13 @@ Task { @MainActor in
                     try await waitForScan()
                     try await Task.sleep(for: .milliseconds(300))
                     let bg = try await js("getComputedStyle(document.body).backgroundColor") as? String
-                    try check(bg == (index == 0 ? "rgb(30, 30, 46)" : "rgb(239, 241, 245)"), "\(site) canvas mismatch: \(bg ?? "nil")")
+                    try check(bg == (rgbString(palettes[index]["background"] ?? "")), "\(site) canvas mismatch: \(bg ?? "nil")")
                     let report = try await js(liveContrastAudit) as? String
                     print("\(site) \(index == 0 ? "dark" : "light"): \(report ?? "No audit result")")
                     let violations = try await js("globalThis.__leanAuditViolations") as? Int
+                    let audited = try await js("globalThis.__leanAuditChecked") as? Int
+                    let passed = try await js("globalThis.__leanAuditSkipped") as? Int
+                    try check((audited ?? 0) >= 20 && (audited ?? 0) >= (passed ?? 0) / 4, "\(site) audit sampled too little text (\(audited ?? 0) checked, \(passed ?? 0) skipped)")
                     try check(violations == 0, "\(site) has computed text-contrast failures")
                     try await saveSnapshot(artifacts.appendingPathComponent("\(site)-\(index == 0 ? "dark" : "light").png"))
                 }
@@ -334,7 +347,7 @@ Task { @MainActor in
             try check(graphSize == switchedGraphSize, "Theme switch discarded the page graph")
             _ = try await js("LeanPageTheme.apply({background: '#000000'})")
             let preserved = try await js("getComputedStyle(document.body).backgroundColor") as? String
-            try check(preserved == "rgb(30, 30, 46)", "Invalid palette must leave the valid theme intact")
+            try check(preserved == rgbString(palettes[0]["background"] ?? ""), "Invalid palette must leave the valid theme intact")
             _ = try await js("LeanPageTheme.apply(\(try json(palettes[19])))")
             // SPA mutations and a late open shadow root are handled without page-world hooks.
             _ = try await webView.evaluateJavaScript(
@@ -387,7 +400,7 @@ Task { @MainActor in
                 as? Bool
             try check(isolated == true, "Fixture must exercise the cross-origin DOM boundary")
             _ = try await js("LeanPageTheme.apply(\(try json(palettes[0])))")
-            try await waitForFrame("rgb(30, 30, 46)")
+            try await waitForFrame(rgbString(palettes[0]["background"] ?? ""))
             _ = try await js("LeanPageTheme.apply(null)")
             try await waitForFrame("rgb(255, 255, 255)")
             let restored =
@@ -428,7 +441,7 @@ Task { @MainActor in
         try await Task.sleep(for: .milliseconds(100))
         try await waitForScan()
         let lastSurface = try await js("getComputedStyle(document.querySelector('article:last-child')).backgroundColor") as? String
-        try check(lastSurface == "rgb(49, 50, 68)", "Scrolling did not promote the offscreen card into the theme graph")
+        try check(lastSurface == rgbString(palettes[0]["surface"] ?? ""), "Scrolling did not promote the offscreen card into the theme graph")
         print("Large fixture: \(nodes ?? 0) graph nodes, \(initialScanMS) ms visible-first scan; deferred scrolling passed")
         print(
             "Passed: 20 variants × light/dark/CSP pages; contrast, hierarchy, confidence, CSSOM/variables/OKLCH, inline-important restoration, alpha, SVG/media, pseudo-elements, shadow DOM, SPA mutations, isolated-frame switches, disable/re-enable"

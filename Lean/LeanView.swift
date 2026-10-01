@@ -601,7 +601,7 @@ struct LeanView: View {
                         }
                     }
                     // The web view is transparent while themed; this is what shows before the page paints.
-                    .background(store.themesWebPages ? store.themeColors.windowBackground : Color.clear)
+                    .background(store.themesWebPages && !store.glassActive ? store.themeColors.windowBackground : Color.clear)
                     .overlay(alignment: .top) {
                         if store.enableZenMode {
                             PageLoadingBar(

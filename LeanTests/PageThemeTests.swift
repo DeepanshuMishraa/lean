@@ -27,8 +27,12 @@ struct PageThemeTests {
     @Test("Surfaces and borders that sit on the page colour are pushed apart; clear ones are untouched")
     func separation() {
         #expect(PageTheme.separated("#313244", from: "#1e1e2e", minimum: 1.15) == "#313244")
-        #expect(PageTheme.separated("#1f1f1f", from: "#000000", minimum: 1.5) != "#1f1f1f")
-        #expect(PageTheme.separated("#2c313c", from: "#282c34", minimum: 1.15) != "#2c313c")
+        for (hex, base, minimum) in [("#1f1f1f", "#000000", 1.5), ("#2c313c", "#282c34", 1.15), ("#fffbeb", "#fffbeb", 1.05)] {
+            let moved = PageTheme.separated(hex, from: base, minimum: minimum)
+            let a = PageTheme.channels(moved), b = PageTheme.channels(base)
+            #expect(moved != hex)
+            #expect(PageTheme.contrast(a ?? [], b ?? []) >= minimum, "\(hex) on \(base) -> \(moved)")
+        }
     }
 
     @Test("Every theme variant encodes complete CSS-safe tokens")
@@ -49,8 +53,13 @@ struct PageThemeTests {
                 let source = try #require(PageScripts.pageThemeSource(theme))
                 #expect(source.contains("LeanPageTheme"))
                 #expect(!source.contains("DarkReader"))
-                #expect(source.contains(theme.background))
-                #expect(source.contains(theme.surface))
+                // The interpreter receives exactly the encoded tokens, decoded from the apply() call.
+                let update = try #require(PageScripts.pageThemeUpdate(theme))
+                let payload = try #require(update.range(of: "apply(").map { String(update[$0.upperBound...].dropLast(2)) })
+                let applied = try #require(JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any])
+                #expect(applied["background"] as? String == theme.background)
+                #expect(applied["surface"] as? String == theme.surface)
+                #expect(source.hasSuffix(update))
             }
         }
     }

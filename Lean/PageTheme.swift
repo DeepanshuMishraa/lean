@@ -29,7 +29,7 @@ struct PageTheme: Equatable, Encodable {
         self.isDark = colors.isDark
         self.background = background
         self.surface = Self.separated(surface, from: background, minimum: 1.15)
-        self.raised = raised
+        self.raised = Self.separated(raised, from: background, minimum: 1.05)
         self.text = text
         self.textMuted = muted
         self.border = Self.separated(border, from: background, minimum: 1.5)
@@ -40,7 +40,7 @@ struct PageTheme: Equatable, Encodable {
         self.info = semantic.info
     }
 
-    private static func channels(_ hex: String) -> [Double]? {
+    static func channels(_ hex: String) -> [Double]? {
         guard hex.count == 7, hex.first == "#", let value = Int(hex.dropFirst(), radix: 16) else { return nil }
         return [Double(value >> 16 & 255), Double(value >> 8 & 255), Double(value & 255)]
     }
@@ -53,7 +53,7 @@ struct PageTheme: Equatable, Encodable {
         return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722
     }
 
-    private static func contrast(_ a: [Double], _ b: [Double]) -> Double {
+    static func contrast(_ a: [Double], _ b: [Double]) -> Double {
         let x = luminance(a), y = luminance(b)
         return (max(x, y) + 0.05) / (min(x, y) + 0.05)
     }

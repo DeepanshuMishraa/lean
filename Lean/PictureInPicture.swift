@@ -1412,7 +1412,7 @@ enum NativePiP {
         };
         // A window the page opened itself is ours to report on too.
         if (document.pictureInPictureElement) { watch(document.pictureInPictureElement); return true; }
-        if (!document.pictureInPictureEnabled) return false;
+        if (!document.pictureInPictureEnabled) return 'pictureInPictureEnabled is false';
         const live = v => typeof MediaStream !== 'undefined' && v.srcObject instanceof MediaStream;
         const eligible = v => !v.paused && !v.ended && v.readyState >= 2 && v.videoWidth > 0
             && !v.disablePictureInPicture
@@ -1420,11 +1420,14 @@ enum NativePiP {
         const area = v => { const r = v.getBoundingClientRect(); return r.width * r.height; };
         const video = [...document.querySelectorAll('video')].filter(eligible)
             .sort((a, b) => ((b.muted ? 0 : 1e9) + area(b)) - ((a.muted ? 0 : 1e9) + area(a)))[0];
-        if (!video) return false;
+        if (!video) {
+            const all = [...document.querySelectorAll('video')].map(v => `paused=${v.paused} ready=${v.readyState} w=${v.videoWidth} muted=${v.muted} vol=${v.volume} disablePiP=${v.disablePictureInPicture} live=${live(v)}`);
+            return 'no eligible video; strict=' + strict + '; videos=[' + all.join(' | ') + ']';
+        }
         try {
             await video.requestPictureInPicture();
         } catch (error) {
-            return false;
+            return 'requestPictureInPicture failed: ' + error.name + ' ' + error.message;
         }
         watch(video);
         return true;

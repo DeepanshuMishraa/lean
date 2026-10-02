@@ -11,6 +11,10 @@
     <array>
         <string>$(PRODUCT_BUNDLE_IDENTIFIER)-spks</string>
         <string>$(PRODUCT_BUNDLE_IDENTIFIER)-spki</string>
+        <!-- Native picture in picture: WebKit presents the system window through this service. Without the
+             lookup the sandbox refuses it, the page believes it is in picture-in-picture, and no window
+             ever appears. -->
+        <string>com.apple.PIPAgent</string>
     </array>
     <key>com.apple.security.temporary-exception.shared-preference.read-write</key>
     <array>

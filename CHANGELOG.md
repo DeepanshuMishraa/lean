@@ -19,7 +19,7 @@ update often — releases arrive through the built-in updater.
 
 ### Fixed
 
-- Opening a new tab or switching back to it while a video plays in picture in picture no longer leaves it blank
+- Native picture in picture opens its window in the released app (the sandbox was blocking the system service), and opening a new tab or switching back to it while a video plays no longer leaves it blank
 - Dialogs, pinned headers and light-on-dark buttons keep consistent colours when themed
 
 ## [0.1.9] - 2026-10-01

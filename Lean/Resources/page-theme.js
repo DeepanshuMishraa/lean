@@ -27,18 +27,22 @@
     let hoverTimer = 0;
     let veil = null;
     let veilTimer = 0;
+    let veilStart = 0, veilMs = -1, busyMs = 0, flushes = 0;
     let svgMedia = new WeakMap();
+    let refreshPending = false;
     // Rules are appended as elements are classified; past this many, rebuild from live records.
     let compactAt = 1000;
     const hovered = new Set();
     let dominantCanvas = null;
     let primaryText = null;
+    // Content this far outside the viewport is themed ahead of a scroll. Wider costs more work at load (measured: +40% engine time at 900).
+    const PRELOAD = 400;
     const visibility = new IntersectionObserver(entries => {
         if (!theme) return;
         // Observation fires once per element on registration; only promote nodes not yet classified.
         for (const entry of entries) if (entry.isIntersecting && !records.get(entry.target)?.source) enqueueTree(entry.target);
         schedule();
-    }, {rootMargin: '400px'});
+    }, {rootMargin: `${PRELOAD}px`});
 
     function parse(value) {
         if (typeof value !== 'string') return null;
@@ -155,12 +159,18 @@
         }
         return false;
     }
+    // getComputedStyle returns a live object, so one per element serves every later read.
+    const liveStyles = new WeakMap();
+    const NO_PSEUDO = Object.freeze({visible: false, pseudo: false});
     function fingerprint(el, pseudo = null, rect = el.getBoundingClientRect()) {
         const style = getComputedStyle(el, pseudo);
+        // Most elements have no ::before/::after content, and classification ignores such a pseudo, so read
+        // the one property that says so before reading a dozen more.
+        if (pseudo && (style.content === 'none' || style.content === 'normal')) return NO_PSEUDO;
         const role = el.getAttribute('role');
         // An inherited paint reads as the parent's themed value; recover the site's original instead.
         const parent = pseudo ? null : parentOf(el);
-        const parentStyle = parent ? getComputedStyle(parent) : null;
+        const parentStyle = parent ? (liveStyles.get(parent) || liveStyles.set(parent, getComputedStyle(parent)).get(parent)) : null;
         const paint = property => (parentStyle && style[property] === parentStyle[property]
             ? records.get(parent)?.source?.[property] : null) || parse(style[property]);
         const interactive =el.matches('button, a[href], input, select, textarea, summary, [role="button"], [role="link"], [role="tab"]')
@@ -534,7 +544,7 @@
                 if (change.type === 'attributes' && change.attributeName === 'style'
                     && records.get(change.target)?.ownStyle === change.target.getAttribute('style')) continue;
                 if (change.type === 'childList') {
-                    change.addedNodes.forEach(node => { if (node.nodeType === Node.ELEMENT_NODE && node !== style) enqueueTree(node); });
+                    change.addedNodes.forEach(node => { if (node.nodeType === Node.ELEMENT_NODE && node !== style) enqueueTree(node) });
                     change.removedNodes.forEach(node => {
                         if (node.nodeType !== Node.ELEMENT_NODE || node.isConnected) return;
                         forget(node);
@@ -542,12 +552,10 @@
                 }
                 if (change.target.nodeType === Node.ELEMENT_NODE
                     && (change.target.matches('style, link') || change.target.closest('style'))) {
-                    discoverVariables(root);
-                    refresh();
+                    styleChanged(root);
                 }
                 if (change.type === 'childList' && [...change.addedNodes].some(node => node.nodeType === Node.ELEMENT_NODE && node.matches('style, link'))) {
-                    discoverVariables(root);
-                    refresh();
+                    styleChanged(root);
                 }
                 // Descriptions, tooltips, image sources and most data-* do not restyle anything; skip the reread (and the sheet pause it forces).
                 if (change.type === 'attributes' && /^(aria-describedby|title|alt|src|data-(?!theme|state|active|selected))/.test(change.attributeName)) continue;
@@ -577,6 +585,10 @@
     }
     function flush(budget = 12) {
         frame = 0;
+        const flushStart = performance.now();
+        try { flushBody(budget); } finally { busyMs += performance.now() - flushStart; flushes++; }
+    }
+    function flushBody(budget) {
         // Pausing our sheets restyles the whole page, so never do it with nothing to read.
         if (!theme || (!dirty.size && !scanning.length)) return;
         // Each element is restored before it is read, so we never classify our own output.
@@ -625,7 +637,7 @@
                 }
                 const rect = el.getBoundingClientRect();
                 // Classify the viewport first; native visibility events promote deferred graph nodes.
-                if (rect.bottom < -400 || rect.top > innerHeight + 400) {
+                if (rect.bottom < -PRELOAD || rect.top > innerHeight + PRELOAD) {
                     // Changed while offscreen: drop the stale classification so scrolling it into view rereads it.
                     if (record.source) { unregisterColors(record); restore(record); record.source = null; }
                     continue;
@@ -703,6 +715,10 @@
         // Rules only grow between theme changes; unused ones are harmless, so append instead of rebuilding.
         if (fullUpdate) updateStyles();
         else if (rules.size !== rulesBefore) appendRules();
+        if (refreshPending && !scanning.length) { refreshPending = false; refresh(); }
+        // New content is themed in the observer callback, before it paints, so the cover is only needed until
+        // the first elements are classified.
+        if (batch.length && document.body) lowerVeil();
         if (dirty.size || scanning.length) schedule();
         else if (document.readyState !== 'loading') lowerVeil();
     }
@@ -730,8 +746,24 @@
             schedule();
         }, 150);
     }
+    // Pages add stylesheets in bursts (hundreds of <style>/<link> on some sites). Every one used to
+    // rediscover variables and reread the whole document; now a burst costs one pass.
+    const staleRoots = new Set();
+    let styleTimer = 0;
+    function styleChanged(root) {
+        staleRoots.add(root);
+        if (styleTimer) return;
+        styleTimer = setTimeout(() => {
+            styleTimer = 0;
+            for (const stale of staleRoots) if (scopes.has(stale)) discoverVariables(stale);
+            staleRoots.clear();
+            refresh();
+        }, 400);
+    }
     function refresh() {
-        if (!theme || scanning.length) return;
+        if (!theme) return;
+        // A pass is already walking the page; run another when it ends rather than dropping this one.
+        if (scanning.length) { refreshPending = true; return; }
         for (const root of scopes.keys()) {
             discoverVariables(root);
             // A shadow root's styles changed too: its content needs rereading, not just the document's.
@@ -763,11 +795,13 @@
         // the flash. Opacity, not visibility, because visibility is inherited and would blind the scan.
         veil.replaceSync(`html{background-color:${css(parse(theme.background))} !important;}html>body{opacity:0 !important;}`);
         document.adoptedStyleSheets = [...document.adoptedStyleSheets, veil];
-        veilTimer = setTimeout(lowerVeil, 1500);
+        veilStart = performance.now();
+        veilTimer = setTimeout(lowerVeil, 800);
     }
     function lowerVeil() {
         clearTimeout(veilTimer);
         if (!veil) return;
+        veilMs = Math.round(performance.now() - veilStart);
         document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== veil);
         veil = null;
     }
@@ -776,6 +810,7 @@
         clearTimeout(frame); frame = 0;
         clearInterval(scanTimer); scanTimer = 0;
         clearTimeout(hoverTimer); hovered.clear();
+        clearTimeout(styleTimer); styleTimer = 0; staleRoots.clear();
         scanning = []; dirty.clear(); visibility.disconnect();
         for (const scope of scopes.values()) scope.observer.disconnect();
         for (const record of records.values()) restore(record);
@@ -857,7 +892,7 @@
         apply,
         frame: frameToken,
         // Diagnostics contain role counts and colors, never page text or URLs.
-        inspect: () => ({generation, pending: dirty.size + scanning.length, nodes: records.size,
+        inspect: () => ({generation, pending: dirty.size + scanning.length, nodes: records.size, veilMs, busyMs: Math.round(busyMs), flushes,
             roles: [...records.values()].reduce((counts, record) => {
                 counts[record.role] = (counts[record.role] || 0) + 1; return counts;
             }, {}), palette: [...palette.keys()]})

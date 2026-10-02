@@ -23,7 +23,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     @Published private(set) var title = "New Tab"
     @Published private(set) var url: URL?
-    @Published private(set) var isLoading = false
+    @Published private(set) var isLoading = false {
+        didSet {
+            // Transparent only while loading (see syncPageBackground).
+            if oldValue != isLoading, let webView = storedWebView { syncPageBackground(webView) }
+        }
+    }
     @Published private(set) var loadingProgress: Double = 0
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
@@ -478,7 +483,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         if #available(macOS 12.0, *) {
             webView.underPageBackgroundColor = themed ? pageBackgroundColor : (isDark ? NSColor.black : NSColor.white)
         }
-        webView.setValue(!themed, forKey: "drawsBackground")
+        // A transparent web view is only worth having until the page paints. Kept after that it makes
+        // WebKit blend the whole page with what is behind it on every frame, which costs scrolling and
+        // can mis-render; the engine paints the page's own themed background from then on.
+        webView.setValue(!(themed && isLoading), forKey: "drawsBackground")
     }
 
     /// http(s) pages the engine runs on, minus PDFs (by extension), which draw their own paper.
@@ -1768,9 +1776,8 @@ extension LeanTab: WKNavigationDelegate {
         // waste (removeAll+re-add x12 + live JS eval, per navigation).
         // isLoading stays true until didFinish/didFail: ending it here showed
         // a settled tab while the page was still loading.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            self?.captureSnapshot()
-        }
+        // No snapshot here: a quarter second into a load there is nothing worth keeping, and reading the
+        // page back to an image then competes with the load for the main thread. didFinish takes it.
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {

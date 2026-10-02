@@ -10,6 +10,10 @@ import WebKit
 final class LeanWebView: WKWebView {
     var contextMenuHook: ((NSMenu) -> Void)?
 
+    /// Parked in an invisible window while the system picture-in-picture window plays its video. The
+    /// stage must not take the page back: out of every window, that window closes and the video pauses.
+    var isParkedForPictureInPicture = false
+
     /// Where the last right-click landed, in page (CSS) coordinates, so an
     /// action chosen from the menu can ask the page what was under the cursor.
     private(set) var lastContextPoint: CGPoint = .zero

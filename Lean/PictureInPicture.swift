@@ -1447,10 +1447,13 @@ enum NativePiP {
 final class NativePiPHost {
     private var window: NSWindow?
     private var holds = 0
+    private weak var parked: LeanWebView?
     private let container = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: 400))
 
     func hold(_ page: NSView) {
         holds += 1
+        (page as? LeanWebView)?.isParkedForPictureInPicture = true
+        parked = page as? LeanWebView
         if window == nil {
             let host = NSWindow(contentRect: NSRect(x: -20000, y: -20000, width: 640, height: 400),
                                 styleMask: [.borderless], backing: .buffered, defer: false)
@@ -1472,6 +1475,9 @@ final class NativePiPHost {
     /// The tab was returned to, or the window went away. The stage pulls the page back if it wants it;
     /// whatever is still parked after a moment is let go with the window.
     func release() {
+        // At once: the stage may take the page back from this moment.
+        parked?.isParkedForPictureInPicture = false
+        parked = nil
         let generation = holds
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             // A newer hold (another tab left meanwhile) owns the window now.

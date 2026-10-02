@@ -39,8 +39,11 @@
     const PRELOAD = 400;
     const visibility = new IntersectionObserver(entries => {
         if (!theme) return;
-        // Observation fires once per element on registration; only promote nodes not yet classified.
-        for (const entry of entries) if (entry.isIntersecting && !records.get(entry.target)?.source) enqueueTree(entry.target);
+        // Observation fires once per element on registration; only promote nodes not yet classified or marked stale.
+        for (const entry of entries) {
+            const record = records.get(entry.target);
+            if (entry.isIntersecting && (!record?.source || record.stale)) enqueueTree(entry.target);
+        }
         schedule();
     }, {rootMargin: `${PRELOAD}px`});
 
@@ -339,6 +342,16 @@
             }
             assign(record, 'background-color', {role: backgroundRole, alpha: isRoot ? 1 : bg?.[3] ?? 1}, pseudo);
         }
+        // On an inverted (light-on-dark) surface? An element with a background of its own is judged by that
+        // alone: a cream button inside a dark link block is a surface again, not part of the inversion.
+        let inverted = false;
+        if (backgroundRole && confidence >= 0.85) inverted = backgroundRole === 'text';
+        else {
+            for (let ancestor = parent; ancestor; ancestor = parentOf(ancestor)) {
+                const inherited = records.get(ancestor)?.background;
+                if (inherited) { inverted = inherited.role === 'text'; break; }
+            }
+        }
         const effective = backdrop(el);
         const on = css(effective).replace(/[^\w.-]/g, '-');
         const minimum = source.large ? 3 : 4.5;
@@ -347,13 +360,6 @@
         if (color && color[3] > 0 && (source.text || source.interactive || source.heading || source.icon || isRoot)) {
             let foreground = null;
             // Only links the site itself colored are accent; neutral link text (titles, nav) is body text.
-            let inverted = backgroundRole === 'text';
-            if (!inverted) {
-                for (let ancestor = parent; ancestor; ancestor = parentOf(ancestor)) {
-                    const inherited = records.get(ancestor)?.background;
-                    if (inherited) { inverted = inherited.role === 'text'; break; }
-                }
-            }
             if (inverted && neutral(color)) foreground = 'canvas';
             else if (source.heading || isRoot || el.closest('h1, h2, h3, h4, h5, h6, [role="heading"]')) foreground = 'text';
             else if (!neutral(color) && el.closest('a[href], [role="link"]')) foreground = 'accent';
@@ -392,7 +398,7 @@
         if (source.icon) {
             for (const property of ['fill', 'stroke']) {
                 const c = source[property];
-                if (c && c[3] > 0 && neutral(c)) assign(record, property, {role: 'text', alpha: c[3], on, backdrop: effective, minimum: 3}, pseudo);
+                if (c && c[3] > 0 && neutral(c)) assign(record, property, {role: inverted ? 'canvas' : 'text', alpha: c[3], on, backdrop: effective, minimum: 3}, pseudo);
             }
         }
     }
@@ -640,8 +646,9 @@
                 const rect = el.getBoundingClientRect();
                 // Classify the viewport first; native visibility events promote deferred graph nodes.
                 if (rect.bottom < -PRELOAD || rect.top > innerHeight + PRELOAD) {
-                    // Changed while offscreen: drop the stale classification so scrolling it into view rereads it.
-                    if (record.source) { unregisterColors(record); restore(record); record.source = null; }
+                    // Changed while offscreen: keep what it wears (taking it off made elements near the edge flip
+                    // between themed and not on every reread) and mark it, so scrolling it into view rereads it.
+                    if (record.source) record.stale = true;
                     continue;
                 }
                 // The media verdict is stable; recomputing it reads every SVG child's style.
@@ -665,6 +672,7 @@
                 const pseudos = ['::before', '::after'].map(p => fingerprint(el, p, rect));
                 unregisterColors(record);
                 record.source = source;
+                record.stale = false;
                 record.pseudos = pseudos;
                 record.weight = source.viewportArea;
                 if (el === document.documentElement || el.shadowRoot) {

@@ -732,8 +732,8 @@ private struct GeneralSection: View {
 
                 SettingsGroup(isDark: store.isDarkMode) {
                     CustomToggleRow(
-                        title: "Peek at a link with a shift-click",
-                        subtitle: "Opens the link in a panel over the page instead of following it. Escape, ⌘W or a click beside it puts it away; keeping it makes it a tab.",
+                        title: "Peek at links in a panel",
+                        subtitle: "A shift-click, or a click on a link that opens in a new tab, opens the link in a panel over the page instead of following it. Escape, ⌘W or a click beside it puts it away; keeping it makes it a tab.",
                         isOn: $store.peeksLinks,
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont

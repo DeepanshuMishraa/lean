@@ -2274,6 +2274,16 @@ extension LeanTab: WKUIDelegate {
             onOpenURLInNewTab?(url, navigationAction.modifierFlags.contains(.shift))
             return nil
         }
+        // A plain click on a link that asks for a new tab (target="_blank"), when Settings says to peek: a peek
+        // over this page, like a shift-click. Scripts (window.open, sign-in popups) are not links and keep their
+        // own window.
+        if peeksLinks, !isPeekTab,
+           navigationAction.navigationType == .linkActivated,
+           navigationAction.modifierFlags.intersection([.shift, .command, .option, .control]).isEmpty,
+           let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
+            onPeekLink?(url)
+            return nil
+        }
         return onOpenNewTab?(url, configuration)
     }
 

@@ -4,6 +4,22 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.11] - 2026-10-02
+
+### Added
+
+- Peeks have a split-view button (⌘⌥⏎) that opens the peeked page beside the tab it came from
+- Split-view highlights follow the colour theme's accent
+
+### Changed
+
+- Peeks use a floating column of close, expand and split buttons beside the card instead of a header bar
+- Tabs reserve room for the close button, so hovering no longer shifts their contents
+
+### Fixed
+
+- Closing the native picture in picture window with its X leaves the video playing instead of pausing it
+
 ## [0.1.10] - 2026-10-02
 
 ### Added

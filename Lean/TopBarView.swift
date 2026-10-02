@@ -353,9 +353,10 @@ private struct TopBarTabItem: View {
         isSelected && (store.isInlineURLEditing || isFieldFocused)
     }
 
-    /// Trailing room a hovered tab opens up for the close button: its 18pt
-    /// circle, 6pt from the edge, and a small gap after the title.
-    private static let closeRoom: CGFloat = 30
+    /// Trailing room reserved for the close button: 18pt circle, 6pt from
+    /// the edge, and an 8pt gap after the title so hovering never causes
+    /// a positional shift while providing comfortable breathing room.
+    private static let closeRoom: CGFloat = 32
 
     private var shouldShowClose: Bool {
         isHovered && !showURLBar
@@ -389,8 +390,6 @@ private struct TopBarTabItem: View {
                         .transition(.opacity)
                 }
             }
-            // The tab opens up for the close button; it eases open and shut.
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: shouldShowClose)
             .frame(
                 minWidth: showURLBar ? store.scaled(260) : (tab.isSplit ? (store.tabDisplayMode == .iconOnly ? nil : store.scaled(CGFloat(90 * tab.splitTabs.count))) : nil),
                 idealWidth: showURLBar ? store.scaled(320) : (tab.isSplit ? (store.tabDisplayMode == .iconOnly ? nil : store.scaled(CGFloat(130 * tab.splitTabs.count))) : nil),
@@ -461,7 +460,6 @@ private struct TopBarTabItem: View {
                     .transition(closeTransition)
             }
         }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: shouldShowClose)
         .overlay(alignment: .topTrailing) {
             // Sleek floating micro badge for iconOnly mode — never blocks tab selection
             if shouldShowClose && store.tabDisplayMode == .iconOnly {
@@ -620,7 +618,7 @@ private struct TopBarTabItem: View {
                         .padding(.vertical, 3)
                         .background(
                             isSubActive && isSelected
-                                ? store.adaptiveTheme.activeTabStroke.opacity(0.14)
+                                ? store.adaptiveTheme.splitHighlightColor.opacity(0.18)
                                 : Color.clear,
                             in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                         )
@@ -641,7 +639,7 @@ private struct TopBarTabItem: View {
                 }
             }
             .padding(.leading, 6)
-            .padding(.trailing, shouldShowClose ? Self.closeRoom : 6)
+            .padding(.trailing, 28)
 
         case .iconOnly:
             HStack(spacing: 4) {
@@ -655,7 +653,7 @@ private struct TopBarTabItem: View {
                             .padding(2)
                             .background(
                                 isSubActive && isSelected
-                                    ? store.adaptiveTheme.activeTabStroke.opacity(0.18)
+                                    ? store.adaptiveTheme.splitHighlightColor.opacity(0.22)
                                     : Color.clear,
                                 in: RoundedRectangle(cornerRadius: 3.5, style: .continuous)
                             )
@@ -697,8 +695,8 @@ private struct TopBarTabItem: View {
                     TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: false)
                 }
             }
-            .padding(.leading, 8)
-            .padding(.trailing, shouldShowClose ? Self.closeRoom : 8)
+            .padding(.leading, 10)
+            .padding(.trailing, 28)
         }
     }
 
@@ -732,8 +730,7 @@ private struct TopBarTabItem: View {
             }
         }
         .animation(.spring(response: 0.30, dampingFraction: 0.84), value: tab.isLoading)
-        .padding(.leading, 10)
-        .padding(.trailing, shouldShowClose ? Self.closeRoom : 10)
+        .padding(.horizontal, store.scaled(Self.closeRoom))
     }
 
     @ViewBuilder
@@ -803,20 +800,12 @@ private struct TopBarTabItem: View {
             }
         }
         .padding(.leading, 10)
-        .padding(.trailing, shouldShowClose ? Self.closeRoom : 10)
+        .padding(.trailing, Self.closeRoom)
     }
 
-    /// In: waits a beat for the tab to open, then fades and settles from a
-    /// slight scale (never from zero). Out: faster than in, a plain fade,
-    /// so sweeping across tabs never leaves a trail of buttons.
+    /// Simple opacity fade without layout repositioning.
     private var closeTransition: AnyTransition {
-        if reduceMotion { return .opacity }
-        return .asymmetric(
-            insertion: .opacity
-                .combined(with: .scale(scale: 0.8))
-                .animation(.easeOut(duration: 0.14).delay(0.05)),
-            removal: .opacity.animation(.easeOut(duration: 0.08))
-        )
+        .opacity
     }
 
     private var closeButton: some View {

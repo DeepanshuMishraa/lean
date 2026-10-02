@@ -280,6 +280,10 @@ struct ThemeColors {
     }
 
     var accent: Color? { palette?.accent }
+
+    var accentColor: Color {
+        palette?.accent ?? (isDark ? Color(red: 0.35, green: 0.60, blue: 1.0) : Color(red: 0.15, green: 0.45, blue: 0.95))
+    }
 }
 
 extension Color {
@@ -577,6 +581,15 @@ struct AdaptiveFrameTheme {
             return isFrameLight ? Color.black.opacity(0.35) : Color.white.opacity(0.40)
         }
         return isBaseDark ? Color.white.opacity(0.45) : Color.black.opacity(0.35)
+    }
+
+    /// Focus highlight color for active split view panes and split tab indicators,
+    /// derived from the browser color theme's accent color.
+    var splitHighlightColor: Color {
+        if let accent = baseThemeColors.accent {
+            return accent
+        }
+        return effectiveIsDark ? Color(red: 0.35, green: 0.60, blue: 1.0) : Color(red: 0.15, green: 0.45, blue: 0.95)
     }
 }
 

@@ -837,7 +837,11 @@ struct LeanView: View {
                     return nil
                 }
                 if event.keyCode == 36 && event.modifierFlags.contains(.command) {
-                    store.keepPeek()
+                    if event.modifierFlags.contains(.option) {
+                        store.splitPeek()
+                    } else {
+                        store.keepPeek()
+                    }
                     return nil
                 }
             }
@@ -1652,14 +1656,14 @@ private struct SplitPaneView: View {
             RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
                 .stroke(
                     isFocused
-                        ? Color(red: 0.18, green: 0.80, blue: 0.44)
+                        ? store.adaptiveTheme.splitHighlightColor
                         : store.adaptiveTheme.webCardStroke.opacity(0.4),
                     lineWidth: isFocused ? 1.5 : 1
                 )
         )
         .shadow(
             color: isFocused
-                ? Color(red: 0.18, green: 0.80, blue: 0.44).opacity(store.isDarkMode ? 0.25 : 0.15)
+                ? store.adaptiveTheme.splitHighlightColor.opacity(store.isDarkMode ? 0.30 : 0.18)
                 : store.adaptiveTheme.webCardShadow,
             radius: isFocused ? 6 : store.adaptiveTheme.webCardShadowRadius,
             x: 0,

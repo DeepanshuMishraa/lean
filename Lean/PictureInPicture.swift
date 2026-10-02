@@ -1417,14 +1417,19 @@ enum NativePiP {
         const watch = video => {
             if (watched.has(video)) return;
             watched.add(video);
+            globalThis.leanPipVideo = video;
+            video.addEventListener('pause', () => { video.leanPipPausedAt = performance.now(); });
             video.addEventListener('leavepictureinpicture', () => {
                 watched.delete(video);
                 // The session is read now: a newer claim may begin before the settled report goes out.
                 const session = globalThis.leanPipSession;
-                // The close button pauses the video a moment after this event, and "back to tab" does not, so the
-                // state is read once, after that moment, and sent once.
+                // The close button pauses the video, just before or just after this event, and "back to tab" does
+                // not. A pause within a moment of the window going is the window's doing, not a pause the viewer
+                // chose, so it is reported as `closed` and the browser starts the video again.
                 setTimeout(() => {
-                    try { window.webkit.messageHandlers.\(leftMessageName).postMessage({session, playing: !video.paused}); } catch (error) {}
+                    const playing = !video.paused;
+                    const closed = !playing && performance.now() - (video.leanPipPausedAt || 0) < 750;
+                    try { window.webkit.messageHandlers.\(leftMessageName).postMessage({session, playing, closed}); } catch (error) {}
                 }, 250);
             }, {once: true});
         };
@@ -1450,6 +1455,13 @@ enum NativePiP {
         """ : "return '\(ok)';")
         """
     }
+
+    /// Starts the video that was in the window again, after the window's close button paused it.
+    static let resume = """
+    const video = globalThis.leanPipVideo;
+    if (video && video.paused && !video.ended) { try { await video.play(); } catch (error) {} }
+    return true;
+    """
 
     static let exit = """
     if (document.pictureInPictureElement) { try { await document.exitPictureInPicture(); } catch (error) {} }

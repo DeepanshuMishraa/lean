@@ -831,7 +831,7 @@ struct SidebarTabItem: View {
                         .padding(.vertical, 3)
                         .background(
                             isSubActive && isSelected
-                                ? store.adaptiveTheme.activeTabStroke.opacity(0.14)
+                                ? store.adaptiveTheme.splitHighlightColor.opacity(0.18)
                                 : Color.clear,
                             in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                         )
@@ -867,7 +867,7 @@ struct SidebarTabItem: View {
                             .padding(2)
                             .background(
                                 isSubActive && isSelected
-                                    ? store.adaptiveTheme.activeTabStroke.opacity(0.18)
+                                    ? store.adaptiveTheme.splitHighlightColor.opacity(0.22)
                                     : Color.clear,
                                 in: RoundedRectangle(cornerRadius: 3.5, style: .continuous)
                             )

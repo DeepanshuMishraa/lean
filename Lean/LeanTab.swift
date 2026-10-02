@@ -128,8 +128,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     var onStateChange: (() -> Void)?
     var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
     var onCloseTab: (() -> Void)?
-    /// The system picture-in-picture window for this page went away; true if the video is still playing.
-    var onNativePictureInPictureLeft: ((_ session: String, _ stillPlaying: Bool) -> Void)?
+    /// The system picture-in-picture window for this page went away; `stillPlaying` is whether the video is
+    /// still playing, `closed` whether the window's own close button paused it.
+    var onNativePictureInPictureLeft: ((_ session: String, _ stillPlaying: Bool, _ closed: Bool) -> Void)?
     var onOpenURLInNewTab: ((URL, Bool) -> Void)?
     var onOpenSourceTab: ((String, String?) -> LeanTab?)?
     /// Shift-clicked link, for a peek over the page. Set by the store.
@@ -475,6 +476,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
                 completion(false)
             }
         }
+    }
+
+    /// Starts the video again after the system window's close button paused it.
+    func resumeAfterNativePictureInPictureClosed() {
+        storedWebView?.callAsyncJavaScript(NativePiP.resume, arguments: [:], in: nil, in: LeanWeb.world) { _ in }
     }
 
     func exitNativePictureInPicture(completion: (@MainActor () -> Void)? = nil) {
@@ -1565,7 +1571,11 @@ extension LeanTab: WKScriptMessageHandler {
         if message.name == NativePiP.leftMessageName {
             guard message.webView === storedWebView else { return }
             if let report = message.body as? [String: Any], let session = report["session"] as? String {
-                onNativePictureInPictureLeft?(session, (report["playing"] as? Bool) ?? false)
+                onNativePictureInPictureLeft?(
+                    session,
+                    (report["playing"] as? Bool) ?? false,
+                    (report["closed"] as? Bool) ?? false
+                )
             }
             return
         }

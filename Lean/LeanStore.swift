@@ -386,6 +386,8 @@ final class LeanStore: ObservableObject {
     /// A link's page, peeked at over this one (see PeekPanel). Off unless
     /// asked for, in Settings › General.
     @Published var peekTab: LeanTab?
+    /// ID of the tab from which the current peek view was opened.
+    @Published var peekSourceTabID: UUID?
 
     /// Leaving a tab with a video or a call hands it to the system picture-in-picture window,
     /// falling back to Lean's own lifted page when the page has nothing to hand over.
@@ -1131,11 +1133,14 @@ final class LeanStore: ObservableObject {
     }
 
     /// The system window closed. "Back to tab" leaves the video playing and takes you to it; the close
-    /// button pauses it and does nothing more.
-    private func nativePictureInPictureEnded(for tab: LeanTab, session: String, stillPlaying: Bool) {
+    /// button pauses it in the system window, and the browser starts it again; nothing more happens here.
+    private func nativePictureInPictureEnded(for tab: LeanTab, session: String, stillPlaying: Bool, closed: Bool) {
         // A report from an earlier claim (the video went back into the window within its settling time) is stale.
         guard nativePictureInPictureTabID == tab.id, nativePictureInPictureSession == session else { return }
         nativePictureInPictureTabID = nil
+        // Only the window closes: the video keeps playing where it is. The claim above is still this tab's,
+        // so a tab that was closed itself (which clears it) is never started again.
+        if closed { tab.resumeAfterNativePictureInPictureClosed() }
         guard stillPlaying, selectedID != tab.id else {
             // Closed in the background: the tab's auto-sleep was held off while the window was up and its
             // one-shot timer has long fired, so start it again.
@@ -1944,9 +1949,9 @@ final class LeanStore: ObservableObject {
         }
         tab.downloadManager = downloadManager
         tab.mediaPermissionStore = mediaPermissionStore
-        tab.onNativePictureInPictureLeft = { [weak self, weak tab] session, stillPlaying in
+        tab.onNativePictureInPictureLeft = { [weak self, weak tab] session, stillPlaying, closed in
             guard let self, let tab else { return }
-            self.nativePictureInPictureEnded(for: tab, session: session, stillPlaying: stillPlaying)
+            self.nativePictureInPictureEnded(for: tab, session: session, stillPlaying: stillPlaying, closed: closed)
         }
         tab.peeksLinks = peeksLinks
         tab.onPeekLink = { [weak self, weak tab] url in
@@ -2189,6 +2194,7 @@ final class LeanStore: ObservableObject {
     /// this one, which stays where it was underneath. One at a time.
     func peek(_ url: URL, from tab: LeanTab) {
         guard peekTab == nil, tabs.contains(where: { $0.id == tab.id }) else { return }
+        peekSourceTabID = tab.id
         let page = createTab(url: url)
         page.isPeekTab = true
         page.peeksLinks = false
@@ -2198,6 +2204,7 @@ final class LeanStore: ObservableObject {
     /// Put away: the page goes with the panel.
     func closePeek() {
         guard let page = peekTab else { return }
+        peekSourceTabID = nil
         withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) { peekTab = nil }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             page.destroy()
@@ -2208,7 +2215,9 @@ final class LeanStore: ObservableObject {
     /// as it is, nothing loaded twice.
     func keepPeek() {
         guard let page = peekTab else { return }
-        let here = tabs.firstIndex { $0.id == selectedID }
+        let sourceID = peekSourceTabID ?? selectedID
+        peekSourceTabID = nil
+        let here = tabs.firstIndex { $0.id == sourceID }
         withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) { peekTab = nil }
         page.isPeekTab = false
         page.peeksLinks = peeksLinks
@@ -2216,6 +2225,43 @@ final class LeanStore: ObservableObject {
         selectedID = page.id
         saveSession()
         scheduleAutoSleep()
+    }
+
+    /// Creates split view with that tab and the tab from which it is called.
+    func splitPeek() {
+        guard let page = peekTab else { return }
+        let sourceID = peekSourceTabID ?? selectedID
+        peekSourceTabID = nil
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) { peekTab = nil }
+        page.isPeekTab = false
+        page.peeksLinks = peeksLinks
+
+        guard let sourceTab = tabs.first(where: { $0.id == sourceID }) else {
+            insert(page, at: tabs.count)
+            selectedID = page.id
+            saveSession()
+            scheduleAutoSleep()
+            return
+        }
+
+        if sourceTab.isSplit {
+            if sourceTab.splitTabs.count < 4 {
+                sourceTab.splitTabs.append(page)
+                sourceTab.activeSplitIndex = sourceTab.splitTabs.count - 1
+            } else {
+                let here = tabs.firstIndex { $0.id == sourceTab.id }
+                insert(page, at: here.map { $0 + 1 } ?? tabs.count)
+                selectedID = page.id
+            }
+        } else {
+            sourceTab.splitTabs = [sourceTab, page]
+            sourceTab.splitWidthRatios = []
+            sourceTab.activeSplitIndex = 1
+        }
+        select(tab: sourceTab)
+        saveSession()
+        scheduleAutoSleep()
+        objectWillChange.send()
     }
 
     /// A tab made outside the row — a peek being kept — put in it at `index`.

@@ -16,7 +16,8 @@ struct PageErrorView: View {
     @State private var appeared = false
 
     private var pageBackground: Color {
-        store.adaptiveTheme.activeTabBackground
+        // The same canvas themed pages get, so an error page is the same shade as the pages around it.
+        store.themesWebPages ? store.themeColors.windowBackground : store.adaptiveTheme.activeTabBackground
     }
 
     private var iconTint: Color {

@@ -1112,7 +1112,19 @@ final class LeanStore: ObservableObject {
     }
 
     private func liftPictureInPicture(for tab: LeanTab) {
-        guard !pictureInPicture.showing, !tab.isSleeping else { return }
+        guard !pictureInPicture.showing, !tab.isSleeping, nativePictureInPictureTabID != tab.id else { return }
+        // A video already in the system window cannot be lifted: the lifted page would show its empty
+        // "playing in picture in picture" placeholder, and the two windows would fight over one video.
+        tab.webView.evaluateJavaScript("!!document.pictureInPictureElement") { [weak self, weak tab] inSystemWindow, _ in
+            DispatchQueue.main.async {
+                guard let self, let tab, (inSystemWindow as? Bool) != true else { return }
+                self.liftPage(of: tab)
+            }
+        }
+    }
+
+    private func liftPage(of tab: LeanTab) {
+        guard !pictureInPicture.showing, !tab.isSleeping, nativePictureInPictureTabID != tab.id else { return }
         // Automatic float only from places people go to watch: anywhere
         // else a technically-playing video is as likely a muted hero loop
         // or ad as a film, and lifting it yields a blank little window

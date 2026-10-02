@@ -4,6 +4,24 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.10] - 2026-10-02
+
+### Added
+
+- Web pages take the colour theme through a new engine that maps each page's surfaces, text, borders, accents, dialogs and buttons to the theme, replacing Dark Reader; error pages use the same shade as the pages around them
+- Native picture in picture: leaving a tab with a playing video or a call moves it to the macOS mini player (resize, mute, skip, back to tab), and the expand button takes you to the tab. Turn it off in Settings › General
+- With peeking on, a click on a link that opens in a new tab opens as a peek over the page, like a shift-click
+
+### Changed
+
+- Pages load and scroll with less theming overhead, and the page background is themed from the first frame instead of flashing the site's own colours
+- Cards and dialogs on the system dark theme are darker, and borders are kept visible on every theme
+
+### Fixed
+
+- Opening a new tab or switching back to it while a video plays in picture in picture no longer leaves it blank
+- Dialogs, pinned headers and light-on-dark buttons keep consistent colours when themed
+
 ## [0.1.9] - 2026-10-01
 
 ### Added

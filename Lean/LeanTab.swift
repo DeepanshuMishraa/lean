@@ -129,7 +129,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
     var onCloseTab: (() -> Void)?
     /// The system picture-in-picture window for this page went away; true if the video is still playing.
-    var onNativePictureInPictureLeft: ((Bool) -> Void)?
+    var onNativePictureInPictureLeft: ((_ session: String, _ stillPlaying: Bool) -> Void)?
     var onOpenURLInNewTab: ((URL, Bool) -> Void)?
     var onOpenSourceTab: ((String, String?) -> LeanTab?)?
     /// Shift-clicked link, for a peek over the page. Set by the store.
@@ -455,8 +455,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     /// Asks the page to hand its best video to the system picture-in-picture window.
     /// Answers whether one went; false (no video, or the page refused) means nothing changed.
-    func enterNativePictureInPicture(strict: Bool, completion: @escaping (Bool) -> Void) {
-        runNativePictureInPicture(NativePiP.enter(strict: strict), completion: completion)
+    func enterNativePictureInPicture(strict: Bool, session: String, completion: @escaping (Bool) -> Void) {
+        runNativePictureInPicture(NativePiP.enter(strict: strict, session: session), completion: completion)
     }
 
     /// Whether the page has a video the system window could take, without opening it.
@@ -1564,7 +1564,9 @@ extension LeanTab: WKScriptMessageHandler {
     ) {
         if message.name == NativePiP.leftMessageName {
             guard message.webView === storedWebView else { return }
-            onNativePictureInPictureLeft?((message.body as? Bool) ?? false)
+            if let report = message.body as? [String: Any], let session = report["session"] as? String {
+                onNativePictureInPictureLeft?(session, (report["playing"] as? Bool) ?? false)
+            }
             return
         }
         if message.name == PageScripts.themeFrameMessageName {

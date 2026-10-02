@@ -1400,15 +1400,18 @@ enum NativePiP {
     ///
     /// On the sites people go to watch, any playing video will do. Elsewhere a playing video is as
     /// likely a muted hero loop, so only one with sound, or a live stream (a call), qualifies.
-    static func enter(strict: Bool) -> String { script(strict: strict, request: true) }
+    /// `session` names this claim: the window's closing is reported with the session that was current when it
+    /// closed, so a report that arrives after a newer claim began is recognised as stale and ignored.
+    static func enter(strict: Bool, session: String) -> String { script(strict: strict, request: true, session: session) }
 
     /// The same check without opening anything: `ok` if there is a video `enter` would hand over. Cheap
     /// enough to ask before a tab's page is moved, so a page with nothing to hand over is left alone.
-    static func probe(strict: Bool) -> String { script(strict: strict, request: false) }
+    static func probe(strict: Bool) -> String { script(strict: strict, request: false, session: "") }
 
-    private static func script(strict: Bool, request: Bool) -> String {
+    private static func script(strict: Bool, request: Bool, session: String) -> String {
         """
         const strict = \(strict ? "true" : "false");
+        \(request ? "globalThis.leanPipSession = '\(session)';" : "")
         // One listener per video, however many times this runs (globals persist in Lean's world).
         const watched = globalThis.leanPipWatched || (globalThis.leanPipWatched = new WeakSet());
         const watch = video => {
@@ -1416,13 +1419,13 @@ enum NativePiP {
             watched.add(video);
             video.addEventListener('leavepictureinpicture', () => {
                 watched.delete(video);
-                const report = () => {
-                    try { window.webkit.messageHandlers.\(leftMessageName).postMessage(!video.paused); } catch (error) {}
-                };
-                // Still playing at this instant is "back to tab": say so at once. The close button pauses the
-                // video a moment after the event, so a paused video is only believed after that moment.
-                if (!video.paused) report();
-                setTimeout(report, 450);
+                // The session is read now: a newer claim may begin before the settled report goes out.
+                const session = globalThis.leanPipSession;
+                // The close button pauses the video a moment after this event, and "back to tab" does not, so the
+                // state is read once, after that moment, and sent once.
+                setTimeout(() => {
+                    try { window.webkit.messageHandlers.\(leftMessageName).postMessage({session, playing: !video.paused}); } catch (error) {}
+                }, 250);
             }, {once: true});
         };
         // A window the page opened itself is ours to report on too.

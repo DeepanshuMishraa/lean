@@ -571,6 +571,8 @@ final class LeanStore: ObservableObject {
     private var pipGeneration = 0
     private var pipUserPaused = false
     /// The tab whose video is in the system picture-in-picture window, if any.
+    /// Names the claim in force; reports from the system window carry it.
+    private var nativePictureInPictureSession: String?
     private var nativePictureInPictureTabID: LeanTab.ID? {
         didSet { if nativePictureInPictureTabID == nil { nativePictureInPictureHost.release() } }
     }
@@ -1064,18 +1066,20 @@ final class LeanStore: ObservableObject {
         guard tab.hasWebView else { return }
         let strict = !Players.knows(tab.url)
         let generation = pipGeneration
-        // Ask the page first: a tab with no video (a new tab, a page being read) is left exactly as it is.
-        // The playing flag is not the test; it lags the page by up to a second and a half.
+        // Known to be playing: park now, while the page is still in its window. A probe's round trip first
+        // would let WebKit see a hidden page, and pause or throttle the video before it is asked.
+        if tab.isPlayingMedia {
+            guard parkForNativePictureInPicture(tab, in: window) else { return liftPictureInPicture(for: tab) }
+            return requestNativePictureInPicture(for: tab, strict: strict, generation: generation)
+        }
+        // Not known to be playing (the flag lags the page by up to a second and a half): ask the page, so a
+        // tab with no video (a new tab, a page being read) is left exactly as it is.
         tab.canEnterNativePictureInPicture(strict: strict) { [weak self, weak tab] canEnter in
             DispatchQueue.main.async {
                 guard let self, let tab else { return }
                 guard self.pipGeneration == generation, self.selectedID != tab.id, !self.pictureInPicture.showing,
                       self.nativePictureInPictureTabID == nil, self.tabs.contains(where: { $0.id == tab.id }) else { return }
-                guard canEnter else {
-                    // Nothing for the system window; a playing tab can still be lifted.
-                    if tab.isPlayingMedia { self.liftPictureInPicture(for: tab) }
-                    return
-                }
+                guard canEnter else { return }
                 guard self.usesNativePictureInPicture else { return self.liftPictureInPicture(for: tab) }
                 guard self.parkForNativePictureInPicture(tab, in: window) else { return self.liftPictureInPicture(for: tab) }
                 self.requestNativePictureInPicture(for: tab, strict: strict, generation: generation)
@@ -1084,7 +1088,8 @@ final class LeanStore: ObservableObject {
     }
 
     private func requestNativePictureInPicture(for tab: LeanTab, strict: Bool, generation: Int) {
-        tab.enterNativePictureInPicture(strict: strict) { [weak self, weak tab] entered in
+        guard let session = nativePictureInPictureSession else { return }
+        tab.enterNativePictureInPicture(strict: strict, session: session) { [weak self, weak tab] entered in
             DispatchQueue.main.async {
                 guard let self, let tab else { return }
                 // Returned to the tab, or it was closed, while the request was out: nothing owns the window now.
@@ -1116,6 +1121,7 @@ final class LeanStore: ObservableObject {
     private func parkForNativePictureInPicture(_ tab: LeanTab, in window: NSWindow?) -> Bool {
         guard tab.hasWebView else { return false }
         nativePictureInPictureTabID = tab.id
+        nativePictureInPictureSession = UUID().uuidString
         guard nativePictureInPictureHost.hold(tab.webView, in: window) else {
             // No window to park in: the system window cannot outlive the tab switch, so do not claim it.
             nativePictureInPictureTabID = nil
@@ -1126,8 +1132,9 @@ final class LeanStore: ObservableObject {
 
     /// The system window closed. "Back to tab" leaves the video playing and takes you to it; the close
     /// button pauses it and does nothing more.
-    private func nativePictureInPictureEnded(for tab: LeanTab, stillPlaying: Bool) {
-        guard nativePictureInPictureTabID == tab.id else { return }
+    private func nativePictureInPictureEnded(for tab: LeanTab, session: String, stillPlaying: Bool) {
+        // A report from an earlier claim (the video went back into the window within its settling time) is stale.
+        guard nativePictureInPictureTabID == tab.id, nativePictureInPictureSession == session else { return }
         nativePictureInPictureTabID = nil
         guard stillPlaying, selectedID != tab.id else {
             // Closed in the background: the tab's auto-sleep was held off while the window was up and its
@@ -1937,9 +1944,9 @@ final class LeanStore: ObservableObject {
         }
         tab.downloadManager = downloadManager
         tab.mediaPermissionStore = mediaPermissionStore
-        tab.onNativePictureInPictureLeft = { [weak self, weak tab] stillPlaying in
+        tab.onNativePictureInPictureLeft = { [weak self, weak tab] session, stillPlaying in
             guard let self, let tab else { return }
-            self.nativePictureInPictureEnded(for: tab, stillPlaying: stillPlaying)
+            self.nativePictureInPictureEnded(for: tab, session: session, stillPlaying: stillPlaying)
         }
         tab.peeksLinks = peeksLinks
         tab.onPeekLink = { [weak self, weak tab] url in

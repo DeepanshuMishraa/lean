@@ -720,7 +720,7 @@
         if (refreshPending && !scanning.length) { refreshPending = false; refresh(); }
         // New content is themed in the observer callback, before it paints, so the cover is only needed until
         // the first visible content below the body is classified (the root and body alone do not count).
-        if (document.body && batch.some(([record]) => record.element !== document.documentElement && record.element !== document.body
+        if (document.body && batch.some(([record, source]) => source.visible && record.element !== document.body
             && document.body.contains(record.element))) lowerVeil();
         if (dirty.size || scanning.length) schedule();
         else if (document.readyState !== 'loading') lowerVeil();

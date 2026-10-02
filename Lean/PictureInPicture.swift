@@ -1372,3 +1372,152 @@ enum Isolate {
     })();
     """
 }
+
+/// The system's own picture-in-picture window for a page's video: macOS draws it, so it resizes,
+/// mutes, skips and returns to the tab like any other app's. It needs no lift, and it covers sites
+/// that stream with WebRTC (calls) as well as ones that play files.
+///
+/// Where a page has no video to hand over (a call with every camera off, a screen of controls),
+/// nothing happens and the caller falls back to `PictureInPicture`, the lifted page.
+enum NativePiP {
+    /// Posted from Lean's content world when the window goes away; the body is whether the video
+    /// is still playing, which is how "back to tab" is told from "close" (close pauses it).
+    static let leftMessageName = "leanPipLeft"
+
+    /// WebKit hides the system PiP window from web views unless this preference is on. It has no
+    /// public property on macOS, so it is set by key, and only where this WebKit answers to it.
+    static func allow(on preferences: WKPreferences) {
+        let key = "allowsPictureInPictureMediaPlayback"
+        let setters = ["setAllowsPictureInPictureMediaPlayback:", "_setAllowsPictureInPictureMediaPlayback:"]
+        guard setters.contains(where: { preferences.responds(to: NSSelectorFromString($0)) }) else { return }
+        preferences.setValue(true, forKey: key)
+    }
+
+    /// The answer of every script here when a video went (or could): everything else is the reason it did not.
+    static let ok = "ok"
+
+    /// Hands the best video on the page to the system window. Answers `ok`, or why not.
+    ///
+    /// On the sites people go to watch, any playing video will do. Elsewhere a playing video is as
+    /// likely a muted hero loop, so only one with sound, or a live stream (a call), qualifies.
+    /// `session` names this claim: the window's closing is reported with the session that was current when it
+    /// closed, so a report that arrives after a newer claim began is recognised as stale and ignored.
+    static func enter(strict: Bool, session: String) -> String { script(strict: strict, request: true, session: session) }
+
+    /// The same check without opening anything: `ok` if there is a video `enter` would hand over. Cheap
+    /// enough to ask before a tab's page is moved, so a page with nothing to hand over is left alone.
+    static func probe(strict: Bool) -> String { script(strict: strict, request: false, session: "") }
+
+    private static func script(strict: Bool, request: Bool, session: String) -> String {
+        """
+        const strict = \(strict ? "true" : "false");
+        \(request ? "globalThis.leanPipSession = '\(session)';" : "")
+        // One listener per video, however many times this runs (globals persist in Lean's world).
+        const watched = globalThis.leanPipWatched || (globalThis.leanPipWatched = new WeakSet());
+        const watch = video => {
+            if (watched.has(video)) return;
+            watched.add(video);
+            video.addEventListener('leavepictureinpicture', () => {
+                watched.delete(video);
+                // The session is read now: a newer claim may begin before the settled report goes out.
+                const session = globalThis.leanPipSession;
+                // The close button pauses the video a moment after this event, and "back to tab" does not, so the
+                // state is read once, after that moment, and sent once.
+                setTimeout(() => {
+                    try { window.webkit.messageHandlers.\(leftMessageName).postMessage({session, playing: !video.paused}); } catch (error) {}
+                }, 250);
+            }, {once: true});
+        };
+        // A window the page opened itself is ours to report on too.
+        if (document.pictureInPictureElement) { \(request ? "watch(document.pictureInPictureElement); " : "")return '\(ok)'; }
+        if (!document.pictureInPictureEnabled) return 'pictureInPictureEnabled is false';
+        const live = v => typeof MediaStream !== 'undefined' && v.srcObject instanceof MediaStream;
+        const eligible = v => !v.paused && !v.ended && v.readyState >= 2 && v.videoWidth > 0
+            && !v.disablePictureInPicture
+            && (!strict || (live(v) ? v.videoWidth >= 160 : (!v.muted && v.volume > 0 && v.videoWidth >= 240)));
+        const area = v => { const r = v.getBoundingClientRect(); return r.width * r.height; };
+        const video = [...document.querySelectorAll('video')].filter(eligible)
+            .sort((a, b) => ((b.muted ? 0 : 1e9) + area(b)) - ((a.muted ? 0 : 1e9) + area(a)))[0];
+        if (!video) return 'no eligible video';
+        \(request ? """
+        try {
+            await video.requestPictureInPicture();
+        } catch (error) {
+            return 'requestPictureInPicture failed: ' + error.name + ' ' + error.message;
+        }
+        watch(video);
+        return '\(ok)';
+        """ : "return '\(ok)';")
+        """
+    }
+
+    static let exit = """
+    if (document.pictureInPictureElement) { try { await document.exitPictureInPicture(); } catch (error) {} }
+    return true;
+    """
+}
+
+/// A view that never takes a click.
+private final class PassthroughView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// Keeps a page inside the browser window, out of sight, while the system picture-in-picture window plays
+/// its video.
+///
+/// WebKit ties that window to the page's web view being in a window and visible. Leave the tab and the
+/// stage drops the web view, so WebKit sees a hidden page: it throttles or pauses the video, and the
+/// system window closes at once, leaving the page believing it is still in picture-in-picture.
+///
+/// So the page is parked here, in the same window and not a second one (a second window takes key status
+/// and focus from the browser's own), at its full size inside a one-point clip. The stage takes it back
+/// when you return to the tab.
+@MainActor
+final class NativePiPHost {
+    private let container = PassthroughView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
+    private weak var parked: LeanWebView?
+    private var holds = 0
+
+    init() {
+        container.wantsLayer = true
+        container.layer?.masksToBounds = true
+        container.alphaValue = 0
+    }
+
+    /// Parks `page` in `window`: the one it was in, never some other. Answers false if there is none.
+    @discardableResult
+    func hold(_ page: LeanWebView, in window: NSWindow?) -> Bool {
+        guard let content = window?.contentView else { return false }
+        holds += 1
+        // Whatever an earlier tab left here (its release is still pending) goes; one page is parked at a time.
+        if parked !== page { parked?.isParkedForPictureInPicture = false }
+        container.subviews.filter { $0 !== page }.forEach { $0.removeFromSuperview() }
+        if container.superview !== content {
+            container.removeFromSuperview()
+            content.addSubview(container, positioned: .below, relativeTo: nil)
+        }
+        container.frame = NSRect(x: 0, y: 0, width: 1, height: 1)
+        page.isParkedForPictureInPicture = true
+        parked = page
+        // Keep the size it had on its stage: resizing a page that is about to be shown again makes it lay out
+        // twice, and leaves a player blank until it does.
+        if page.frame.width < 1 || page.frame.height < 1 { page.frame = NSRect(x: 0, y: 0, width: 640, height: 400) }
+        page.setFrameOrigin(.zero)
+        container.addSubview(page)
+        return true
+    }
+
+    /// The tab was returned to, or the window went away. The stage may take the page back from this
+    /// moment; whatever is still parked after a short while is let go.
+    func release() {
+        parked?.isParkedForPictureInPicture = false
+        parked = nil
+        let generation = holds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            // A newer hold (another tab left meanwhile) owns the container now.
+            guard let self, self.holds == generation else { return }
+            self.container.subviews.forEach { $0.removeFromSuperview() }
+            self.container.removeFromSuperview()
+        }
+    }
+}

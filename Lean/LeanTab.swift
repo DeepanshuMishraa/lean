@@ -23,7 +23,12 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     @Published private(set) var title = "New Tab"
     @Published private(set) var url: URL?
-    @Published private(set) var isLoading = false
+    @Published private(set) var isLoading = false {
+        didSet {
+            // Transparent only while loading (see syncPageBackground).
+            if oldValue != isLoading, let webView = storedWebView { syncPageBackground(webView) }
+        }
+    }
     @Published private(set) var loadingProgress: Double = 0
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
@@ -123,6 +128,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     var onStateChange: (() -> Void)?
     var onOpenNewTab: ((URL, WKWebViewConfiguration) -> WKWebView?)?
     var onCloseTab: (() -> Void)?
+    /// The system picture-in-picture window for this page went away; true if the video is still playing.
+    var onNativePictureInPictureLeft: ((_ session: String, _ stillPlaying: Bool) -> Void)?
     var onOpenURLInNewTab: ((URL, Bool) -> Void)?
     var onOpenSourceTab: ((String, String?) -> LeanTab?)?
     /// Shift-clicked link, for a peek over the page. Set by the store.
@@ -246,6 +253,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             configuration.webExtensionController = BrowserExtensionManager.shared.controller
         }
         configuration.preferences.isElementFullscreenEnabled = true
+        NativePiP.allow(on: configuration.preferences)
         // Only user gestures may open windows: no popup spam or pop-unders.
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         // WebKit's "developer extras": Inspect Element in a page's
@@ -312,6 +320,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.add(self, name: PageScripts.passwordFieldMessageName)
         // Lean's own world: a page cannot post this message itself.
         webView.configuration.userContentController.add(self, contentWorld: LeanWeb.world, name: PageScripts.middleClickMessageName)
+        webView.configuration.userContentController.add(self, contentWorld: LeanWeb.world, name: NativePiP.leftMessageName)
         webView.configuration.userContentController.add(self, contentWorld: LeanWeb.world, name: PageScripts.themeFrameMessageName)
         webView.configuration.userContentController.add(self, name: PageScripts.mediaStateMessageName)
         addPasskeyHandler(to: webView.configuration.userContentController)
@@ -444,6 +453,36 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         }
     }
 
+    /// Asks the page to hand its best video to the system picture-in-picture window.
+    /// Answers whether one went; false (no video, or the page refused) means nothing changed.
+    func enterNativePictureInPicture(strict: Bool, session: String, completion: @escaping (Bool) -> Void) {
+        runNativePictureInPicture(NativePiP.enter(strict: strict, session: session), completion: completion)
+    }
+
+    /// Whether the page has a video the system window could take, without opening it.
+    func canEnterNativePictureInPicture(strict: Bool, completion: @escaping (Bool) -> Void) {
+        runNativePictureInPicture(NativePiP.probe(strict: strict), completion: completion)
+    }
+
+    /// Only ever asks an existing page: a tab whose web view is gone has nothing to hand over, and must
+    /// not get a fresh one just to be asked.
+    private func runNativePictureInPicture(_ script: String, completion: @escaping (Bool) -> Void) {
+        guard let webView = storedWebView else { return completion(false) }
+        webView.callAsyncJavaScript(script, arguments: [:], in: nil, in: LeanWeb.world) { result in
+            if case .success(let value) = result, (value as? String) == NativePiP.ok {
+                completion(true)
+            } else {
+                completion(false)
+            }
+        }
+    }
+
+    func exitNativePictureInPicture(completion: (@MainActor () -> Void)? = nil) {
+        storedWebView?.callAsyncJavaScript(NativePiP.exit, arguments: [:], in: nil, in: LeanWeb.world) { _ in
+            DispatchQueue.main.async { completion?() }
+        }
+    }
+
     /// Whether the committed page is one the engine themes. Optimistic until the first commit, so a
     /// page that is still loading shows the theme; a commit with no http(s) URL (local file, source
     /// view, PDF) turns it off.
@@ -457,7 +496,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         if #available(macOS 12.0, *) {
             webView.underPageBackgroundColor = themed ? pageBackgroundColor : (isDark ? NSColor.black : NSColor.white)
         }
-        webView.setValue(!themed, forKey: "drawsBackground")
+        // A transparent web view is only worth having until the page paints. Kept after that it makes
+        // WebKit blend the whole page with what is behind it on every frame, which costs scrolling and
+        // can mis-render; the engine paints the page's own themed background from then on.
+        webView.setValue(!(themed && isLoading), forKey: "drawsBackground")
     }
 
     /// http(s) pages the engine runs on, minus PDFs (by extension), which draw their own paper.
@@ -1165,6 +1207,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         onStateChange = nil
         onOpenNewTab = nil
         onCloseTab = nil
+        onNativePictureInPictureLeft = nil
         onOpenURLInNewTab = nil
         onOpenSourceTab = nil
         onPeekLink = nil
@@ -1216,6 +1259,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.passwordFormMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.passwordFieldMessageName)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.middleClickMessageName, contentWorld: LeanWeb.world)
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: NativePiP.leftMessageName, contentWorld: LeanWeb.world)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.themeFrameMessageName, contentWorld: LeanWeb.world)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PageScripts.mediaStateMessageName)
         removePasskeyHandler(from: webView.configuration.userContentController)
@@ -1448,6 +1492,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         controller.removeScriptMessageHandler(forName: PageScripts.passwordFormMessageName)
         controller.removeScriptMessageHandler(forName: PageScripts.passwordFieldMessageName)
         controller.removeScriptMessageHandler(forName: PageScripts.middleClickMessageName, contentWorld: LeanWeb.world)
+        controller.removeScriptMessageHandler(forName: NativePiP.leftMessageName, contentWorld: LeanWeb.world)
         controller.removeScriptMessageHandler(forName: PageScripts.themeFrameMessageName, contentWorld: LeanWeb.world)
         controller.removeScriptMessageHandler(forName: PageScripts.mediaStateMessageName)
         removePasskeyHandler(from: controller)
@@ -1517,6 +1562,13 @@ extension LeanTab: WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
+        if message.name == NativePiP.leftMessageName {
+            guard message.webView === storedWebView else { return }
+            if let report = message.body as? [String: Any], let session = report["session"] as? String {
+                onNativePictureInPictureLeft?(session, (report["playing"] as? Bool) ?? false)
+            }
+            return
+        }
         if message.name == PageScripts.themeFrameMessageName {
             adoptThemeFrame(message)
             return
@@ -1739,9 +1791,8 @@ extension LeanTab: WKNavigationDelegate {
         // waste (removeAll+re-add x12 + live JS eval, per navigation).
         // isLoading stays true until didFinish/didFail: ending it here showed
         // a settled tab while the page was still loading.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            self?.captureSnapshot()
-        }
+        // No snapshot here: a quarter second into a load there is nothing worth keeping, and reading the
+        // page back to an image then competes with the load for the main thread. didFinish takes it.
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
@@ -2221,6 +2272,16 @@ extension LeanTab: WKUIDelegate {
            navigationAction.modifierFlags.contains(.command),
            let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
             onOpenURLInNewTab?(url, navigationAction.modifierFlags.contains(.shift))
+            return nil
+        }
+        // A plain click on a link that asks for a new tab (target="_blank"), when Settings says to peek: a peek
+        // over this page, like a shift-click. Scripts (window.open, sign-in popups) are not links and keep their
+        // own window.
+        if peeksLinks, !isPeekTab,
+           navigationAction.navigationType == .linkActivated,
+           navigationAction.modifierFlags.intersection([.shift, .command, .option, .control]).isEmpty,
+           let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
+            onPeekLink?(url)
             return nil
         }
         return onOpenNewTab?(url, configuration)

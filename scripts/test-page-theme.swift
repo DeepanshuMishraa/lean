@@ -222,6 +222,8 @@ func fixture(dark: Bool, csp: Bool = false) -> String {
         .scrim { position:fixed; top:0; right:0; width:120px; height:60px; background:rgba(0,0,0,.65); }
         .dlg-part { background:\(bg); padding:4px; border-radius:4px; }
         .dlg-body { background:\(surface); padding:4px; }
+        .invwrap { display:block; width:140px; padding:6px; cursor:pointer; background:\(dark ? "#eeeeee" : "#222222"); }
+        .invchild { display:block; padding:4px; border-radius:4px; background:\(bg); color:\(fg); }
         .fade { height:40px; background-image:linear-gradient(rgba(0,0,0,0), rgb(0,0,0)); }
         </style></head><body style="background-color:\(bg) !important; color:\(fg) !important;"><h1>Heading</h1><div class="card" style="background-color:\(surface) !important; border-color:#777 !important;">Card <span class="muted">Muted</span>
         <div class="nested">Nested card</div></div><button class="danger">Delete</button>
@@ -237,7 +239,7 @@ func fixture(dark: Bool, csp: Bool = false) -> String {
         <svg id="inherited-art" width="80" height="80"><path d="M0 0h80v80H0z" fill="currentColor"/></svg>
         <div class="glass">Translucent</div><div class="modern">Modern CSS</div><div class="uncertain">Uncertain</div>
         <div class="pinned">Header</div>
-        <div class="warn-card card">Warning card</div><div class="fade"></div><div class="scrim"><div role="dialog" class="dlg"><div class="dlg-part">Dialog panel</div><div class="dlg-body">Dialog body</div></div></div>
+        <div class="warn-card card">Warning card</div><div class="fade"></div><div class="invwrap" tabindex="0"><span class="invchild">Nested button</span><svg class="invicon" width="16" height="16"><path d="M0 0h16v16H0z" fill="\(dark ? "#111111" : "#ffffff")"/></svg></div><div class="scrim"><div role="dialog" class="dlg"><div class="dlg-part">Dialog panel</div><div class="dlg-body">Dialog body</div></div></div>
         <div id="host"></div><div id="late-host"></div><div class="dynamic">Dynamic</div>
         <script>document.querySelector('#host').attachShadow({mode:'open'}).innerHTML = '<style nonce="fixture">.panel{background:\(surface);padding:12px;border-radius:8px;color:\(fg)}</style><div class="panel">Shadow content</div>';</script>
         </body></html>
@@ -387,6 +389,10 @@ Task { @MainActor in
                         equal(style('.card').borderTopColor,rgb(p.border),'border');
                         equal(style('.dlg-part').backgroundColor,rgb(p.raised),'a dialog panel that matches the page is raised, not a card');
                         equal(style('.dlg-body').backgroundColor,rgb(p.raised),'a borderless dialog body belongs to the dialog sheet');
+                        const lumI = c => { const v = c.match(/[\\d.]+/g).slice(0, 3).map(Number).map(x => { x /= 255; return x <= .04045 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4; }); return .2126 * v[0] + .7152 * v[1] + .0722 * v[2]; };
+                        const ratioI = (a, b) => (Math.max(lumI(a), lumI(b)) + .05) / (Math.min(lumI(a), lumI(b)) + .05);
+                        if (ratioI(style('.invchild').color, style('.invchild').backgroundColor) < 4.5) failures.push('a button inside an inverted block is unreadable: ' + style('.invchild').color + ' on ' + style('.invchild').backgroundColor);
+                        if (ratioI(style('.invicon path').fill, style('.invwrap').backgroundColor) < 3) failures.push('an icon inside an inverted block vanishes: ' + style('.invicon path').fill + ' on ' + style('.invwrap').backgroundColor);
                         equal(style('.pinned').backgroundColor,rgb(p.background),'pinned header must match the page background');
                         equal(style('.warn-card').borderTopColor,rgb(p.border),'tinted card border must match other cards');
                         if (!style('.fade').backgroundImage.includes(rgb(p.background).slice(4, -1))) failures.push('fade gradient kept the site colors: ' + style('.fade').backgroundImage);

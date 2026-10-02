@@ -1069,6 +1069,9 @@ final class LeanStageView: NSView {
         }
 
         guard let wanted, window != nil else { return }
+        // Parked for the system picture-in-picture window: this stage may still be on screen for a
+        // moment as its tab animates out, and taking the page back here would end that window.
+        if (wanted as? LeanWebView)?.isParkedForPictureInPicture == true { return }
         if wanted.superview !== self {
             // A web view can have only one superview, so taking it back is
             // how it is taken back.

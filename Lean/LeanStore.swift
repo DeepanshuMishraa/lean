@@ -1060,7 +1060,7 @@ final class LeanStore: ObservableObject {
         guard !pictureInPicture.showing, parkedAtSwitch || nativePictureInPictureTabID == nil, !tab.isSleeping else { return }
         guard usesNativePictureInPicture else { return liftPictureInPicture(for: tab) }
         let generation = pipGeneration
-        if !parkedAtSwitch { parkForNativePictureInPicture(tab) }
+        if !parkedAtSwitch, !parkForNativePictureInPicture(tab) { return liftPictureInPicture(for: tab) }
         tab.enterNativePictureInPicture(strict: !Players.knows(tab.url)) { [weak self, weak tab] entered in
             DispatchQueue.main.async {
                 guard let self, let tab else { return }
@@ -1090,9 +1090,15 @@ final class LeanStore: ObservableObject {
     /// switch: the web view leaves the browser window as soon as the next tab shows, and from then on
     /// WebKit sees a hidden page. It throttles or pauses the video, and a picture-in-picture window it
     /// opens for it closes straight away.
-    private func parkForNativePictureInPicture(_ tab: LeanTab) {
+    @discardableResult
+    private func parkForNativePictureInPicture(_ tab: LeanTab) -> Bool {
         nativePictureInPictureTabID = tab.id
-        nativePictureInPictureHost.hold(tab.webView)
+        guard nativePictureInPictureHost.hold(tab.webView, in: tab.webView.window) else {
+            // No window to park in: the system window cannot outlive the tab switch, so do not claim it.
+            nativePictureInPictureTabID = nil
+            return false
+        }
+        return true
     }
 
     /// The system window closed. "Back to tab" leaves the video playing and takes you to it; the close

@@ -1437,54 +1437,61 @@ enum NativePiP {
     """
 }
 
-/// Keeps a page in a window nobody can see while the system picture-in-picture window plays its video.
+/// A view that never takes a click.
+private final class PassthroughView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// Keeps a page inside the browser window, out of sight, while the system picture-in-picture window plays
+/// its video.
 ///
-/// WebKit ties that window to the page's web view being in a window. Leave the tab and the web view is
-/// taken out of the browser window; the system window then closes and the video pauses, leaving the page
-/// believing it is still in picture-in-picture. So the page is parked here for as long as the window
-/// lives, and the stage takes it back when you return to the tab.
+/// WebKit ties that window to the page's web view being in a window and visible. Leave the tab and the
+/// stage drops the web view, so WebKit sees a hidden page: it throttles or pauses the video, and the
+/// system window closes at once, leaving the page believing it is still in picture-in-picture.
+///
+/// So the page is parked here, in the same window and not a second one (a second window takes key status
+/// and focus from the browser's own), at its full size inside a one-point clip. The stage takes it back
+/// when you return to the tab.
 @MainActor
 final class NativePiPHost {
-    private var window: NSWindow?
-    private var holds = 0
+    private let container = PassthroughView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
     private weak var parked: LeanWebView?
-    private let container = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: 400))
+    private var holds = 0
 
-    func hold(_ page: NSView) {
-        holds += 1
-        (page as? LeanWebView)?.isParkedForPictureInPicture = true
-        parked = page as? LeanWebView
-        if window == nil {
-            let host = NSWindow(contentRect: NSRect(x: -20000, y: -20000, width: 640, height: 400),
-                                styleMask: [.borderless], backing: .buffered, defer: false)
-            host.contentView = container
-            host.alphaValue = 0
-            host.ignoresMouseEvents = true
-            host.isReleasedWhenClosed = false
-            host.hasShadow = false
-            host.canHide = false
-            host.isExcludedFromWindowsMenu = true
-            host.collectionBehavior = [.transient, .ignoresCycle, .stationary, .fullScreenAuxiliary]
-            window = host
-        }
-        page.frame = container.bounds
-        container.addSubview(page)
-        window?.orderFrontRegardless()
+    init() {
+        container.wantsLayer = true
+        container.layer?.masksToBounds = true
+        container.alphaValue = 0
     }
 
-    /// The tab was returned to, or the window went away. The stage pulls the page back if it wants it;
-    /// whatever is still parked after a moment is let go with the window.
+    /// Parks `page` in `window` (or the browser's main window). Answers false if there is no window.
+    @discardableResult
+    func hold(_ page: LeanWebView, in window: NSWindow?) -> Bool {
+        guard let content = (window ?? NSApp.mainWindow ?? NSApp.keyWindow)?.contentView else { return false }
+        holds += 1
+        if container.superview !== content {
+            container.removeFromSuperview()
+            content.addSubview(container, positioned: .below, relativeTo: nil)
+        }
+        container.frame = NSRect(x: 0, y: 0, width: 1, height: 1)
+        page.isParkedForPictureInPicture = true
+        parked = page
+        page.frame = NSRect(x: 0, y: 0, width: 640, height: 400)
+        container.addSubview(page)
+        return true
+    }
+
+    /// The tab was returned to, or the window went away. The stage may take the page back from this
+    /// moment; whatever is still parked after a short while is let go.
     func release() {
-        // At once: the stage may take the page back from this moment.
         parked?.isParkedForPictureInPicture = false
         parked = nil
         let generation = holds
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            // A newer hold (another tab left meanwhile) owns the window now.
-            guard let self, self.holds == generation, let window = self.window else { return }
+            // A newer hold (another tab left meanwhile) owns the container now.
+            guard let self, self.holds == generation else { return }
             self.container.subviews.forEach { $0.removeFromSuperview() }
-            window.orderOut(nil)
-            self.window = nil
+            self.container.removeFromSuperview()
         }
     }
 }

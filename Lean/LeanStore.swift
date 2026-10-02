@@ -575,7 +575,10 @@ final class LeanStore: ObservableObject {
     private var pipGeneration = 0
     private var pipUserPaused = false
     /// The tab whose video is in the system picture-in-picture window, if any.
-    private var nativePictureInPictureTabID: LeanTab.ID?
+    private var nativePictureInPictureTabID: LeanTab.ID? {
+        didSet { if nativePictureInPictureTabID == nil { nativePictureInPictureHost.release() } }
+    }
+    private let nativePictureInPictureHost = NativePiPHost()
     /// Coalesced history+session persistence. `onStateChange` fires 6-10x
     /// per page load (progress, canGoBack/Forward, title); each used to do
     /// 2 full SQLite encodes on the main thread. Now debounced to one
@@ -1062,6 +1065,8 @@ final class LeanStore: ObservableObject {
         // Claimed before the request goes out. This is the only request in flight (a second tab switch
         // finds the claim and stops), and an early "window closed" report finds an owner to clear.
         nativePictureInPictureTabID = tab.id
+        // Parked before the request: once this tab is off screen its web view is out of every window.
+        nativePictureInPictureHost.hold(tab.webView)
         tab.enterNativePictureInPicture(strict: !Players.knows(tab.url)) { [weak self, weak tab] entered in
             DispatchQueue.main.async {
                 guard let self, let tab else { return }

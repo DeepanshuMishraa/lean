@@ -1436,3 +1436,49 @@ enum NativePiP {
     return true;
     """
 }
+
+/// Keeps a page in a window nobody can see while the system picture-in-picture window plays its video.
+///
+/// WebKit ties that window to the page's web view being in a window. Leave the tab and the web view is
+/// taken out of the browser window; the system window then closes and the video pauses, leaving the page
+/// believing it is still in picture-in-picture. So the page is parked here for as long as the window
+/// lives, and the stage takes it back when you return to the tab.
+@MainActor
+final class NativePiPHost {
+    private var window: NSWindow?
+    private var holds = 0
+    private let container = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: 400))
+
+    func hold(_ page: NSView) {
+        holds += 1
+        if window == nil {
+            let host = NSWindow(contentRect: NSRect(x: -20000, y: -20000, width: 640, height: 400),
+                                styleMask: [.borderless], backing: .buffered, defer: false)
+            host.contentView = container
+            host.alphaValue = 0
+            host.ignoresMouseEvents = true
+            host.isReleasedWhenClosed = false
+            host.hasShadow = false
+            host.canHide = false
+            host.isExcludedFromWindowsMenu = true
+            host.collectionBehavior = [.transient, .ignoresCycle, .stationary, .fullScreenAuxiliary]
+            window = host
+        }
+        page.frame = container.bounds
+        container.addSubview(page)
+        window?.orderFrontRegardless()
+    }
+
+    /// The tab was returned to, or the window went away. The stage pulls the page back if it wants it;
+    /// whatever is still parked after a moment is let go with the window.
+    func release() {
+        let generation = holds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            // A newer hold (another tab left meanwhile) owns the window now.
+            guard let self, self.holds == generation, let window = self.window else { return }
+            self.container.subviews.forEach { $0.removeFromSuperview() }
+            window.orderOut(nil)
+            self.window = nil
+        }
+    }
+}

@@ -694,7 +694,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     /// Runs `update` in one frame, only if that frame is still the document that announced the token.
     private func evaluatePageTheme(_ update: String, in frame: ThemeFrame, of webView: LeanWebView) {
         let guarded = "(function(){ if (globalThis.LeanPageTheme?.frame !== \"\(frame.token)\") return false; \(update) return true; })()"
-        webView.evaluateJavaScript(guarded, in: frame.info, in: LeanWeb.world) { result in
+        webView.evaluateJavaScript(guarded, in: frame.info, in: LeanWeb.world) { [weak self] result in
             switch result {
             case .success(let answer):
                 if (answer as? Bool) != true { self?.themeFrames.removeAll { $0.token == frame.token } }

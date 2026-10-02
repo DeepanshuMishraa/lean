@@ -552,10 +552,10 @@
                 }
                 if (change.target.nodeType === Node.ELEMENT_NODE
                     && (change.target.matches('style, link') || change.target.closest('style'))) {
-                    styleChanged(root);
+                    styleChanged();
                 }
                 if (change.type === 'childList' && [...change.addedNodes].some(node => node.nodeType === Node.ELEMENT_NODE && node.matches('style, link'))) {
-                    styleChanged(root);
+                    styleChanged();
                 }
                 // Descriptions, tooltips, image sources and most data-* do not restyle anything; skip the reread (and the sheet pause it forces).
                 if (change.type === 'attributes' && /^(aria-describedby|title|alt|src|data-(?!theme|state|active|selected))/.test(change.attributeName)) continue;
@@ -585,6 +585,8 @@
     }
     function flush(budget = 12) {
         frame = 0;
+        // Counted only when there is something to read; the early return is not engine work.
+        if (!theme || (!dirty.size && !scanning.length)) return;
         const flushStart = performance.now();
         try { flushBody(budget); } finally { busyMs += performance.now() - flushStart; flushes++; }
     }
@@ -717,8 +719,9 @@
         else if (rules.size !== rulesBefore) appendRules();
         if (refreshPending && !scanning.length) { refreshPending = false; refresh(); }
         // New content is themed in the observer callback, before it paints, so the cover is only needed until
-        // the first elements are classified.
-        if (batch.length && document.body) lowerVeil();
+        // the first visible content below the body is classified (the root and body alone do not count).
+        if (document.body && batch.some(([record]) => record.element !== document.documentElement && record.element !== document.body
+            && document.body.contains(record.element))) lowerVeil();
         if (dirty.size || scanning.length) schedule();
         else if (document.readyState !== 'loading') lowerVeil();
     }
@@ -748,17 +751,11 @@
     }
     // Pages add stylesheets in bursts (hundreds of <style>/<link> on some sites). Every one used to
     // rediscover variables and reread the whole document; now a burst costs one pass.
-    const staleRoots = new Set();
     let styleTimer = 0;
-    function styleChanged(root) {
-        staleRoots.add(root);
+    function styleChanged() {
         if (styleTimer) return;
-        styleTimer = setTimeout(() => {
-            styleTimer = 0;
-            for (const stale of staleRoots) if (scopes.has(stale)) discoverVariables(stale);
-            staleRoots.clear();
-            refresh();
-        }, 400);
+        // refresh() rediscovers every scope's variables itself, so nothing is discovered here.
+        styleTimer = setTimeout(() => { styleTimer = 0; refresh(); }, 400);
     }
     function refresh() {
         if (!theme) return;
@@ -810,7 +807,7 @@
         clearTimeout(frame); frame = 0;
         clearInterval(scanTimer); scanTimer = 0;
         clearTimeout(hoverTimer); hovered.clear();
-        clearTimeout(styleTimer); styleTimer = 0; staleRoots.clear();
+        clearTimeout(styleTimer); styleTimer = 0;
         scanning = []; dirty.clear(); visibility.disconnect();
         for (const scope of scopes.values()) scope.observer.disconnect();
         for (const record of records.values()) restore(record);

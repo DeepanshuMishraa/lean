@@ -1393,11 +1393,20 @@ enum NativePiP {
         preferences.setValue(true, forKey: key)
     }
 
-    /// Hands the best video on the page to the system window and answers whether one went.
+    /// The answer of every script here when a video went (or could): everything else is the reason it did not.
+    static let ok = "ok"
+
+    /// Hands the best video on the page to the system window. Answers `ok`, or why not.
     ///
     /// On the sites people go to watch, any playing video will do. Elsewhere a playing video is as
     /// likely a muted hero loop, so only one with sound, or a live stream (a call), qualifies.
-    static func enter(strict: Bool) -> String {
+    static func enter(strict: Bool) -> String { script(strict: strict, request: true) }
+
+    /// The same check without opening anything: `ok` if there is a video `enter` would hand over. Cheap
+    /// enough to ask before a tab's page is moved, so a page with nothing to hand over is left alone.
+    static func probe(strict: Bool) -> String { script(strict: strict, request: false) }
+
+    private static func script(strict: Bool, request: Bool) -> String {
         """
         const strict = \(strict ? "true" : "false");
         // One listener per video, however many times this runs (globals persist in Lean's world).
@@ -1417,7 +1426,7 @@ enum NativePiP {
             }, {once: true});
         };
         // A window the page opened itself is ours to report on too.
-        if (document.pictureInPictureElement) { watch(document.pictureInPictureElement); return true; }
+        if (document.pictureInPictureElement) { \(request ? "watch(document.pictureInPictureElement); " : "")return '\(ok)'; }
         if (!document.pictureInPictureEnabled) return 'pictureInPictureEnabled is false';
         const live = v => typeof MediaStream !== 'undefined' && v.srcObject instanceof MediaStream;
         const eligible = v => !v.paused && !v.ended && v.readyState >= 2 && v.videoWidth > 0
@@ -1426,17 +1435,16 @@ enum NativePiP {
         const area = v => { const r = v.getBoundingClientRect(); return r.width * r.height; };
         const video = [...document.querySelectorAll('video')].filter(eligible)
             .sort((a, b) => ((b.muted ? 0 : 1e9) + area(b)) - ((a.muted ? 0 : 1e9) + area(a)))[0];
-        if (!video) {
-            const all = [...document.querySelectorAll('video')].map(v => `paused=${v.paused} ready=${v.readyState} w=${v.videoWidth} muted=${v.muted} vol=${v.volume} disablePiP=${v.disablePictureInPicture} live=${live(v)}`);
-            return 'no eligible video; strict=' + strict + '; videos=[' + all.join(' | ') + ']';
-        }
+        if (!video) return 'no eligible video';
+        \(request ? """
         try {
             await video.requestPictureInPicture();
         } catch (error) {
             return 'requestPictureInPicture failed: ' + error.name + ' ' + error.message;
         }
         watch(video);
-        return true;
+        return '\(ok)';
+        """ : "return '\(ok)';")
         """
     }
 
@@ -1473,11 +1481,14 @@ final class NativePiPHost {
         container.alphaValue = 0
     }
 
-    /// Parks `page` in `window` (or the browser's main window). Answers false if there is no window.
+    /// Parks `page` in `window`: the one it was in, never some other. Answers false if there is none.
     @discardableResult
     func hold(_ page: LeanWebView, in window: NSWindow?) -> Bool {
-        guard let content = (window ?? NSApp.mainWindow ?? NSApp.keyWindow)?.contentView else { return false }
+        guard let content = window?.contentView else { return false }
         holds += 1
+        // Whatever an earlier tab left here (its release is still pending) goes; one page is parked at a time.
+        if parked !== page { parked?.isParkedForPictureInPicture = false }
+        container.subviews.filter { $0 !== page }.forEach { $0.removeFromSuperview() }
         if container.superview !== content {
             container.removeFromSuperview()
             content.addSubview(container, positioned: .below, relativeTo: nil)

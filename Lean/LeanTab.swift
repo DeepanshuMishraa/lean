@@ -456,9 +456,20 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     /// Asks the page to hand its best video to the system picture-in-picture window.
     /// Answers whether one went; false (no video, or the page refused) means nothing changed.
     func enterNativePictureInPicture(strict: Bool, completion: @escaping (Bool) -> Void) {
+        runNativePictureInPicture(NativePiP.enter(strict: strict), completion: completion)
+    }
+
+    /// Whether the page has a video the system window could take, without opening it.
+    func canEnterNativePictureInPicture(strict: Bool, completion: @escaping (Bool) -> Void) {
+        runNativePictureInPicture(NativePiP.probe(strict: strict), completion: completion)
+    }
+
+    /// Only ever asks an existing page: a tab whose web view is gone has nothing to hand over, and must
+    /// not get a fresh one just to be asked.
+    private func runNativePictureInPicture(_ script: String, completion: @escaping (Bool) -> Void) {
         guard let webView = storedWebView else { return completion(false) }
-        webView.callAsyncJavaScript(NativePiP.enter(strict: strict), arguments: [:], in: nil, in: LeanWeb.world) { result in
-            if case .success(let value) = result, (value as? Bool) == true {
+        webView.callAsyncJavaScript(script, arguments: [:], in: nil, in: LeanWeb.world) { result in
+            if case .success(let value) = result, (value as? String) == NativePiP.ok {
                 completion(true)
             } else {
                 completion(false)

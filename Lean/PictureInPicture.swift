@@ -1407,7 +1407,13 @@ enum NativePiP {
             watched.add(video);
             video.addEventListener('leavepictureinpicture', () => {
                 watched.delete(video);
-                try { window.webkit.messageHandlers.\(leftMessageName).postMessage(!video.paused); } catch (error) {}
+                const report = () => {
+                    try { window.webkit.messageHandlers.\(leftMessageName).postMessage(!video.paused); } catch (error) {}
+                };
+                // Still playing at this instant is "back to tab": say so at once. The close button pauses the
+                // video a moment after the event, so a paused video is only believed after that moment.
+                if (!video.paused) report();
+                setTimeout(report, 450);
             }, {once: true});
         };
         // A window the page opened itself is ours to report on too.
@@ -1479,7 +1485,10 @@ final class NativePiPHost {
         container.frame = NSRect(x: 0, y: 0, width: 1, height: 1)
         page.isParkedForPictureInPicture = true
         parked = page
-        page.frame = NSRect(x: 0, y: 0, width: 640, height: 400)
+        // Keep the size it had on its stage: resizing a page that is about to be shown again makes it lay out
+        // twice, and leaves a player blank until it does.
+        if page.frame.width < 1 || page.frame.height < 1 { page.frame = NSRect(x: 0, y: 0, width: 640, height: 400) }
+        page.setFrameOrigin(.zero)
         container.addSubview(page)
         return true
     }

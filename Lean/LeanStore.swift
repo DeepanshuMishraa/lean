@@ -1057,8 +1057,11 @@ final class LeanStore: ObservableObject {
         if let id = nativePictureInPictureTabID, !tabs.contains(where: { $0.id == id }) { nativePictureInPictureTabID = nil }
         // A tab that was playing was already claimed and parked at the moment of the switch.
         let parkedAtSwitch = nativePictureInPictureTabID == tab.id
-        NSLog("PIPLOG show tab=%@ parkedAtSwitch=%@ claim=%@ lifted=%@ sleeping=%@", tab.title, String(describing: parkedAtSwitch), String(describing: nativePictureInPictureTabID), String(describing: pictureInPicture.showing), String(describing: tab.isSleeping))
         guard !pictureInPicture.showing, parkedAtSwitch || nativePictureInPictureTabID == nil, !tab.isSleeping else { return }
+        // Only a tab that is playing something has anything to hand over. Parking or lifting any other tab
+        // (a new tab, a page being read) took its web view off its stage on every switch, which is what
+        // left the next visit to it broken, and made switching slow.
+        if usesNativePictureInPicture, !parkedAtSwitch, !tab.isPlayingMedia { return }
         guard usesNativePictureInPicture else { return liftPictureInPicture(for: tab) }
         let generation = pipGeneration
         if !parkedAtSwitch, !parkForNativePictureInPicture(tab) { return liftPictureInPicture(for: tab) }
@@ -1094,15 +1097,7 @@ final class LeanStore: ObservableObject {
     @discardableResult
     private func parkForNativePictureInPicture(_ tab: LeanTab) -> Bool {
         nativePictureInPictureTabID = tab.id
-        let parked = nativePictureInPictureHost.hold(tab.webView, in: tab.webView.window)
-        NSLog("PIPLOG park tab=%@ parked=%@ webWindow=%@", tab.title, String(describing: parked), String(describing: tab.webView.window != nil))
-        for delay in [0.3, 1.5] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak tab] in
-                guard let tab else { return }
-                NSLog("PIPLOG +%.1fs tab=%@ inWindow=%@ superview=%@", delay, tab.title, String(describing: tab.webView.window != nil), String(describing: type(of: tab.webView.superview)))
-            }
-        }
-        guard parked else {
+        guard nativePictureInPictureHost.hold(tab.webView, in: tab.webView.window) else {
             // No window to park in: the system window cannot outlive the tab switch, so do not claim it.
             nativePictureInPictureTabID = nil
             return false
@@ -1133,7 +1128,6 @@ final class LeanStore: ObservableObject {
     }
 
     private func liftPage(of tab: LeanTab) {
-        NSLog("PIPLOG lifting page of tab=%@ (old floating widget)", tab.title)
         guard !pictureInPicture.showing, !tab.isSleeping, nativePictureInPictureTabID != tab.id else { return }
         // Automatic float only from places people go to watch: anywhere
         // else a technically-playing video is as likely a muted hero loop
@@ -1277,17 +1271,19 @@ final class LeanStore: ObservableObject {
 
     private func handleTabSelectionChange(from previous: LeanTab.ID?, to current: LeanTab.ID?) {
         guard previous != current else { return }
-        NSLog("PIPLOG switch: from=%@ to=%@ prevPlaying=%@ claim=%@ lifted=%@ native=%@",
-              tabs.first { $0.id == previous }?.title ?? "nil", tabs.first { $0.id == current }?.title ?? "nil",
-              String(describing: tabs.first { $0.id == previous }?.isPlayingMedia), String(describing: nativePictureInPictureTabID),
-              String(describing: pictureInPicture.showing), String(describing: usesNativePictureInPicture))
         if #available(macOS 15.4, *), let tab = tabs.first(where: { $0.id == current }) {
             BrowserExtensionManager.shared.tabActivated(tab, previous: tabs.first { $0.id == previous })
         }
         if let current, current == nativePictureInPictureTabID, let tab = tabs.first(where: { $0.id == current }) {
             // Cleared first, so the window closing is not mistaken for "back to tab".
             nativePictureInPictureTabID = nil
-            tab.exitNativePictureInPicture()
+            tab.exitNativePictureInPicture { [weak tab] in
+                // The page sat at a parked size and its player shows a placeholder while its video is in the
+                // system window; once the video is back, make it lay out again and repaint.
+                guard let tab else { return }
+                tab.webView.needsDisplay = true
+                tab.webView.evaluateJavaScript("window.dispatchEvent(new Event('resize'))", completionHandler: nil)
+            }
         }
         let isReturningToPictureInPictureTab = current == pictureInPictureTabID
         if isReturningToPictureInPictureTab {
@@ -1300,10 +1296,9 @@ final class LeanStore: ObservableObject {
             // update go first, so the new tab's content appears at once
             // instead of waiting behind the lift's JS round-trip. The lift
             // itself still refuses a tab that is selected by then.
-            if usesNativePictureInPicture, tab.isPlayingMedia, !tab.isSleeping, !pictureInPicture.showing,
-               nativePictureInPictureTabID == nil {
-                parkForNativePictureInPicture(tab)
-            }
+            // Not parked here: this runs inside the tab-switch animation's transaction, and moving the
+            // outgoing page's view during it left the incoming tab blank. The log showed the page is still in
+            // the window one turn later, which is when it is parked.
             DispatchQueue.main.async { [weak self, weak tab] in
                 guard let self, let tab else { return }
                 self.showPictureInPicture(for: tab)

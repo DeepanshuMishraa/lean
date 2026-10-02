@@ -457,9 +457,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     /// Answers whether one went; false (no video, or the page refused) means nothing changed.
     func enterNativePictureInPicture(strict: Bool, completion: @escaping (Bool) -> Void) {
         guard let webView = storedWebView else { return completion(false) }
-        NSLog("PIPLOG tab=%@ request: window=%@ superview=%@ size=%@", title, String(describing: webView.window != nil), String(describing: type(of: webView.superview)), NSStringFromSize(webView.frame.size))
-        webView.callAsyncJavaScript(NativePiP.enter(strict: strict), arguments: [:], in: nil, in: LeanWeb.world) { [weak self] result in
-            NSLog("PIPLOG tab=%@ request result: %@", self?.title ?? "?", String(describing: result))
+        webView.callAsyncJavaScript(NativePiP.enter(strict: strict), arguments: [:], in: nil, in: LeanWeb.world) { result in
             if case .success(let value) = result, (value as? Bool) == true {
                 completion(true)
             } else {
@@ -468,9 +466,10 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         }
     }
 
-    func exitNativePictureInPicture() {
-        NSLog("PIPLOG tab=%@ exit requested", title)
-        storedWebView?.callAsyncJavaScript(NativePiP.exit, arguments: [:], in: nil, in: LeanWeb.world) { _ in }
+    func exitNativePictureInPicture(completion: (@MainActor () -> Void)? = nil) {
+        storedWebView?.callAsyncJavaScript(NativePiP.exit, arguments: [:], in: nil, in: LeanWeb.world) { _ in
+            DispatchQueue.main.async { completion?() }
+        }
     }
 
     /// Whether the committed page is one the engine themes. Optimistic until the first commit, so a
@@ -695,7 +694,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     /// Runs `update` in one frame, only if that frame is still the document that announced the token.
     private func evaluatePageTheme(_ update: String, in frame: ThemeFrame, of webView: LeanWebView) {
         let guarded = "(function(){ if (globalThis.LeanPageTheme?.frame !== \"\(frame.token)\") return false; \(update) return true; })()"
-        webView.evaluateJavaScript(guarded, in: frame.info, in: LeanWeb.world) { [weak self] result in
+        webView.evaluateJavaScript(guarded, in: frame.info, in: LeanWeb.world) { result in
             switch result {
             case .success(let answer):
                 if (answer as? Bool) != true { self?.themeFrames.removeAll { $0.token == frame.token } }
@@ -1554,7 +1553,6 @@ extension LeanTab: WKScriptMessageHandler {
     ) {
         if message.name == NativePiP.leftMessageName {
             guard message.webView === storedWebView else { return }
-            NSLog("PIPLOG tab=%@ system window closed, stillPlaying=%@ window=%@", title, String(describing: message.body), String(describing: storedWebView?.window != nil))
             onNativePictureInPictureLeft?((message.body as? Bool) ?? false)
             return
         }

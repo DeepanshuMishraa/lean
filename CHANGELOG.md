@@ -4,6 +4,16 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.12] - 2026-10-03
+
+### Changed
+
+- Pages load faster with the colour theme on: the theme engine batches its reads and writes, does less work while a page keeps changing, and backs off on heavy pages
+
+### Fixed
+
+- The active tab highlight no longer stays on the previous tab after switching tabs quickly
+
 ## [0.1.11] - 2026-10-02
 
 ### Added

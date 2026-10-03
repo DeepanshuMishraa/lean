@@ -37,6 +37,7 @@
     let primaryText = null;
     // Content this far outside the viewport is themed ahead of a scroll. Wider costs more work at load (measured: +40% engine time at 900).
     const PRELOAD = 400;
+    const HEAVY_MS = 1500;
     const visibility = new IntersectionObserver(entries => {
         if (!theme) return;
         // Observation fires once per element on registration; only promote nodes not yet classified or marked stale.
@@ -587,7 +588,9 @@
     }
     function schedule() {
         if (!theme || frame) return;
-        frame = setTimeout(flush, 40);
+        // A page that has already cost this much main-thread time is heavy or churning; back off so the
+        // engine stays a small share of every second instead of competing with the site's own scripts.
+        frame = setTimeout(flush, busyMs > HEAVY_MS ? 250 : 40);
     }
     function flush(budget = 12) {
         frame = 0;
@@ -616,85 +619,107 @@
         let fullUpdate = false;
         const batch = [];
         let start = performance.now();
+        let primed = false;
         try {
+            // Elements are handled in chunks of reads then writes. Restoring an element and then reading
+            // the next one's style forced a full layout per element; a chunk costs one or two.
             while (batch.length < 300 && performance.now() - start < budget) {
-                let discovery = false;
-                let el = dirty.values().next().value;
-                if (el) dirty.delete(el);
-                else if (scanning.length) {
-                    discovery = scanning[0].discovery;
-                    el = scanning[0].walker.nextNode();
-                    if (!el) { scanning.shift(); continue; }
-                } else break;
-                if (!el.isConnected) continue;
-                if (el.nodeType !== Node.ELEMENT_NODE) continue;
-                if (discovery) {
-                    // Discovery only looks for late shadow roots: no layout reads, no records.
-                    if (el.shadowRoot && !scopes.has(el.shadowRoot)) {
-                        addScope(el.shadowRoot);
-                        enqueueTree(el.shadowRoot);
+                const chunk = [];
+                while (chunk.length < 40) {
+                    let discovery = false;
+                    let el = dirty.values().next().value;
+                    if (el) dirty.delete(el);
+                    else if (scanning.length) {
+                        discovery = scanning[0].discovery;
+                        el = scanning[0].walker.nextNode();
+                        if (!el) { scanning.shift(); continue; }
+                    } else break;
+                    if (!el.isConnected) continue;
+                    if (el.nodeType !== Node.ELEMENT_NODE) continue;
+                    if (discovery) {
+                        // Discovery only looks for late shadow roots: no layout reads, no records.
+                        if (el.shadowRoot && !scopes.has(el.shadowRoot)) {
+                            addScope(el.shadowRoot);
+                            enqueueTree(el.shadowRoot);
+                        }
+                        continue;
                     }
-                    continue;
-                }
-                if (el.matches('script, style, link, meta, head, title, template')) continue;
-                let record = records.get(el);
-                if (!record) {
-                    record = {element: el, attributes: new Map(), specs: new Map(), inline: new Map(), background: null, source: null, role: 'unknown', confidence: 0};
-                    records.set(el, record);
-                    visibility.observe(el);
-                }
-                const rect = el.getBoundingClientRect();
-                // Classify the viewport first; native visibility events promote deferred graph nodes.
-                if (rect.bottom < -PRELOAD || rect.top > innerHeight + PRELOAD) {
-                    // Changed while offscreen: keep what it wears (taking it off made elements near the edge flip
-                    // between themed and not on every reread) and mark it, so scrolling it into view rereads it.
-                    if (record.source) record.stale = true;
-                    continue;
-                }
-                // The media verdict is stable; recomputing it reads every SVG child's style.
-                const protectedMedia = record.mediaKnown ? record.media : media(el);
-                record.mediaKnown = true;
-                if (protectedMedia && el.localName !== 'svg') {
-                    record.media = true; record.role = 'media'; record.confidence = 1;
-                    continue;
-                }
-                if (el.shadowRoot) {
-                    const fresh = !scopes.has(el.shadowRoot);
-                    if (fresh) addScope(el.shadowRoot);
-                    if (fresh) enqueueTree(el.shadowRoot);
-                }
-                record.media = protectedMedia;
-                if (protectedMedia) { record.role = 'media'; record.confidence = 1; }
-                const hostScope = el.shadowRoot && scopes.get(el.shadowRoot);
-                if (el === document.documentElement || el === document.body || (hostScope && hostScope.text.includes(':host'))) pause();
-                restore(record);
-                const source = fingerprint(el, null, rect);
-                const pseudos = ['::before', '::after'].map(p => fingerprint(el, p, rect));
-                unregisterColors(record);
-                record.source = source;
-                record.stale = false;
-                record.pseudos = pseudos;
-                record.weight = source.viewportArea;
-                if (el === document.documentElement || el.shadowRoot) {
-                    record.variables = new Map();
-                    fullUpdate = true;
-                    const style = getComputedStyle(el);
-                    for (const name of variableUses.get(el === document.documentElement ? document : el.shadowRoot)?.keys() || []) {
-                        const value = parse(style.getPropertyValue(name).trim());
-                        if (value) record.variables.set(name, value);
+                    if (el.matches('script, style, link, meta, head, title, template')) continue;
+                    let record = records.get(el);
+                    if (!record) {
+                        record = {element: el, attributes: new Map(), specs: new Map(), inline: new Map(), background: null, source: null, role: 'unknown', confidence: 0};
+                        records.set(el, record);
+                        visibility.observe(el);
                     }
+                    chunk.push(record);
                 }
-                // Exclude the first style/layout synchronization from the per-node budget;
-                // otherwise a large page can make every batch contain just one node.
-                if (!batch.length) start = performance.now();
-                batch.push([record, source, pseudos]);
-                if (source.background && source.background[3] > 0 && neutral(source.background)) {
-                    const key = css(source.background);
-                    palette.set(key, (palette.get(key) || 0) + record.weight);
+                if (!chunk.length) break;
+                // Reads: geometry and the media verdict, before anything is written.
+                const live = [];
+                for (const record of chunk) {
+                    const el = record.element;
+                    const rect = el.getBoundingClientRect();
+                    // Exclude the first style/layout synchronization from the per-node budget;
+                    // otherwise a large page can make every batch contain just one node.
+                    if (!primed) { primed = true; start = performance.now(); }
+                    // Classify the viewport first; native visibility events promote deferred graph nodes.
+                    if (rect.bottom < -PRELOAD || rect.top > innerHeight + PRELOAD) {
+                        // Changed while offscreen: keep what it wears (taking it off made elements near the edge flip
+                        // between themed and not on every reread) and mark it, so scrolling it into view rereads it.
+                        if (record.source) record.stale = true;
+                        continue;
+                    }
+                    // The media verdict is stable; recomputing it reads every SVG child's style.
+                    const protectedMedia = record.mediaKnown ? record.media : media(el);
+                    record.mediaKnown = true;
+                    if (protectedMedia && el.localName !== 'svg') {
+                        record.media = true; record.role = 'media'; record.confidence = 1;
+                        continue;
+                    }
+                    record.media = protectedMedia;
+                    if (protectedMedia) { record.role = 'media'; record.confidence = 1; }
+                    live.push([record, rect]);
                 }
-                if (source.text && source.color && neutral(source.color)) {
-                    const key = css(source.color);
-                    textPalette.set(key, (textPalette.get(key) || 0) + 1);
+                // Writes: shadow scopes, the pause, and taking our own output off, so the reads below see the site.
+                for (const [record] of live) {
+                    const el = record.element;
+                    if (el.shadowRoot) {
+                        const fresh = !scopes.has(el.shadowRoot);
+                        if (fresh) addScope(el.shadowRoot);
+                        if (fresh) enqueueTree(el.shadowRoot);
+                    }
+                    const hostScope = el.shadowRoot && scopes.get(el.shadowRoot);
+                    if (el === document.documentElement || el === document.body || (hostScope && hostScope.text.includes(':host'))) pause();
+                    restore(record);
+                }
+                // Reads: the fingerprints, from one style and layout pass.
+                for (const [record, rect] of live) {
+                    const el = record.element;
+                    const source = fingerprint(el, null, rect);
+                    const pseudos = ['::before', '::after'].map(p => fingerprint(el, p, rect));
+                    unregisterColors(record);
+                    record.source = source;
+                    record.stale = false;
+                    record.pseudos = pseudos;
+                    record.weight = source.viewportArea;
+                    if (el === document.documentElement || el.shadowRoot) {
+                        record.variables = new Map();
+                        fullUpdate = true;
+                        const style = getComputedStyle(el);
+                        for (const name of variableUses.get(el === document.documentElement ? document : el.shadowRoot)?.keys() || []) {
+                            const value = parse(style.getPropertyValue(name).trim());
+                            if (value) record.variables.set(name, value);
+                        }
+                    }
+                    batch.push([record, source, pseudos]);
+                    if (source.background && source.background[3] > 0 && neutral(source.background)) {
+                        const key = css(source.background);
+                        palette.set(key, (palette.get(key) || 0) + record.weight);
+                    }
+                    if (source.text && source.color && neutral(source.color)) {
+                        const key = css(source.color);
+                        textPalette.set(key, (textPalette.get(key) || 0) + 1);
+                    }
                 }
             }
         } finally {
@@ -738,7 +763,8 @@
         if (!theme) return;
         clearTimeout(frame);
         frame = 0;
-        flush(24);
+        // Runs inside every mutation callback, so on a page that mutates constantly it must stay small.
+        flush(busyMs > HEAVY_MS ? 4 : 10);
     }
     function invalidate(event) {
         if (!theme) return;

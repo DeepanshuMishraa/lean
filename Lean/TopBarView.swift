@@ -405,8 +405,10 @@ private struct TopBarTabItem: View {
                     .fill(isSelected && store.liquidGlassEnabled ? Color.clear : (isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : store.adaptiveTheme.inactiveTabBackground))
 
                 if isSelected {
-                    // One highlight that slides from tab to tab, rather than
-                    // each tab fading its own in and out.
+                    // Each tab fades its own highlight in and out. A shared
+                    // matchedGeometryEffect slid one highlight between tabs, but
+                    // under rapid switching it lost track of the current tab
+                    // and left the highlight on the previous one.
                     Group {
                         if store.liquidGlassEnabled, #available(macOS 26, *) {
                             Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
@@ -427,9 +429,10 @@ private struct TopBarTabItem: View {
                                 )
                         }
                     }
-                    .matchedGeometryEffect(id: "activeTabHighlight", in: namespace)
+                    .transition(.opacity)
                 }
             }
+            .animation(Motion.tabSwitch, value: isSelected)
         }
         // Drag/drop sits below the URL bar overlay: on the whole tab, the drag
         // recognizer swallows mouse-downs meant for the inline text field.

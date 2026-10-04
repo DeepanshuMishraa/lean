@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CoreServices
 import Foundation
 
 enum DownloadState: String, Codable, Equatable {
@@ -184,7 +185,34 @@ final class DownloadManager: ObservableObject {
         downloads[index].state = .completed
         downloads[index].endDate = Date()
         downloads[index].speedBytesPerSec = 0
+        Self.markAsWebDownload(downloads[index].destinationURL, source: downloads[index].sourceURL)
         scheduleSave()
+    }
+
+    /// The sandbox stamps every file we write with a bare quarantine entry
+    /// (`0087;…;Lean;`, no id). Gatekeeper cannot evaluate that for a mounted
+    /// DMG's app, so even notarized apps fail with "can't be opened". Replace
+    /// it with the entry other browsers write: a web-download type with an id.
+    private static func markAsWebDownload(_ file: URL, source: URL?) {
+        var properties: [String: Any] = [
+            kLSQuarantineTypeKey as String: kLSQuarantineTypeWebDownload as String,
+            kLSQuarantineAgentNameKey as String: "Lean",
+            kLSQuarantineTimeStampKey as String: Date(),
+        ]
+        if let bundleID = Bundle.main.bundleIdentifier {
+            properties[kLSQuarantineAgentBundleIdentifierKey as String] = bundleID
+        }
+        if let source {
+            properties[kLSQuarantineDataURLKey as String] = source
+        }
+        var values = URLResourceValues()
+        values.quarantineProperties = properties
+        var target = file
+        do {
+            try target.setResourceValues(values)
+        } catch {
+            NSLog("Could not set quarantine properties on %@: %@", file.path, String(describing: error))
+        }
     }
 
     func failDownload(id: UUID, errorDescription: String?, cancelled: Bool = false) {

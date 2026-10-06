@@ -4,6 +4,17 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.13] - 2026-10-07
+
+### Changed
+
+- Background tabs fall asleep after 30 minutes by default, which cuts memory use with many tabs open (existing settings are kept)
+- Tab updates redraw the interface at most once every 60ms, which lowers CPU use while pages load
+
+### Fixed
+
+- A link that opens a new tab from inside a peek now turns the peek into a regular tab and opens the link as another regular tab, instead of leaving the peek open over a background tab
+
 ## [0.1.12] - 2026-10-03
 
 ### Changed

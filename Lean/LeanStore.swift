@@ -299,7 +299,7 @@ final class LeanStore: ObservableObject {
     /// so can reach the Mac's sheet. Fixed for the life of the process.
     let passkeysPossible = Passkeys.isEntitled
 
-    @Published var autoSleepTabsEnabled = false {
+    @Published var autoSleepTabsEnabled = true {
         didSet {
             persist(autoSleepTabsEnabled, forKey: Self.autoSleepTabsEnabledKey)
             scheduleAutoSleep()
@@ -613,7 +613,7 @@ final class LeanStore: ObservableObject {
         let initialPasskeys = savedPasskeys ?? true
         self.passkeysEnabled = initialPasskeys
         Passkeys.isEnabled = initialPasskeys
-        self.autoSleepTabsEnabled = databaseValue(self.database, Bool.self, forKey: Self.autoSleepTabsEnabledKey) ?? false
+        self.autoSleepTabsEnabled = databaseValue(self.database, Bool.self, forKey: Self.autoSleepTabsEnabledKey) ?? true
         let savedSleepMinutes = databaseValue(self.database, Int.self, forKey: Self.autoSleepAfterMinutesKey) ?? 30
         self.autoSleepAfterMinutes = [5, 15, 30, 60].contains(savedSleepMinutes) ? savedSleepMinutes : 30
 
@@ -1921,12 +1921,12 @@ final class LeanStore: ObservableObject {
 
     private var tabsChangePending = false
 
-    /// Tabs report state 6-10x per load; one redraw per run-loop turn is
-    /// enough, instead of one full-UI invalidation per report.
+    /// Tabs report state 6-10x per load, background tabs included; one
+    /// full-UI invalidation per 60ms is enough, instead of one per report.
     private func notifyTabsChanged() {
         guard !tabsChangePending else { return }
         tabsChangePending = true
-        DispatchQueue.main.async { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
             guard let self else { return }
             self.tabsChangePending = false
             self.objectWillChange.send()
@@ -1957,6 +1957,10 @@ final class LeanStore: ObservableObject {
         tab.onPeekLink = { [weak self, weak tab] url in
             guard let self, let tab else { return }
             self.peek(url, from: tab)
+        }
+        tab.onLeavePeek = { [weak self, weak tab] in
+            guard let self, let tab, self.peekTab === tab else { return }
+            self.keepPeek()
         }
         tab.onDownloadFailed = { [weak self] in
             guard let self else { return }

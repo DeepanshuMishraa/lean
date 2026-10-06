@@ -139,6 +139,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     var onDownloadFailed: (() -> Void)?
     /// Peek tabs live outside the row: links inside one just go.
     var isPeekTab = false
+    /// A link in a peek asked for a new tab: the store keeps the peek as a tab first.
+    var onLeavePeek: (() -> Void)?
     /// Shift-click peeks at links when Settings says so. Set by the store.
     var peeksLinks = false
     var downloadManager: DownloadManager?
@@ -2112,7 +2114,8 @@ extension LeanTab: WKNavigationDelegate {
            let url = navigationAction.request.url,
            let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
             decisionHandler(.cancel)
-            onOpenURLInNewTab?(url, navigationAction.modifierFlags.contains(.shift))
+            if isPeekTab { onLeavePeek?() }
+            onOpenURLInNewTab?(url, isPeekTab || navigationAction.modifierFlags.contains(.shift))
             return
         }
         // Shift-click, when Settings says so: a peek at the link, over this
@@ -2281,7 +2284,8 @@ extension LeanTab: WKUIDelegate {
         if navigationAction.navigationType == .linkActivated,
            navigationAction.modifierFlags.contains(.command),
            let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
-            onOpenURLInNewTab?(url, navigationAction.modifierFlags.contains(.shift))
+            if isPeekTab { onLeavePeek?() }
+            onOpenURLInNewTab?(url, isPeekTab || navigationAction.modifierFlags.contains(.shift))
             return nil
         }
         // A plain click on a link that asks for a new tab (target="_blank"), when Settings says to peek: a peek
@@ -2294,6 +2298,8 @@ extension LeanTab: WKUIDelegate {
             onPeekLink?(url)
             return nil
         }
+        // From inside a peek, a link that wants a new tab ends the peek: it becomes a normal tab first.
+        if isPeekTab, navigationAction.navigationType == .linkActivated { onLeavePeek?() }
         return onOpenNewTab?(url, configuration)
     }
 

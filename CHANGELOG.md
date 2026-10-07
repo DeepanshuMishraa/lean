@@ -4,6 +4,25 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.14] - 2026-10-08
+
+### Added
+
+- Private windows: File > New Private Window (⇧⌘N), or the quick settings menu. A private window keeps cookies and site data in memory only, discards them when it closes, saves no history, tabs or passwords, and keeps extensions out
+- Icon-only tabs in the vertical sidebar now appear as a grid of tiles, with a close button on hover
+
+### Changed
+
+- The vertical sidebar is part of the window frame and the page is a rounded card on it, in a darker shade of the theme; the floating sidebar is an opaque rounded panel
+- Larger sidebar traffic-light buttons
+
+### Fixed
+
+- The new-tab search box no longer overflows the window when it is small
+- The History submenu in the sidebar's quick settings menu opens inside the window
+- The sidebar address bar no longer takes focus and opens suggestions when the browser launches
+- Thin, Normal and Thick border thickness all apply in the vertical sidebar layout
+
 ## [0.1.13] - 2026-10-07
 
 ### Changed

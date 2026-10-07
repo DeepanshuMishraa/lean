@@ -64,12 +64,37 @@ struct LeanApp: App {
         // programmatically and are unaffected by this flag.
         .windowBackgroundDragBehavior(.disabled)
         .commands {
-            LeanCommands(store: store, updater: updater)
+            LeanCommands(mainStore: store, updater: updater)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
                 store.flushPendingPersist()
             }
         }
+
+        // Each private window gets its own store, and with it its own
+        // in-memory cookies and storage: closing the window ends the session.
+        WindowGroup("Private Window", id: PrivateWindow.id) {
+            PrivateWindowRoot(updater: updater)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowBackgroundDragBehavior(.disabled)
+        // A private window must not come back at the next launch.
+        .restorationBehavior(.disabled)
+    }
+}
+
+enum PrivateWindow {
+    static let id = "private"
+}
+
+private struct PrivateWindowRoot: View {
+    @StateObject private var store = LeanStore(isPrivateSession: true)
+    @ObservedObject var updater: AppUpdater
+
+    var body: some View {
+        LeanView(store: store, updater: updater)
+            .frame(minWidth: 720, minHeight: 480)
+            .ignoresSafeArea(.all)
     }
 }

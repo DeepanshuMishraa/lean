@@ -16,6 +16,11 @@ struct TopBarView: View {
                 .frame(width: 80)
                 .background(WindowDragView())
 
+            if store.isPrivateSession {
+                PrivateSessionBadge(store: store)
+                    .padding(.trailing, 8)
+            }
+
             // Horizontal Tabs (Pinned tabs group + unpinned tabs)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 5) {
@@ -1743,6 +1748,8 @@ struct QuickSettingsPopover: View {
     @State private var isSubmenuHovered = false
     @State private var isSubmenuVisible = false
     @State private var isAllSettingsHovered = false
+    @State private var isPrivateWindowHovered = false
+    @Environment(\.openWindow) private var openWindow
     @State private var historyRowY: CGFloat = 142
     @State private var closeWorkItem: DispatchWorkItem? = nil
 
@@ -1797,11 +1804,32 @@ struct QuickSettingsPopover: View {
         }
     }
 
+    /// Seamless invisible hover bridge between submenu and main popover
+    private var submenuHoverBridge: some View {
+        Color.clear
+            .frame(width: 8)
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                if hovering {
+                    closeWorkItem?.cancel()
+                    closeWorkItem = nil
+                } else {
+                    scheduleCloseIfNeeded()
+                }
+            }
+    }
+
     var body: some View {
         mainPopoverCard
-            .overlay(alignment: .topLeading) {
+            .overlay(alignment: store.tabLayout == .sidebar ? .bottomLeading : .topLeading) {
                 if isSubmenuVisible {
+                    // The top-bar popover hangs off the right edge and opens its
+                    // submenu leftward from the History row. The sidebar's sits
+                    // at the bottom-left of the window: it opens rightward,
+                    // bottom-aligned so a tall list grows upward, not off screen.
+                    let opensRight = store.tabLayout == .sidebar
                     HStack(spacing: 0) {
+                        if opensRight { submenuHoverBridge }
                         QuickSettingsHistorySubmenu(
                             store: store,
                             onHoverChanged: onSubmenuHoverChanged,
@@ -1813,24 +1841,13 @@ struct QuickSettingsPopover: View {
                             }
                         )
 
-                        // Seamless invisible hover bridge between submenu and main popover
-                        Color.clear
-                            .frame(width: 8)
-                            .contentShape(Rectangle())
-                            .onHover { hovering in
-                                if hovering {
-                                    closeWorkItem?.cancel()
-                                    closeWorkItem = nil
-                                } else {
-                                    scheduleCloseIfNeeded()
-                                }
-                            }
+                        if !opensRight { submenuHoverBridge }
                     }
                     .fixedSize()
-                    .offset(x: -248, y: max(0, historyRowY - 6))
+                    .offset(x: opensRight ? 228 : -248, y: opensRight ? 0 : max(0, historyRowY - 6))
                     .transition(.asymmetric(
-                        insertion: .scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity),
-                        removal: .scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity)
+                        insertion: .scale(scale: 0.96, anchor: opensRight ? .topLeading : .topTrailing).combined(with: .opacity),
+                        removal: .scale(scale: 0.96, anchor: opensRight ? .topLeading : .topTrailing).combined(with: .opacity)
                     ))
                 }
             }
@@ -1939,6 +1956,40 @@ struct QuickSettingsPopover: View {
                             .preference(key: HistoryRowYPreferenceKey.self, value: proxy.frame(in: .named("QuickSettingsCard")).minY)
                     }
                 )
+
+                Button {
+                    withAnimation(.spring(response: 0.18, dampingFraction: 0.85)) {
+                        store.isQuickSettingsPresented = false
+                    }
+                    openWindow(id: PrivateWindow.id)
+                } label: {
+                    HStack(spacing: 8) {
+                        LeanIcon.eyeSlash.fill
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 12, height: 12)
+                        Text("Private Window")
+                            .font(store.headingFont(size: 12))
+                        Spacer()
+                        Text("⇧⌘N")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundColor(store.adaptiveTheme.secondaryText)
+                    }
+                    .foregroundColor(store.adaptiveTheme.primaryText)
+                    .padding(.horizontal, 8)
+                    .frame(height: 28)
+                    .background(
+                        isPrivateWindowHovered
+                            ? (store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                            : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.hitArea)
+                .onHover { hovering in
+                    isPrivateWindowHovered = hovering
+                    handleNonHistoryHovered(hovering)
+                }
 
                 // Bottom link to All Settings
                 Button {

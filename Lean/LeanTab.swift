@@ -6,6 +6,9 @@ import WebKit
 final class LeanTab: NSObject, ObservableObject, Identifiable {
     let id = UUID()
     private let dataStore: WKWebsiteDataStore
+    /// A private tab keeps its cookies and storage in memory only, and is
+    /// left out of history, the saved session and Reopen Closed Tab.
+    let isPrivate: Bool
     private let initialConfiguration: WKWebViewConfiguration?
     private var isDark: Bool
     private var storedWebView: LeanWebView?
@@ -190,6 +193,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
     init(
         dataStore: WKWebsiteDataStore,
+        isPrivate: Bool = false,
         initialURL: URL?,
         isDark: Bool = false,
         scrollbarStyle: ScrollbarStyle = .normal,
@@ -205,6 +209,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         configuration: WKWebViewConfiguration? = nil
     ) {
         self.dataStore = dataStore
+        self.isPrivate = isPrivate
         if let configuration {
             let popupConfig = (configuration.copy() as? WKWebViewConfiguration) ?? configuration
             popupConfig.userContentController = WKUserContentController()
@@ -252,7 +257,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             configuration.processPool = Self.sharedProcessPool
         }
         configuration.websiteDataStore = dataStore
-        if #available(macOS 15.4, *) {
+        // Extensions are not offered to private tabs: they could see and
+        // keep what the tab is meant to forget.
+        if #available(macOS 15.4, *), !isPrivate {
             configuration.webExtensionController = BrowserExtensionManager.shared.controller
         }
         configuration.preferences.isElementFullscreenEnabled = true
@@ -534,7 +541,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     private func addPasswordCaptureScript(to controller: WKUserContentController) {
-        guard passwordSavePromptsEnabled else { return }
+        guard passwordSavePromptsEnabled, !isPrivate else { return }
         controller.addUserScript(
             WKUserScript(
                 source: PageScripts.passwordFormSubmit,
@@ -1749,7 +1756,7 @@ extension LeanTab: WKScriptMessageHandler {
     }
 
     private func captureSubmittedLogin(_ message: WKScriptMessage) {
-        guard passwordSavePromptsEnabled,
+        guard passwordSavePromptsEnabled, !isPrivate,
               message.frameInfo.isMainFrame,
               message.webView === webView,
               let pageURL = webView.url,
@@ -1834,7 +1841,7 @@ extension LeanTab: WKNavigationDelegate {
     }
 
     private func offerToSavePendingPassword(after webView: WKWebView) {
-        guard passwordSavePromptsEnabled,
+        guard passwordSavePromptsEnabled, !isPrivate,
               let pending = pendingLogin,
               Date().timeIntervalSince(pending.submittedAt) < 20,
               let pageURL = webView.url,

@@ -1,6 +1,16 @@
 import SwiftUI
 import WebKit
 
+/// The window a `LeanView` lives in, found once the view is on screen.
+@MainActor
+final class WindowBox {
+    weak var window: NSWindow?
+
+    /// Before the window is known, events are not filtered out.
+    func owns(_ other: NSWindow?) -> Bool { window.map { $0 === other } ?? true }
+    var isKey: Bool { window?.isKeyWindow ?? true }
+}
+
 private let topRowDigitByKeyCode: [UInt16: Int] = [18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9]
 
 struct LeanView: View {
@@ -16,6 +26,9 @@ struct LeanView: View {
     @State private var isZenSidebarRevealed = false
     @State private var hideSidebarWorkItem: DispatchWorkItem?
     @State private var isMouseOverSidebar = false
+    /// Which window this view is in. Key monitors and notifications are
+    /// app-wide, so with two windows each must ignore the other's events.
+    @State private var windowBox = WindowBox()
 
     private var isTopBarVisible: Bool {
         // Popovers must keep the top bar visible
@@ -153,16 +166,17 @@ struct LeanView: View {
         .ignoresSafeArea(.all)
         .background(
             store.enableWindowBorder
-                ? AnyView(store.effectiveZenColor.ignoresSafeArea())
+                ? AnyView((store.tabLayout == .sidebar ? store.frameBackground : store.effectiveZenColor).ignoresSafeArea())
                 : (store.glassActive
                     ? AnyView(VisualEffectBlur(material: .underWindowBackground, blendingMode: .behindWindow).ignoresSafeArea())
                     : AnyView(store.frameBackground.ignoresSafeArea()))
         )
-        .background(WindowConfigurator(store: store, isTopBarVisible: isTopBarVisible, isSidebarVisible: isSidebarEffectivelyVisible))
+        .background(WindowConfigurator(store: store, windowBox: windowBox, isTopBarVisible: isTopBarVisible, isSidebarVisible: isSidebarEffectivelyVisible))
         .preferredColorScheme(store.colorScheme)
+        .focusedSceneObject(store)
         .onAppear {
             setupKeyMonitor()
-            if #available(macOS 15.4, *) {
+            if #available(macOS 15.4, *), !store.isPrivateSession {
                 BrowserExtensionManager.shared.attach(store: store)
             }
         }
@@ -174,13 +188,16 @@ struct LeanView: View {
             hasSetupKeyMonitor = false
         }
         .onReceive(NotificationCenter.default.publisher(for: .focusAddress)) { _ in
+            // These notifications reach every window; only the active one acts.
+            guard windowBox.isKey else { return }
             if store.selectedTab?.url != nil {
                 withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
                     store.isInlineURLEditing = true
                 }
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { note in
+            guard windowBox.owns(note.object as? NSWindow) else { return }
             if store.isInlineURLEditing {
                 store.dismissInlineURLEditing()
             }
@@ -192,12 +209,15 @@ struct LeanView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .showFind)) { _ in
+            guard windowBox.isKey else { return }
             store.showsFindBar = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .showSettings)) { _ in
+            guard windowBox.isKey else { return }
             store.openSettings()
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
+            guard windowBox.isKey else { return }
             withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                 if store.isSidebarCollapsed {
                     // Auto-hide enabled: if mouse is not over sidebar, hide it immediately
@@ -332,6 +352,7 @@ struct LeanView: View {
                 VStack(spacing: 0) {
                     Spacer().frame(height: store.scaled(72))
                     OmnibarView(store: store, isFloating: true)
+                        .padding(.horizontal, 24)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .transition(.asymmetric(
@@ -490,7 +511,7 @@ struct LeanView: View {
         return SidebarView(store: store)
             .background {
                 if floating && !store.glassActive {
-                    (store.enableWindowBorder ? store.effectiveZenColor : store.frameBackground)
+                    store.frameBackground
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: floating ? radius : 0, style: .continuous))
@@ -513,9 +534,15 @@ struct LeanView: View {
     }
 
     // MARK: - Main Content Card & Spacing
+    /// Margin around the page card in vertical layout: the chosen border
+    /// thickness when there is a border, a fixed gap when there is not.
+    private var sidebarCardMargin: CGFloat {
+        store.enableWindowBorder ? store.windowBorderWidth : 8
+    }
+
     private var cardTopPadding: CGFloat {
         if store.tabLayout == .sidebar {
-            return max(store.windowBorderWidth, 8)
+            return sidebarCardMargin
         }
         if !store.enableWindowBorder { return glassInset }
         return isTopBarVisible ? 2 : store.windowBorderWidth
@@ -526,7 +553,7 @@ struct LeanView: View {
 
     private var cardBottomPadding: CGFloat {
         if store.tabLayout == .sidebar {
-            return max(store.windowBorderWidth, 8)
+            return sidebarCardMargin
         }
         return store.enableWindowBorder ? store.windowBorderWidth : glassInset
     }
@@ -544,7 +571,7 @@ struct LeanView: View {
                 let edgeInset = glassInset > 0 ? glassInset : (store.enableWindowBorder ? store.windowBorderWidth : 0)
                 return edgeInset + store.scaled(256) + 4
             }
-            return max(store.windowBorderWidth, 10)
+            return sidebarCardMargin
         }
         let basePadding = store.enableWindowBorder ? store.windowBorderWidth : glassInset
         return basePadding
@@ -552,7 +579,7 @@ struct LeanView: View {
 
     private var cardTrailingPadding: CGFloat {
         if store.tabLayout == .sidebar {
-            return max(store.windowBorderWidth, 8)
+            return sidebarCardMargin
         }
         return store.enableWindowBorder ? store.windowBorderWidth : glassInset
     }
@@ -667,7 +694,9 @@ struct LeanView: View {
                                 Spacer()
                             }
 
+                            // Keeps its 580pt width when there is room, and a margin when there is not.
                             OmnibarView(store: store, isFloating: false)
+                                .padding(.horizontal, 24)
 
                             Spacer()
                             if !store.isNewTabOmnibarFloating {
@@ -697,6 +726,7 @@ struct LeanView: View {
         hasSetupKeyMonitor = true
 
         keyMonitors.append(NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseUp]) { event in
+            guard windowBox.owns(event.window) else { return event }
             if let window = event.window, window.styleMask.contains(.fullSizeContentView) {
                 WindowDragZones.shared.update(window, at: event.locationInWindow)
             }
@@ -706,6 +736,7 @@ struct LeanView: View {
         // Monitor mouse clicks when quick settings, inline URL bar, or floating omnibar is open:
         // Only clicking outside the active region collapses / closes it!
         keyMonitors.append(NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { event in
+            guard windowBox.owns(event.window ?? NSApp.keyWindow) else { return event }
             // Runs before the click reaches any view: a switcher left open by
             // a missed key release must not swallow this click.
             store.settleStaleTabSwitcher()
@@ -849,6 +880,7 @@ struct LeanView: View {
 
         // Monitor keyDown for registered custom shortcuts and Escape
         keyMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard windowBox.owns(event.window ?? NSApp.keyWindow) else { return event }
             // Tab pressed again with the switcher open cycles it; anything
             // else first checks the switcher is not stale.
             if event.keyCode != 48 { store.settleStaleTabSwitcher(flags: event.modifierFlags) }
@@ -963,6 +995,7 @@ struct LeanView: View {
 
         // Monitor flagsChanged to detect release of Control key
         keyMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
+            guard windowBox.owns(event.window ?? NSApp.keyWindow) else { return event }
             store.settleStaleTabSwitcher(flags: event.modifierFlags)
             return event
         })
@@ -1264,6 +1297,7 @@ private struct SavedPasswordRow: View {
 
 private struct WindowConfigurator: NSViewRepresentable {
     @ObservedObject var store: LeanStore
+    let windowBox: WindowBox
     let isTopBarVisible: Bool
     let isSidebarVisible: Bool
 
@@ -1283,6 +1317,7 @@ private struct WindowConfigurator: NSViewRepresentable {
 
     private func configure(view: NSView) {
         guard let window = view.window else { return }
+        windowBox.window = window
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = store.liquidGlassEnabled ? .none : .automatic
         window.titleVisibility = .hidden
@@ -1302,7 +1337,7 @@ private struct WindowConfigurator: NSViewRepresentable {
         window.backgroundColor = translucent
             ? NSColor.clear
             : (store.enableWindowBorder
-                ? NSColor(store.effectiveZenColor)
+                ? NSColor(store.tabLayout == .sidebar ? store.frameBackground : store.effectiveZenColor)
                 : (store.tabLayout == .sidebar
                     ? NSColor(store.frameBackground)
                     : (store.themeColors.palette.map { NSColor($0.background) }

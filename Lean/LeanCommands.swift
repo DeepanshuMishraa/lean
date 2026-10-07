@@ -2,8 +2,13 @@ import AppKit
 import SwiftUI
 
 struct LeanCommands: Commands {
-    @ObservedObject var store: LeanStore
+    @ObservedObject var mainStore: LeanStore
     @ObservedObject var updater: AppUpdater
+    @FocusedObject private var focusedStore: LeanStore?
+    @Environment(\.openWindow) private var openWindow
+
+    /// Menu items act on the window in front, a private one included.
+    private var store: LeanStore { focusedStore ?? mainStore }
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
@@ -41,6 +46,8 @@ struct LeanCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Tab") { store.handleNewTabCommand() }
                 .keyboardShortcut("t", modifiers: .command)
+            Button("New Private Window") { openWindow(id: PrivateWindow.id) }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
             Button("Reopen Closed Tab") { store.reopenClosedTab() }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
         }

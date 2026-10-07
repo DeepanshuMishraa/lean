@@ -208,7 +208,10 @@ struct ThemeColors {
     /// The frame behind the vertical sidebar and around the page card: a step
     /// off the page colour so the card reads as a surface sitting on it.
     var sidebarChrome: Color {
-        windowBackground.adjustBrightness(by: isDark ? -0.04 : -0.06)
+        // The default dark page is pure black, which nothing can be darker than:
+        // the frame goes a step lighter instead, a dark grey that still reads as dark.
+        if palette == nil && isDark { return Color(white: 0.025) }
+        return windowBackground.adjustBrightness(by: isDark ? -0.10 : -0.06)
     }
 
     var divider: Color {

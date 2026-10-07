@@ -8,8 +8,7 @@ struct SidebarView: View {
     @Namespace private var sidebarTabSelectionNamespace
 
     private var sidebarBackground: Color {
-        // With a window border the sidebar is part of the coloured frame.
-        store.enableWindowBorder ? Color.clear : store.frameBackground
+        store.frameBackground
     }
 
     var body: some View {
@@ -18,6 +17,11 @@ struct SidebarView: View {
             HStack(spacing: 0) {
                 SidebarTrafficLights(store: store)
                     .padding(.leading, 14)
+
+                if store.isPrivateSession {
+                    PrivateSessionBadge(store: store)
+                        .padding(.leading, 10)
+                }
 
                 Spacer(minLength: 0)
                     .background(WindowDragView())
@@ -258,6 +262,9 @@ struct SidebarView: View {
 private struct SidebarAddressBar: View {
     @ObservedObject var store: LeanStore
     @FocusState private var isFocused: Bool
+    @State private var appearedAt = Date.distantPast
+    /// Set when the user or a command asked to edit the address, as opposed to AppKit focusing it on its own.
+    @State private var focusWasRequested = false
     @State private var text = ""
     @State private var selectedIndex = 0
     /// What the user typed; suggestions come from this, not from `text`, which
@@ -400,6 +407,7 @@ private struct SidebarAddressBar: View {
         .background(barBackground)
         .contentShape(Rectangle())
         .onTapGesture {
+            focusWasRequested = true
             isFocused = true
         }
         .anchorPreference(key: SuggestionAnchorKey.self, value: .bounds) { [.sidebarBar: $0] }
@@ -408,11 +416,22 @@ private struct SidebarAddressBar: View {
             syncDropdown()
         }
         .onChange(of: selectedIndex) { _, _ in syncDropdown() }
-        .onChange(of: isFocused) { _, _ in syncDropdown() }
+        .onChange(of: isFocused) { _, focused in
+            // At launch AppKit hands the window's only text field first-responder
+            // status, which opened the address bar and its suggestions unasked.
+            // Focus nobody asked for, just after the bar appears, is let go.
+            if focused, !focusWasRequested, Date().timeIntervalSince(appearedAt) < 1.5 {
+                isFocused = false
+                return
+            }
+            if !focused { focusWasRequested = false }
+            syncDropdown()
+        }
         .onDisappear {
             if store.suggestionDropdown?.owner == .sidebarBar { store.suggestionDropdown = nil }
         }
         .onAppear {
+            appearedAt = Date()
             syncFromTab()
         }
         .onChange(of: store.selectedID) { _, _ in
@@ -440,6 +459,7 @@ private struct SidebarAddressBar: View {
         if let url = store.selectedTab?.url {
             text = url.absoluteString
         }
+        focusWasRequested = true
         isFocused = true
     }
 
@@ -1208,3 +1228,24 @@ struct WindowDragView: NSViewRepresentable {
     }
 }
 
+
+// MARK: - Private Window Badge
+/// Tells a private window apart from a normal one, in either tab layout.
+struct PrivateSessionBadge: View {
+    @ObservedObject var store: LeanStore
+
+    var body: some View {
+        HStack(spacing: 5) {
+            LeanIcon.eyeSlash.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 11, height: 11)
+            Text("Private")
+                .font(store.headingFont(size: 11, weight: .semibold))
+        }
+        .foregroundColor(store.adaptiveTheme.primaryText)
+        .padding(.horizontal, 8)
+        .frame(height: store.scaled(22))
+        .background(store.adaptiveTheme.iconHoverBackground, in: Capsule())
+        .help("Private window: cookies and site data are discarded when it closes, and nothing is saved to history.")
+    }
+}

@@ -175,7 +175,8 @@ struct HistoryItem: Identifiable, Equatable, Hashable, Codable, Sendable {
 final class LeanStore: ObservableObject {
     @Published private(set) var tabs: [LeanTab] = [] {
         didSet {
-            if #available(macOS 15.4, *) {
+            // Extensions never see a private window's tabs.
+            if #available(macOS 15.4, *), !isPrivateSession {
                 BrowserExtensionManager.shared.tabsChanged(old: oldValue, new: tabs)
             }
         }
@@ -556,6 +557,7 @@ final class LeanStore: ObservableObject {
 
     private let dataStore: WKWebsiteDataStore
     private let database: AppDatabase?
+    let isPrivateSession: Bool
     let mediaPermissionStore: MediaPermissionStore
     private var recentlyClosed: [URL] = []
     private var adBlockUpdateObserver: NSObjectProtocol?
@@ -589,11 +591,14 @@ final class LeanStore: ObservableObject {
     /// @Published) on purpose: it is only read by drop delegates mid-drag.
     var draggingTabID: LeanTab.ID?
 
-    init(dataStore: WKWebsiteDataStore? = nil, database: AppDatabase? = nil) {
-        self.dataStore = dataStore ?? WKWebsiteDataStore.default()
+    /// A private window's store: cookies and storage live in memory, settings
+    /// are read from the saved ones, and nothing is ever written back (see `persist`).
+    init(dataStore: WKWebsiteDataStore? = nil, database: AppDatabase? = nil, isPrivateSession: Bool = false) {
+        self.isPrivateSession = isPrivateSession
+        self.dataStore = isPrivateSession ? WKWebsiteDataStore.nonPersistent() : (dataStore ?? WKWebsiteDataStore.default())
         self.database = database ?? AppDatabase.openDefault()
-        self.downloadManager = DownloadManager(database: self.database)
-        self.mediaPermissionStore = MediaPermissionStore(database: self.database)
+        self.downloadManager = DownloadManager(database: isPrivateSession ? nil : self.database)
+        self.mediaPermissionStore = MediaPermissionStore(database: isPrivateSession ? nil : self.database)
 
         let savedSearchEngine = databaseValue(self.database, String.self, forKey: Self.searchEngineKey)
             ?? UserDefaults.standard.string(forKey: Self.searchEngineKey)
@@ -638,6 +643,9 @@ final class LeanStore: ObservableObject {
                 return HistoryItem(url: url, title: title, timestamp: Date())
             }
         }
+
+        // A private window starts with no past: nothing to suggest from it.
+        if isPrivateSession { self.historyItems = [] }
 
         let loadedImportedBookmarks = databaseValue(self.database, [ImportedBookmark].self, forKey: Self.importedBookmarksKey) ?? []
         self.importedBookmarks = loadedImportedBookmarks
@@ -826,7 +834,7 @@ final class LeanStore: ObservableObject {
             ?? UserDefaults.standard.object(forKey: Self.hasCompletedOnboardingKey) as? Bool
             ?? false
         self.hasCompletedOnboarding = completedOnboarding
-        self.isOnboardingPresented = !completedOnboarding
+        self.isOnboardingPresented = !completedOnboarding && !isPrivateSession
 
         deduplicateHistory()
         saveHistory()
@@ -854,14 +862,14 @@ final class LeanStore: ObservableObject {
         let sessionURLs = (savedSession?.urls ?? legacySessionURLs).compactMap(URL.init(string:))
         let selectedIndex = min(savedSession?.selectedIndex ?? sessionURLs.count - 1, sessionURLs.count - 1)
         let savedRecentlyClosed = databaseValue(self.database, [String].self, forKey: Self.recentlyClosedKey) ?? []
-        recentlyClosed = savedRecentlyClosed.compactMap(URL.init(string:))
+        recentlyClosed = isPrivateSession ? [] : savedRecentlyClosed.compactMap(URL.init(string:))
         if databaseValue(self.database, Bool.self, forKey: Self.migrationKey) != true {
             migrateLegacyState(sessionURLs: legacySessionURLs)
         }
         if savedSession == nil {
             persist(BrowserSession(urls: legacySessionURLs, selectedIndex: max(0, selectedIndex)), forKey: Self.sessionStateKey)
         }
-        if sessionURLs.isEmpty {
+        if isPrivateSession || sessionURLs.isEmpty {
             newTab()
         } else {
             let pinnedSet = Set(savedSession?.pinnedIndices ?? [])
@@ -912,7 +920,11 @@ final class LeanStore: ObservableObject {
     /// What shows around the page: the sidebar's frame in vertical layout,
     /// the plain window colour otherwise.
     var frameBackground: Color {
-        tabLayout == .sidebar ? themeColors.sidebarChrome : themeColors.windowBackground
+        guard tabLayout == .sidebar else { return themeColors.windowBackground }
+        // With a window border the frame has its own colour: the sidebar takes a
+        // darker step of it, about as dark as the default theme's chrome without one.
+        if enableWindowBorder { return effectiveZenColor.adjustBrightness(by: isDarkMode ? -0.07 : -0.05) }
+        return themeColors.sidebarChrome
     }
 
     var adaptiveTheme: AdaptiveFrameTheme {
@@ -1314,7 +1326,7 @@ final class LeanStore: ObservableObject {
 
     private func handleTabSelectionChange(from previous: LeanTab.ID?, to current: LeanTab.ID?) {
         guard previous != current else { return }
-        if #available(macOS 15.4, *), let tab = tabs.first(where: { $0.id == current }) {
+        if #available(macOS 15.4, *), !isPrivateSession, let tab = tabs.first(where: { $0.id == current }) {
             BrowserExtensionManager.shared.tabActivated(tab, previous: tabs.first { $0.id == previous })
         }
         if let current, current == nativePictureInPictureTabID, let tab = tabs.first(where: { $0.id == current }) {
@@ -1909,6 +1921,7 @@ final class LeanStore: ObservableObject {
     ) -> LeanTab {
         let tab = LeanTab(
             dataStore: dataStore,
+            isPrivate: isPrivateSession,
             initialURL: configuration == nil ? url : nil,
             isDark: isDarkMode,
             scrollbarStyle: scrollbarStyle,
@@ -2575,7 +2588,7 @@ final class LeanStore: ObservableObject {
     }
 
     private func persist<T: Encodable>(_ value: T, forKey key: String) {
-        guard let database else { return }
+        guard let database, !isPrivateSession else { return }
         if case .failure(let error) = database.set(value, forKey: key) {
             NSLog("Could not persist %@: %@", key, String(describing: error))
         }

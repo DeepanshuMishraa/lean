@@ -41,7 +41,7 @@ struct OmnibarView: View {
                 suggestionsList
             }
         }
-        .frame(width: store.scaled(580))
+        .frame(maxWidth: store.scaled(580))
         .contentShape(Rectangle())
         .onTapGesture {
             if !isFieldFocused {

@@ -8,25 +8,25 @@ struct SidebarView: View {
     @Namespace private var sidebarTabSelectionNamespace
 
     private var sidebarBackground: Color {
-        store.adaptiveTheme.isBorderEnabled
-            ? store.adaptiveTheme.activeTabBackground
-            : (store.isDarkMode ? Color(red: 32/255, green: 33/255, blue: 38/255) : Color(white: 0.96))
+        // With a window border the sidebar is part of the coloured frame.
+        store.enableWindowBorder ? Color.clear : store.frameBackground
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // 1. Header Row: Custom Titlebar with Traffic Lights + Navigation Controls
+            // 1. Header Row: Custom Titlebar with Traffic Lights + Sidebar Toggle Button
             HStack(spacing: 0) {
                 SidebarTrafficLights(store: store)
-                    .padding(.leading, 12)
+                    .padding(.leading, 14)
 
-                Spacer().frame(width: 12)
+                Spacer(minLength: 0)
+                    .background(WindowDragView())
 
                 InteractiveIconButton(
                     icon: .sidebar,
                     helpText: store.isSidebarCollapsed ? "Pin Sidebar (Always Expanded) (⌘S)" : "Enable Auto-hide (⌘S)",
-                    size: 24,
-                    iconSize: 12,
+                    size: 26,
+                    iconSize: 13,
                     color: store.isSidebarCollapsed ? store.adaptiveTheme.secondaryText : store.adaptiveTheme.primaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
                     hoverBackground: store.adaptiveTheme.iconHoverBackground,
@@ -37,86 +37,10 @@ struct SidebarView: View {
                         store.toggleSidebar()
                     }
                 }
-
-                Spacer().frame(width: 4)
-
-                InteractiveIconButton(
-                    icon: .arrowLeft,
-                    helpText: "Back (⌘[)",
-                    size: 24,
-                    iconSize: 12,
-                    color: store.selectedTab?.canGoBack == true ? store.adaptiveTheme.primaryText : store.adaptiveTheme.disabledIconText,
-                    hoverColor: store.adaptiveTheme.primaryText,
-                    disabledColor: store.adaptiveTheme.disabledIconText,
-                    hoverBackground: store.adaptiveTheme.iconHoverBackground,
-                    pressedBackground: store.adaptiveTheme.iconPressedBackground,
-                    isDark: store.adaptiveTheme.effectiveIsDark,
-                    isEnabled: store.selectedTab?.canGoBack == true
-                ) {
-                    store.selectedTab?.goBack()
-                }
-
-                Spacer().frame(width: 4)
-
-                InteractiveIconButton(
-                    icon: .arrowRight,
-                    helpText: "Forward (⌘])",
-                    size: 24,
-                    iconSize: 12,
-                    color: store.selectedTab?.canGoForward == true ? store.adaptiveTheme.primaryText : store.adaptiveTheme.disabledIconText,
-                    hoverColor: store.adaptiveTheme.primaryText,
-                    disabledColor: store.adaptiveTheme.disabledIconText,
-                    hoverBackground: store.adaptiveTheme.iconHoverBackground,
-                    pressedBackground: store.adaptiveTheme.iconPressedBackground,
-                    isDark: store.adaptiveTheme.effectiveIsDark,
-                    isEnabled: store.selectedTab?.canGoForward == true
-                ) {
-                    store.selectedTab?.goForward()
-                }
-
-                Spacer().frame(width: 4)
-
-                if store.selectedTab?.isLoading == true {
-                    InteractiveIconButton(
-                        icon: .x,
-                        helpText: "Stop Loading (Esc)",
-                        size: 24,
-                        iconSize: 12,
-                        color: store.adaptiveTheme.primaryText,
-                        hoverColor: store.adaptiveTheme.primaryText,
-                        hoverBackground: store.adaptiveTheme.iconHoverBackground,
-                        pressedBackground: store.adaptiveTheme.iconPressedBackground,
-                        isDark: store.adaptiveTheme.effectiveIsDark,
-                        isEnabled: true
-                    ) {
-                        store.selectedTab?.stop()
-                    }
-                } else {
-                    InteractiveIconButton(
-                        icon: .arrowClockwise,
-                        helpText: "Reload (⌘R)",
-                        size: 24,
-                        iconSize: 12,
-                        color: store.selectedTab?.url != nil ? store.adaptiveTheme.primaryText : store.adaptiveTheme.disabledIconText,
-                        hoverColor: store.adaptiveTheme.primaryText,
-                        disabledColor: store.adaptiveTheme.disabledIconText,
-                        hoverBackground: store.adaptiveTheme.iconHoverBackground,
-                        pressedBackground: store.adaptiveTheme.iconPressedBackground,
-                        isDark: store.adaptiveTheme.effectiveIsDark,
-                        isEnabled: store.selectedTab?.url != nil
-                    ) {
-                        store.selectedTab?.reload()
-                    }
-                }
-
-                Spacer(minLength: 0)
-                    .background(WindowDragView())
-                WindowDragView()
-                    .frame(width: 8)
+                .padding(.trailing, 10)
             }
-            .frame(height: store.scaled(36))
-            .padding(.top, store.scaled(4))
-            .padding(.trailing, 8)
+            .frame(height: store.scaled(38))
+            .padding(.top, store.scaled(6))
 
             // 2. Full-Width Interactive Omnibar / Address Field
             SidebarAddressBar(store: store)
@@ -146,10 +70,10 @@ struct SidebarView: View {
             // 4. Section Title Row with + New Tab Icon
             HStack(spacing: 6) {
                 Text("Tabs")
-                    .font(store.headingFont(size: 11.5))
-                    .foregroundColor(store.adaptiveTheme.secondaryText)
+                    .font(store.headingFont(size: 11, weight: .bold))
+                    .foregroundColor(store.adaptiveTheme.secondaryText.opacity(0.85))
                     .textCase(.uppercase)
-                    .kerning(0.5)
+                    .kerning(0.8)
 
                 Spacer()
 
@@ -173,15 +97,12 @@ struct SidebarView: View {
             // 5. Vertical Tab Strip (Unpinned tabs)
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 4) {
-                    ForEach(store.unpinnedTabs) { tab in
-                        SidebarTabItem(
-                            tab: tab,
-                            isSelected: tab.id == store.selectedID,
-                            namespace: sidebarTabSelectionNamespace,
-                            store: store,
-                            onSelect: { handleTabSelection(tab) },
-                            onClose: { store.close(tab) }
-                        )
+                    if store.tabDisplayMode == .iconOnly {
+                        iconTabRuns
+                    } else {
+                        ForEach(store.unpinnedTabs) { tab in
+                            tabRow(tab)
+                        }
                     }
                 }
                 .padding(.horizontal, 8)
@@ -273,9 +194,51 @@ struct SidebarView: View {
         .frame(width: store.scaled(256))
         .background {
             if store.liquidGlassEnabled, #available(macOS 26, *) {
-                Color.clear.glassEffect(in: .rect(cornerRadius: store.adaptiveTheme.cardCornerRadius))
+                Color.clear.glassEffect()
             } else {
                 sidebarBackground
+            }
+        }
+    }
+
+    private func tabRow(_ tab: LeanTab) -> some View {
+        SidebarTabItem(
+            tab: tab,
+            isSelected: tab.id == store.selectedID,
+            namespace: sidebarTabSelectionNamespace,
+            store: store,
+            onSelect: { handleTabSelection(tab) },
+            onClose: { store.close(tab) }
+        )
+    }
+
+    /// Icon-only: plain tabs become a grid of square tiles. A split tab shows
+    /// several icons, so it keeps a full-width row and breaks the grid.
+    private var iconTabRuns: some View {
+        let runs = store.unpinnedTabs.reduce(into: [[LeanTab]]()) { runs, tab in
+            if tab.isSplit || runs.last?.first?.isSplit != false {
+                runs.append([tab])
+            } else {
+                runs[runs.count - 1].append(tab)
+            }
+        }
+        return ForEach(runs, id: \.first?.id) { run in
+            if let first = run.first, first.isSplit {
+                tabRow(first)
+            } else {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 5), spacing: 6) {
+                    ForEach(run) { tab in
+                        SidebarPinnedTabItem(
+                            tab: tab,
+                            isSelected: tab.id == store.selectedID,
+                            namespace: sidebarTabSelectionNamespace,
+                            store: store,
+                            isRoomy: true,
+                            onSelect: { handleTabSelection(tab) },
+                            onClose: { store.close(tab) }
+                        )
+                    }
+                }
             }
         }
     }
@@ -352,17 +315,17 @@ private struct SidebarAddressBar: View {
     @ViewBuilder
     private var barBackground: some View {
         if store.liquidGlassEnabled, #available(macOS 26, *) {
-            Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
+            Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
         } else {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(store.adaptiveTheme.inlineURLBarBackground)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(
                             isFocused
-                                ? store.adaptiveTheme.activeTabStroke
-                                : store.adaptiveTheme.inlineURLBarStroke,
-                            lineWidth: 1
+                                ? (store.themeColors.accent ?? store.adaptiveTheme.primaryText.opacity(0.5))
+                                : (store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06)),
+                            lineWidth: isFocused ? 1.5 : 1
                         )
                 )
         }
@@ -568,19 +531,15 @@ struct SidebarTabItem: View {
         .overlay { TabMiddleClick { onClose() } }
         .background {
             ZStack {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(isSelected && store.liquidGlassEnabled ? Color.clear : (isHovered ? store.adaptiveTheme.inactiveTabHoverBackground : Color.clear))
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isSelected && store.liquidGlassEnabled ? Color.clear : (isHovered ? (store.isDarkMode ? Color.white.opacity(0.07) : Color.black.opacity(0.05)) : Color.clear))
 
                 if isSelected {
                     if store.liquidGlassEnabled, #available(macOS 26, *) {
-                        Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 9))
+                        Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
                     } else {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(store.adaptiveTheme.activeTabBackground)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                    .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
-                            )
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(store.isDarkMode ? Color.white.opacity(0.12) : Color.black.opacity(0.08))
                     }
                 }
             }
@@ -919,6 +878,8 @@ private struct SidebarPinnedTabItem: View {
     let isSelected: Bool
     var namespace: Namespace.ID
     @ObservedObject var store: LeanStore
+    /// Icon-only mode reuses this tile for every tab: bigger, and closable on hover.
+    var isRoomy = false
     let onSelect: () -> Void
     let onClose: () -> Void
 
@@ -931,15 +892,15 @@ private struct SidebarPinnedTabItem: View {
                 if tab.isLoading {
                     DotMatrixLoader(
                         color: isSelected ? store.adaptiveTheme.activeTabText : store.adaptiveTheme.primaryText,
-                        size: store.scaled(14)
+                        size: store.scaled(isRoomy ? 18 : 14)
                     )
                 } else {
-                    TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: 16)
+                    TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: isRoomy ? 20 : 16)
                 }
             }
             .scaleEffect(isSelected ? 1.06 : 0.95)
             .frame(maxWidth: .infinity)
-            .frame(height: store.scaled(38))
+            .frame(height: store.scaled(isRoomy ? 44 : 38))
             .background {
                 ZStack {
                     if store.liquidGlassEnabled, #available(macOS 26, *) {
@@ -966,6 +927,25 @@ private struct SidebarPinnedTabItem: View {
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.hitArea)
+        .overlay(alignment: .topTrailing) {
+            if isRoomy && isHovered {
+                Button(action: onClose) {
+                    LeanIcon.x.bold
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 7, height: 7)
+                        .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
+                        .frame(width: 16, height: 16)
+                        .background(store.adaptiveTheme.tabCloseButtonHoverBackground, in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.hitArea)
+                .help("Close Tab (⌘W)")
+                .padding(3)
+                .transition(.scale(scale: 0.8).combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: isHovered)
         .overlay(alignment: .bottomTrailing) {
             if tab.isPlayingMedia {
                 TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: true)
@@ -1008,7 +988,7 @@ private struct SidebarPinnedTabItem: View {
             Button {
                 store.togglePin(tab: tab)
             } label: {
-                Label("Unpin", systemImage: "pin.slash")
+                Label(tab.isPinned ? "Unpin" : "Pin", systemImage: tab.isPinned ? "pin.slash" : "pin")
             }
             Divider()
             if tab.isSleeping {
@@ -1051,7 +1031,7 @@ private struct SidebarTrafficLights: View {
                 color: Color(red: 255/255, green: 95/255, blue: 87/255),
                 strokeColor: Color(red: 224/255, green: 68/255, blue: 62/255, opacity: 0.9),
                 symbol: .x,
-                symbolSize: 6,
+                symbolSize: 7.5,
                 isHoveringGroup: isHoveringAll,
                 isActive: isWindowActive,
                 isDark: store.adaptiveTheme.effectiveIsDark
@@ -1066,7 +1046,7 @@ private struct SidebarTrafficLights: View {
                 color: Color(red: 255/255, green: 189/255, blue: 46/255),
                 strokeColor: Color(red: 222/255, green: 161/255, blue: 35/255, opacity: 0.9),
                 symbol: .minus,
-                symbolSize: 6.5,
+                symbolSize: 8.0,
                 isHoveringGroup: isHoveringAll,
                 isActive: isWindowActive,
                 isDark: store.adaptiveTheme.effectiveIsDark
@@ -1081,7 +1061,7 @@ private struct SidebarTrafficLights: View {
                 color: Color(red: 39/255, green: 201/255, blue: 63/255),
                 strokeColor: Color(red: 26/255, green: 171/255, blue: 41/255, opacity: 0.9),
                 symbol: .arrowsOutSimple,
-                symbolSize: 5.5,
+                symbolSize: 6.5,
                 isHoveringGroup: isHoveringAll,
                 isActive: isWindowActive,
                 isDark: store.adaptiveTheme.effectiveIsDark
@@ -1091,7 +1071,7 @@ private struct SidebarTrafficLights: View {
                 }
             }
         }
-        .frame(height: 16)
+        .frame(height: 22)
         .contentShape(Rectangle())
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.12)) {
@@ -1119,6 +1099,10 @@ private struct TrafficLightButton: View {
 
     @State private var isPressed = false
 
+    static let diameter: CGFloat = 14.5
+    /// Glyph sizes below were tuned for a 13.5pt button.
+    static let symbolScale: CGFloat = diameter / 13.5
+
     private var effectiveFill: Color {
         guard isActive else {
             return isDark ? Color(white: 0.3) : Color(white: 0.8)
@@ -1138,7 +1122,7 @@ private struct TrafficLightButton: View {
             ZStack {
                 Circle()
                     .fill(effectiveFill)
-                    .frame(width: 12, height: 12)
+                    .frame(width: Self.diameter, height: Self.diameter)
                     .overlay(
                         Circle()
                             .stroke(effectiveStroke, lineWidth: 0.5)
@@ -1147,8 +1131,8 @@ private struct TrafficLightButton: View {
                 if isHoveringGroup && isActive {
                     symbol.bold
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: symbolSize, height: symbolSize)
-                        .foregroundColor(Color.black.opacity(0.65))
+                        .frame(width: symbolSize * Self.symbolScale, height: symbolSize * Self.symbolScale)
+                        .foregroundColor(Color.black.opacity(0.68))
                 }
             }
             .scaleEffect(isPressed ? 0.92 : 1.0)

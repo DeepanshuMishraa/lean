@@ -205,6 +205,12 @@ struct ThemeColors {
         palette?.background ?? (isDark ? Color.black : Color.white)
     }
 
+    /// The frame behind the vertical sidebar and around the page card: a step
+    /// off the page colour so the card reads as a surface sitting on it.
+    var sidebarChrome: Color {
+        windowBackground.adjustBrightness(by: isDark ? -0.04 : -0.06)
+    }
+
     var divider: Color {
         palette?.border ?? (isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.06))
     }
@@ -358,12 +364,15 @@ struct AdaptiveFrameTheme {
     let isBaseDark: Bool
     /// Liquid Glass: the page floats as a rounded card over the translucent window.
     let isGlass: Bool
+    /// Vertical tabs: the page is a rounded card on the sidebar's frame.
+    let isSidebarLayout: Bool
 
     let frameLuminance: Double
     let isFrameLight: Bool
 
-    init(isBorderEnabled: Bool, frameColor: Color, baseThemeColors: ThemeColors, isBaseDark: Bool, isGlass: Bool = false) {
+    init(isBorderEnabled: Bool, frameColor: Color, baseThemeColors: ThemeColors, isBaseDark: Bool, isGlass: Bool = false, isSidebarLayout: Bool = false) {
         self.isGlass = isGlass
+        self.isSidebarLayout = isSidebarLayout
         self.isBorderEnabled = isBorderEnabled
         self.frameColor = frameColor
         self.baseThemeColors = baseThemeColors
@@ -552,12 +561,15 @@ struct AdaptiveFrameTheme {
     }
 
     var cardCornerRadius: CGFloat {
-        isBorderEnabled ? 10.0 : (isGlass ? 16.0 : 0.0)
+        isBorderEnabled ? 14.0 : (isGlass ? 16.0 : (isSidebarLayout ? 12.0 : 0.0))
     }
 
     var webCardStroke: Color {
         if isBorderEnabled {
             return isFrameLight ? Color.black.opacity(0.09) : Color.white.opacity(0.14)
+        }
+        if isSidebarLayout && !isGlass {
+            return isBaseDark ? Color.white.opacity(0.08) : Color.black.opacity(0.07)
         }
         return Color.clear
     }

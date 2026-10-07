@@ -156,7 +156,7 @@ struct LeanView: View {
                 ? AnyView(store.effectiveZenColor.ignoresSafeArea())
                 : (store.glassActive
                     ? AnyView(VisualEffectBlur(material: .underWindowBackground, blendingMode: .behindWindow).ignoresSafeArea())
-                    : AnyView(store.themeColors.windowBackground.ignoresSafeArea()))
+                    : AnyView(store.frameBackground.ignoresSafeArea()))
         )
         .background(WindowConfigurator(store: store, isTopBarVisible: isTopBarVisible, isSidebarVisible: isSidebarEffectivelyVisible))
         .preferredColorScheme(store.colorScheme)
@@ -480,18 +480,30 @@ struct LeanView: View {
         }
     }
 
-    // MARK: - Framed Sidebar Card
+    // MARK: - Sidebar Left Column
+    /// Pinned, the sidebar is part of the window frame. Auto-hidden, it
+    /// floats over the page, so it needs its own opaque, rounded surface.
     private var sidebarCard: some View {
-        SidebarView(store: store)
-            .clipShape(RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: store.adaptiveTheme.cardCornerRadius, style: .continuous)
-                    .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
-            )
-            .leanCardShadow(glass: store.glassActive, color: store.adaptiveTheme.webCardShadow, radius: 18, x: 6, y: 2)
-            .padding(.top, glassInset > 0 ? glassInset : store.windowBorderWidth)
-            .padding(.bottom, glassInset > 0 ? glassInset : store.windowBorderWidth)
-            .padding(.leading, glassInset > 0 ? glassInset : store.windowBorderWidth)
+        let floating = store.isSidebarCollapsed
+        let edge: CGFloat = floating ? 8 : (glassInset > 0 ? glassInset : (store.enableWindowBorder ? store.windowBorderWidth : 0))
+        let radius = max(store.adaptiveTheme.cardCornerRadius, 14)
+        return SidebarView(store: store)
+            .background {
+                if floating && !store.glassActive {
+                    (store.enableWindowBorder ? store.effectiveZenColor : store.frameBackground)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: floating ? radius : 0, style: .continuous))
+            .overlay {
+                if floating {
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .stroke(store.adaptiveTheme.isFrameLight ? Color.black.opacity(0.10) : Color.white.opacity(0.12), lineWidth: 1)
+                }
+            }
+            .shadow(color: floating ? Color.black.opacity(store.isDarkMode ? 0.45 : 0.18) : .clear, radius: 18, x: 4, y: 2)
+            .padding(.top, edge)
+            .padding(.bottom, edge)
+            .padding(.leading, edge)
             .onHover { hovering in
                 isMouseOverSidebar = hovering
                 if store.isSidebarCollapsed {
@@ -502,10 +514,10 @@ struct LeanView: View {
 
     // MARK: - Main Content Card & Spacing
     private var cardTopPadding: CGFloat {
-        if !store.enableWindowBorder { return store.tabLayout == .sidebar ? glassInset : 0 }
         if store.tabLayout == .sidebar {
-            return store.windowBorderWidth
+            return max(store.windowBorderWidth, 8)
         }
+        if !store.enableWindowBorder { return glassInset }
         return isTopBarVisible ? 2 : store.windowBorderWidth
     }
 
@@ -513,7 +525,10 @@ struct LeanView: View {
     private var glassInset: CGFloat { store.glassActive && !store.enableWindowBorder ? 8 : 0 }
 
     private var cardBottomPadding: CGFloat {
-        store.enableWindowBorder ? store.windowBorderWidth : glassInset
+        if store.tabLayout == .sidebar {
+            return max(store.windowBorderWidth, 8)
+        }
+        return store.enableWindowBorder ? store.windowBorderWidth : glassInset
     }
 
     private var isCurrentTabWebPage: Bool {
@@ -523,16 +538,23 @@ struct LeanView: View {
     }
 
     private var cardLeadingPadding: CGFloat {
-        let basePadding = store.enableWindowBorder ? store.windowBorderWidth : glassInset
-        if store.tabLayout == .sidebar && isSidebarEffectivelyVisible && !store.isSidebarCollapsed && isCurrentTabWebPage {
-            let gap = store.enableWindowBorder ? store.windowBorderWidth : 8
-            return basePadding + store.scaled(256) + gap
+        if store.tabLayout == .sidebar {
+            if isSidebarEffectivelyVisible && !store.isSidebarCollapsed {
+                // The sidebar's own inset from the window edge, its width, then a small gap.
+                let edgeInset = glassInset > 0 ? glassInset : (store.enableWindowBorder ? store.windowBorderWidth : 0)
+                return edgeInset + store.scaled(256) + 4
+            }
+            return max(store.windowBorderWidth, 10)
         }
+        let basePadding = store.enableWindowBorder ? store.windowBorderWidth : glassInset
         return basePadding
     }
 
     private var cardTrailingPadding: CGFloat {
-        store.enableWindowBorder ? store.windowBorderWidth : glassInset
+        if store.tabLayout == .sidebar {
+            return max(store.windowBorderWidth, 8)
+        }
+        return store.enableWindowBorder ? store.windowBorderWidth : glassInset
     }
 
     private var zoomIndicatorTopPadding: CGFloat {
@@ -553,7 +575,7 @@ struct LeanView: View {
 
     private var mainContentCard: some View {
         ZStack {
-            (store.enableWindowBorder || store.glassActive ? Color.clear : store.themeColors.windowBackground)
+            (store.enableWindowBorder || store.glassActive ? Color.clear : store.frameBackground)
                 .ignoresSafeArea()
 
             if let tab = store.selectedTab {
@@ -1281,8 +1303,10 @@ private struct WindowConfigurator: NSViewRepresentable {
             ? NSColor.clear
             : (store.enableWindowBorder
                 ? NSColor(store.effectiveZenColor)
-                : (store.themeColors.palette.map { NSColor($0.background) }
-                    ?? (store.isDarkMode ? NSColor.black : NSColor.white)))
+                : (store.tabLayout == .sidebar
+                    ? NSColor(store.frameBackground)
+                    : (store.themeColors.palette.map { NSColor($0.background) }
+                        ?? (store.isDarkMode ? NSColor.black : NSColor.white))))
         window.appearance = store.enableWindowBorder
             ? (store.adaptiveTheme.isFrameLight ? NSAppearance(named: .aqua) : NSAppearance(named: .darkAqua))
             : (store.isDarkMode ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua))

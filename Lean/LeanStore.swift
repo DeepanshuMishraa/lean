@@ -909,13 +909,20 @@ final class LeanStore: ObservableObject {
         ThemeColors(isDark: isDarkMode, palette: colorTheme.palette(isDark: isDarkMode))
     }
 
+    /// What shows around the page: the sidebar's frame in vertical layout,
+    /// the plain window colour otherwise.
+    var frameBackground: Color {
+        tabLayout == .sidebar ? themeColors.sidebarChrome : themeColors.windowBackground
+    }
+
     var adaptiveTheme: AdaptiveFrameTheme {
         AdaptiveFrameTheme(
             isBorderEnabled: enableWindowBorder,
             frameColor: effectiveZenColor,
             baseThemeColors: themeColors,
             isBaseDark: isDarkMode,
-            isGlass: glassActive
+            isGlass: glassActive,
+            isSidebarLayout: tabLayout == .sidebar
         )
     }
 

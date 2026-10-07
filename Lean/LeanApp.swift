@@ -43,7 +43,7 @@ struct LeanApp: App {
                 // file URL.
                 .onOpenURL { url in
                     guard url.isFileURL || url.scheme?.lowercased().hasPrefix("http") == true else { return }
-                    store.openURL(url)
+                    store.openExternalURL(url)
                     NSApp.activate(ignoringOtherApps: true)
                 }
                 // View-level acceptance so an existing window receives links

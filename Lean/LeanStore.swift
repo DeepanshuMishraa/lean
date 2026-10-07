@@ -405,6 +405,12 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    /// A link opened from another app (Mail, Slack, a PDF) shows in a panel
+    /// over the page in front, instead of as a new tab. Off unless asked for.
+    @Published var peeksExternalLinks: Bool {
+        didSet { persist(peeksExternalLinks, forKey: Self.peeksExternalLinksKey) }
+    }
+
     @Published var showFullTitleOnActiveTab: Bool {
         didSet {
             persist(showFullTitleOnActiveTab, forKey: Self.showFullTitleKey)
@@ -729,6 +735,7 @@ final class LeanStore: ObservableObject {
             ?? UserDefaults.standard.object(forKey: Self.peeksLinksKey) as? Bool
             ?? false
         self.peeksLinks = savedPeeksLinks
+        self.peeksExternalLinks = databaseValue(self.database, Bool.self, forKey: Self.peeksExternalLinksKey) ?? false
 
         // Load saved show full title preference (default to true)
         let savedShowFullTitle = databaseValue(self.database, Bool.self, forKey: Self.showFullTitleKey)
@@ -1520,6 +1527,19 @@ final class LeanStore: ObservableObject {
             tab.load(url)
         } else {
             newTab(url: url)
+        }
+    }
+
+    /// A link handed over by another app. Peeked over the page in front when
+    /// Settings says so and there is a web page to peek over; otherwise opened as usual.
+    func openExternalURL(_ url: URL) {
+        if peeksExternalLinks,
+           peekTab == nil,
+           ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+           let tab = selectedTab, tab.url != nil, !tab.isSettingsPage {
+            peek(url, from: tab)
+        } else {
+            openURL(url)
         }
     }
 
@@ -2620,6 +2640,7 @@ final class LeanStore: ObservableObject {
     private static let isSidebarCollapsedKey = "isSidebarCollapsed"
     private static let thumbnailsSwitcherKey = "enableThumbnailsInTabSwitcher"
     private static let peeksLinksKey = "links.peek"
+    private static let peeksExternalLinksKey = "links.peekExternal"
     private static let nativePictureInPictureKey = "pip.native"
     private static let themedTabBarKey = "themedTabBar"
     private static let themesWebPagesKey = "themesWebPages"

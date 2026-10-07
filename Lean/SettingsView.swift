@@ -738,6 +738,14 @@ private struct GeneralSection: View {
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont
                     )
+
+                    CustomToggleRow(
+                        title: "Peek at links from other apps",
+                        subtitle: "A link opened from Mail, Slack or another app opens in a panel over the page you are on instead of as a new tab. Keeping it makes it a tab. With no page open, it opens as a tab.",
+                        isOn: $store.peeksExternalLinks,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
                 }
             }
 

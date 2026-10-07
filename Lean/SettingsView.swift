@@ -733,16 +733,16 @@ private struct GeneralSection: View {
                 SettingsGroup(isDark: store.isDarkMode) {
                     CustomToggleRow(
                         title: "Peek at links in a panel",
-                        subtitle: "A shift-click, or a click on a link that opens in a new tab, opens the link in a panel over the page instead of following it. Escape, ⌘W or a click beside it puts it away; keeping it makes it a tab.",
+                        subtitle: "A shift-click on a link opens it in a panel over the page instead of following it. Escape, ⌘W or a click beside it puts it away; keeping it makes it a tab.",
                         isOn: $store.peeksLinks,
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont
                     )
 
                     CustomToggleRow(
-                        title: "Peek at links from other apps",
-                        subtitle: "A link opened from Mail, Slack or another app opens in a panel over the page you are on instead of as a new tab. Keeping it makes it a tab. With no page open, it opens as a tab.",
-                        isOn: $store.peeksExternalLinks,
+                        title: "Peek at links that open in a new tab",
+                        subtitle: "A click on a link that would open a new tab shows it in the panel instead. Off, it just opens the tab.",
+                        isOn: $store.peeksNewTabLinks,
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont
                     )

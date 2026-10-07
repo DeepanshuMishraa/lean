@@ -10,10 +10,11 @@ update often — releases arrive through the built-in updater.
 
 - Private windows: File > New Private Window (⇧⌘N), or the quick settings menu. A private window keeps cookies and site data in memory only, discards them when it closes, saves no history, tabs or passwords, and keeps extensions out
 - Icon-only tabs in the vertical sidebar now appear as a grid of tiles, with a close button on hover
-- A setting to open links from other apps (Mail, Slack and so on) in a peek panel over the current page instead of a new tab, off by default
+- A setting to peek at links that open in a new tab, off by default
 
 ### Changed
 
+- Links that open in a new tab now open a normal tab. They used to open in a peek panel whenever peek was on; that is now its own setting
 - The vertical sidebar is part of the window frame and the page is a rounded card on it, in a darker shade of the theme; the floating sidebar is an opaque rounded panel
 - Larger sidebar traffic-light buttons
 

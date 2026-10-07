@@ -405,10 +405,13 @@ final class LeanStore: ObservableObject {
         }
     }
 
-    /// A link opened from another app (Mail, Slack, a PDF) shows in a panel
-    /// over the page in front, instead of as a new tab. Off unless asked for.
-    @Published var peeksExternalLinks: Bool {
-        didSet { persist(peeksExternalLinks, forKey: Self.peeksExternalLinksKey) }
+    /// A plain click on a link that opens a new tab shows it in a panel too.
+    /// Off: such a link just opens a tab.
+    @Published var peeksNewTabLinks: Bool {
+        didSet {
+            persist(peeksNewTabLinks, forKey: Self.peeksNewTabLinksKey)
+            updateAllTabsPeekPreferences()
+        }
     }
 
     @Published var showFullTitleOnActiveTab: Bool {
@@ -735,7 +738,7 @@ final class LeanStore: ObservableObject {
             ?? UserDefaults.standard.object(forKey: Self.peeksLinksKey) as? Bool
             ?? false
         self.peeksLinks = savedPeeksLinks
-        self.peeksExternalLinks = databaseValue(self.database, Bool.self, forKey: Self.peeksExternalLinksKey) ?? false
+        self.peeksNewTabLinks = databaseValue(self.database, Bool.self, forKey: Self.peeksNewTabLinksKey) ?? false
 
         // Load saved show full title preference (default to true)
         let savedShowFullTitle = databaseValue(self.database, Bool.self, forKey: Self.showFullTitleKey)
@@ -1049,9 +1052,9 @@ final class LeanStore: ObservableObject {
     }
 
     func updateAllTabsPeekPreferences() {
-        let peeks = peeksLinks
         for tab in tabs {
-            tab.peeksLinks = peeks
+            tab.peeksLinks = peeksLinks
+            tab.peeksNewTabLinks = peeksNewTabLinks
         }
     }
 
@@ -1530,19 +1533,6 @@ final class LeanStore: ObservableObject {
         }
     }
 
-    /// A link handed over by another app. Peeked over the page in front when
-    /// Settings says so and there is a web page to peek over; otherwise opened as usual.
-    func openExternalURL(_ url: URL) {
-        if peeksExternalLinks,
-           peekTab == nil,
-           ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
-           let tab = selectedTab, tab.url != nil, !tab.isSettingsPage {
-            peek(url, from: tab)
-        } else {
-            openURL(url)
-        }
-    }
-
     func recordHistory(url original: URL, title: String) {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty, cleanTitle != "New Tab",
@@ -1994,6 +1984,7 @@ final class LeanStore: ObservableObject {
             self.nativePictureInPictureEnded(for: tab, session: session, stillPlaying: stillPlaying, closed: closed)
         }
         tab.peeksLinks = peeksLinks
+        tab.peeksNewTabLinks = peeksNewTabLinks
         tab.onPeekLink = { [weak self, weak tab] url in
             guard let self, let tab else { return }
             self.peek(url, from: tab)
@@ -2265,6 +2256,7 @@ final class LeanStore: ObservableObject {
         withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) { peekTab = nil }
         page.isPeekTab = false
         page.peeksLinks = peeksLinks
+        page.peeksNewTabLinks = peeksNewTabLinks
         insert(page, at: here.map { $0 + 1 } ?? tabs.count)
         selectedID = page.id
         saveSession()
@@ -2279,6 +2271,7 @@ final class LeanStore: ObservableObject {
         withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) { peekTab = nil }
         page.isPeekTab = false
         page.peeksLinks = peeksLinks
+        page.peeksNewTabLinks = peeksNewTabLinks
 
         guard let sourceTab = tabs.first(where: { $0.id == sourceID }) else {
             insert(page, at: tabs.count)
@@ -2640,7 +2633,7 @@ final class LeanStore: ObservableObject {
     private static let isSidebarCollapsedKey = "isSidebarCollapsed"
     private static let thumbnailsSwitcherKey = "enableThumbnailsInTabSwitcher"
     private static let peeksLinksKey = "links.peek"
-    private static let peeksExternalLinksKey = "links.peekExternal"
+    private static let peeksNewTabLinksKey = "links.peekNewTab"
     private static let nativePictureInPictureKey = "pip.native"
     private static let themedTabBarKey = "themedTabBar"
     private static let themesWebPagesKey = "themesWebPages"

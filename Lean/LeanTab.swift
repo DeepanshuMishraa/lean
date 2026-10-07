@@ -146,6 +146,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     var onLeavePeek: (() -> Void)?
     /// Shift-click peeks at links when Settings says so. Set by the store.
     var peeksLinks = false
+    /// A plain click on a link that opens a new tab peeks instead of opening one.
+    var peeksNewTabLinks = false
     var downloadManager: DownloadManager?
     var mediaPermissionStore: MediaPermissionStore?
     private var progressObserver: NSKeyValueObservation?
@@ -2298,7 +2300,7 @@ extension LeanTab: WKUIDelegate {
         // A plain click on a link that asks for a new tab (target="_blank"), when Settings says to peek: a peek
         // over this page, like a shift-click. Scripts (window.open, sign-in popups) are not links and keep their
         // own window.
-        if peeksLinks, !isPeekTab,
+        if peeksNewTabLinks, !isPeekTab,
            navigationAction.navigationType == .linkActivated,
            navigationAction.modifierFlags.intersection([.shift, .command, .option, .control]).isEmpty,
            let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {

@@ -8,6 +8,41 @@ enum PageScripts {
     static let middleClickMessageName = "leanMiddleClick"
     static let mediaStateMessageName = "leanMediaState"
 
+    /// The page's own background colour as [r, g, b], or null when it cannot be told yet. Runs in Lean's
+    /// world. With the page theme on, the theme engine has recoloured the page, so the engine is asked
+    /// for what the site painted before it; otherwise the page is read as it stands.
+    static let siteCanvasProbe = siteCanvasProbeSource(live: false)
+
+    /// For the moment after a site changes its look: reads the page itself, not the engine's last scan.
+    static let siteCanvasProbeLive = siteCanvasProbeSource(live: true)
+
+    private static func siteCanvasProbeSource(live: Bool) -> String {
+        let engineRead = live ? "(engine.liveCanvas && engine.liveCanvas()) || engine.nativeCanvas()" : "engine.nativeCanvas()"
+        return """
+    (function() {
+        try {
+            var engine = globalThis.LeanPageTheme;
+            if (engine && engine.isActive && engine.isActive()) return \(engineRead);
+            function channels(text) {
+                var m = /rgba?\\(([^)]+)\\)/.exec(text || '');
+                if (!m) return null;
+                var p = m[1].split(/[ ,\\/]+/).filter(Boolean).map(parseFloat);
+                return p.length >= 3 ? [p[0], p[1], p[2], p.length > 3 ? p[3] : 1] : null;
+            }
+            var roots = [document.body, document.documentElement];
+            for (var i = 0; i < roots.length; i++) {
+                if (!roots[i]) continue;
+                var c = channels(getComputedStyle(roots[i]).backgroundColor);
+                if (c && c[3] > 0.9) return c.slice(0, 3);
+            }
+            // Nothing painted: the page is on the browser's own paper, or says which it wants.
+            var scheme = getComputedStyle(document.documentElement).colorScheme || '';
+            return scheme.indexOf('dark') >= 0 && scheme.indexOf('light') < 0 ? [0, 0, 0] : [255, 255, 255];
+        } catch (e) { return null; }
+    })()
+    """
+    }
+
     /// Reports the link and downloadable media under every right-click.
     /// Always posts, so stale context never leaks into a later menu. Runs in
     /// every frame because links and media often live in embeds.
@@ -322,6 +357,39 @@ enum PageScripts {
                 });
             });
         }, { once: true });
+
+        // A site switching its own light or dark (a theme toggle, a class or attribute on the root, a
+        // stylesheet swapped in, the system appearance) tells Lean at once, so a browser that follows the
+        // site changes with it. Lean's own rewriting uses data-lean-theme-* attributes, which are not
+        // in the filter, so it never answers itself.
+        try {
+            var schemeTimer = 0;
+            var watched = [];
+            var schemeNames = ['class', 'style', 'data-theme', 'data-mode', 'data-color-mode', 'data-color-scheme',
+                'data-bs-theme', 'data-dark', 'color-scheme', 'theme'];
+            var schemeChanged = function() {
+                if (schemeTimer) return;
+                schemeTimer = setTimeout(function() {
+                    schemeTimer = 0;
+                    try { window.webkit.messageHandlers.\(pageReadyMessageName).postMessage('scheme'); } catch(e) {}
+                }, 0);
+            };
+            var attributeWatch = new MutationObserver(schemeChanged);
+            var watchRoot = function(el) {
+                if (!el || watched.indexOf(el) >= 0) return;
+                watched.push(el);
+                attributeWatch.observe(el, { attributes: true, attributeFilter: schemeNames });
+            };
+            watchRoot(document.documentElement);
+            document.addEventListener('DOMContentLoaded', function() {
+                watchRoot(document.body);
+                if (document.head) {
+                    new MutationObserver(schemeChanged).observe(document.head, { childList: true });
+                }
+            }, { once: true });
+            var media = window.matchMedia('(prefers-color-scheme: dark)');
+            if (media.addEventListener) media.addEventListener('change', schemeChanged);
+        } catch(e) {}
     })();
     """
 

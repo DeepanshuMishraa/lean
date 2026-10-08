@@ -1183,6 +1183,14 @@ private struct AppearanceSection: View {
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont
                     )
+
+                    CustomToggleRow(
+                        title: "Follow the site's light or dark",
+                        subtitle: "When a page declares a light or dark theme colour, the browser switches to the light or dark variant of your theme to match, and back as you change tabs. Pages that declare none keep the interface theme below.",
+                        isOn: $store.followsSiteTheme,
+                        isDark: store.isDarkMode,
+                        uiFont: store.leanUIFont
+                    )
                 }
             }
 

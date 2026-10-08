@@ -18,19 +18,79 @@ struct SidebarView: View {
                 SidebarTrafficLights(store: store)
                     .padding(.leading, 14)
 
-                if store.isPrivateSession {
-                    PrivateSessionBadge(store: store)
-                        .padding(.leading, 10)
-                }
-
                 Spacer(minLength: 0)
                     .background(WindowDragView())
 
                 InteractiveIconButton(
+                    icon: .arrowLeft,
+                    helpText: "Back (⌘[)",
+                    size: 24,
+                    iconSize: 12,
+                    color: store.selectedTab?.canGoBack == true ? store.adaptiveTheme.primaryText : store.adaptiveTheme.disabledIconText,
+                    hoverColor: store.adaptiveTheme.primaryText,
+                    disabledColor: store.adaptiveTheme.disabledIconText,
+                    hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                    pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                    isDark: store.adaptiveTheme.effectiveIsDark,
+                    isEnabled: store.selectedTab?.canGoBack == true
+                ) {
+                    store.selectedTab?.goBack()
+                }
+
+                InteractiveIconButton(
+                    icon: .arrowRight,
+                    helpText: "Forward (⌘])",
+                    size: 24,
+                    iconSize: 12,
+                    color: store.selectedTab?.canGoForward == true ? store.adaptiveTheme.primaryText : store.adaptiveTheme.disabledIconText,
+                    hoverColor: store.adaptiveTheme.primaryText,
+                    disabledColor: store.adaptiveTheme.disabledIconText,
+                    hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                    pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                    isDark: store.adaptiveTheme.effectiveIsDark,
+                    isEnabled: store.selectedTab?.canGoForward == true
+                ) {
+                    store.selectedTab?.goForward()
+                }
+
+                if store.selectedTab?.isLoading == true {
+                    InteractiveIconButton(
+                        icon: .x,
+                        helpText: "Stop Loading (Esc)",
+                        size: 24,
+                        iconSize: 12,
+                        color: store.adaptiveTheme.primaryText,
+                        hoverColor: store.adaptiveTheme.primaryText,
+                        hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                        pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                        isDark: store.adaptiveTheme.effectiveIsDark,
+                        isEnabled: true
+                    ) {
+                        store.selectedTab?.stop()
+                    }
+                } else {
+                    InteractiveIconButton(
+                        icon: .arrowClockwise,
+                        helpText: "Reload (⌘R)",
+                        size: 24,
+                        iconSize: 12,
+                        color: store.selectedTab?.url != nil ? store.adaptiveTheme.primaryText : store.adaptiveTheme.disabledIconText,
+                        hoverColor: store.adaptiveTheme.primaryText,
+                        disabledColor: store.adaptiveTheme.disabledIconText,
+                        hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                        pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                        isDark: store.adaptiveTheme.effectiveIsDark,
+                        isEnabled: store.selectedTab?.url != nil
+                    ) {
+                        store.selectedTab?.reload()
+                    }
+                }
+
+                InteractiveIconButton(
                     icon: .sidebar,
                     helpText: store.isSidebarCollapsed ? "Pin Sidebar (Always Expanded) (⌘S)" : "Enable Auto-hide (⌘S)",
-                    size: 26,
-                    iconSize: 13,
+                    size: 24,
+                    iconSize: 12,
                     color: store.isSidebarCollapsed ? store.adaptiveTheme.secondaryText : store.adaptiveTheme.primaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
                     hoverBackground: store.adaptiveTheme.iconHoverBackground,
@@ -41,7 +101,7 @@ struct SidebarView: View {
                         store.toggleSidebar()
                     }
                 }
-                .padding(.trailing, 10)
+                .padding(.trailing, 8)
             }
             .frame(height: store.scaled(38))
             .padding(.top, store.scaled(6))
@@ -79,6 +139,10 @@ struct SidebarView: View {
                     .textCase(.uppercase)
                     .kerning(0.8)
 
+                if store.isPrivateSession {
+                    PrivateSessionBadge(store: store)
+                }
+
                 Spacer()
 
                 InteractiveIconButton(
@@ -110,6 +174,7 @@ struct SidebarView: View {
                     }
                 }
                 .padding(.horizontal, 8)
+                .padding(.top, store.tabDisplayMode == .iconOnly ? 6 : 0)
                 .padding(.bottom, 8)
             }
 
@@ -953,15 +1018,18 @@ private struct SidebarPinnedTabItem: View {
                     LeanIcon.x.bold
                         .interpolation(.high)
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 7, height: 7)
-                        .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
-                        .frame(width: 16, height: 16)
-                        .background(store.adaptiveTheme.tabCloseButtonHoverBackground, in: Circle())
+                        .frame(width: 6, height: 6)
+                        .foregroundColor(store.adaptiveTheme.primaryText)
+                        .frame(width: 15, height: 15)
+                        // Solid, so it reads as a badge on the corner and not a mark on the icon.
+                        .background(store.adaptiveTheme.dropdownBackground, in: Circle())
+                        .overlay(Circle().stroke(store.adaptiveTheme.dropdownStroke, lineWidth: 0.75))
                         .contentShape(Circle())
                 }
                 .buttonStyle(.hitArea)
                 .help("Close Tab (⌘W)")
-                .padding(3)
+                // Sits on the tile's top-right corner, half outside it.
+                .offset(x: 5, y: -5)
                 .transition(.scale(scale: 0.8).combined(with: .opacity))
             }
         }

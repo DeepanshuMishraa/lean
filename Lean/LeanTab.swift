@@ -38,6 +38,15 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     @Published private(set) var pageZoom = 1.0
     @Published private(set) var isZoomIndicatorVisible = false
     @Published private(set) var isSleeping = false
+    /// Whether the page's own background is dark, sampled while Settings has the browser follow the site.
+    /// nil until read, and after each navigation.
+    @Published private(set) var siteCanvasIsDark: Bool?
+    var followsSiteScheme = false {
+        didSet { if followsSiteScheme, !oldValue { scheduleSiteSchemeProbes() } else if !followsSiteScheme { siteCanvasIsDark = nil } }
+    }
+    private var siteSchemeProbeGeneration = 0
+    private var pendingSiteCanvasIsDark: Bool?
+    private var lastSchemeSignal = Date.distantPast
     @Published private(set) var savedPasswordSuggestions: [SavedPassword] = []
     @Published private(set) var passwordSuggestionFrame: CGRect?
     @Published var snapshot: NSImage? = nil
@@ -409,6 +418,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
                     }()
                     guard changed else { return }
                     self.themeColor = newColor
+                    // The store follows the page in front's colour (Settings > Follow the site).
+                    self.onStateChange?()
                 }
             }
         ]
@@ -731,6 +742,56 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
                 self?.themeFrames.removeAll { $0.token == frame.token }
                 NSLog("Lean page theme update failed: %@", error.localizedDescription)
             }
+        }
+    }
+
+    /// Reads the page's background a few times as it settles (a late stylesheet, a dark mode applied by
+    /// script), then leaves it: the page is not polled.
+    /// `trusted`: the page itself just said it changed its look, so the first read that differs is acted
+    /// on at once. Untrusted reads (a page still loading) must agree twice running.
+    func scheduleSiteSchemeProbes(delays: [Double] = [0.0, 0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0], trusted: Bool = false) {
+        guard followsSiteScheme else { return }
+        siteSchemeProbeGeneration += 1
+        let generation = siteSchemeProbeGeneration
+        // Dense at first, while the look is decided; then a few late reads for stylesheets and scripts.
+        for delay in delays {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.siteSchemeProbeGeneration == generation else { return }
+                self.probeSiteScheme(trusted: trusted)
+            }
+        }
+    }
+
+    private func probeSiteScheme(trusted: Bool) {
+        guard followsSiteScheme, !isSleeping, let webView = storedWebView,
+              let scheme = webView.url?.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
+        // Trusted: the page just changed, and the engine's last scan may not show it yet; read the page itself.
+        let script = trusted ? PageScripts.siteCanvasProbeLive : PageScripts.siteCanvasProbe
+        webView.evaluateJavaScript(script, in: nil, in: LeanWeb.world) { [weak self] result in
+            guard let self, case .success(let value) = result,
+                  let numbers = value as? [NSNumber], numbers.count >= 3 else { return }
+            func linear(_ channel: NSNumber) -> Double {
+                let v = min(max(channel.doubleValue / 255, 0), 1)
+                return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+            }
+            let luminance = 0.2126 * linear(numbers[0]) + 0.7152 * linear(numbers[1]) + 0.0722 * linear(numbers[2])
+            let isDark = luminance < 0.18
+            guard self.siteCanvasIsDark != isDark else {
+                self.pendingSiteCanvasIsDark = nil
+                return
+            }
+            // A change must be read twice running: a page still loading its stylesheet reads as white
+            // for a moment, and acting on that once would flash the browser light and back.
+            // The very first read, with no earlier look to flash away from, is taken at once.
+            guard trusted || self.pendingSiteCanvasIsDark == isDark || self.siteCanvasIsDark == nil else {
+                self.pendingSiteCanvasIsDark = isDark
+                return
+            }
+            self.pendingSiteCanvasIsDark = nil
+            self.siteCanvasIsDark = isDark
+            // Switched: the reads that were still to come would only restyle the page for nothing.
+            if trusted { self.siteSchemeProbeGeneration += 1 }
+            self.onStateChange?()
         }
     }
 
@@ -1639,8 +1700,22 @@ extension LeanTab: WKScriptMessageHandler {
               message.webView === webView else {
             return
         }
+        // The page changed its own light or dark: read it again right away.
+        if (message.body as? String) == "scheme" {
+            // Short, and at most one burst in half a second: a page that keeps rewriting an attribute
+            // (an animation) must not keep Lean reading it.
+            let now = Date()
+            guard followsSiteScheme, now.timeIntervalSince(lastSchemeSignal) > 0.3 else { return }
+            lastSchemeSignal = now
+            // Close together at first: a toggle usually animates, and the read that crosses from light to
+            // dark is the moment to switch, not the one after the animation ends.
+            scheduleSiteSchemeProbes(delays: [0, 0.05, 0.1, 0.16, 0.24, 0.35, 0.6], trusted: true)
+            return
+        }
         // First paint is not "loaded": isLoading ends in didFinish/didFail.
         refreshState()
+        // The page has just painted: its background can be read now, well before it finishes loading.
+        scheduleSiteSchemeProbes()
     }
 
     private func refreshMediaState() {
@@ -1806,6 +1881,8 @@ extension LeanTab: WKNavigationDelegate {
             syncPageBackground(web)
         }
         refreshState()
+        // The last page's look stays until this one is read: dropping it here flipped the browser
+        // to your own theme and back on every navigation.
         // No script rebuild here: the 12 user scripts registered at
         // createWebView persist per-configuration and already cover new
         // navigations. Rebuilding twice per load (commit+finish) was pure
@@ -1823,6 +1900,7 @@ extension LeanTab: WKNavigationDelegate {
         pageError = nil
         pendingMainFrameURL = nil
         refreshState()
+        scheduleSiteSchemeProbes()
 
         if let position = restoreScrollPosition {
             restoreScrollPosition = nil

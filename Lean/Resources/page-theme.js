@@ -922,6 +922,41 @@
     globalThis.LeanPageTheme = {
         apply,
         frame: frameToken,
+        // The page's own background, as the site made it, [r, g, b, a], or null before the first scan
+        // has seen it. Read from the records taken with this engine's sheets switched off, so recoloring
+        // never shows through: Lean uses it to follow a site's light or dark.
+        isActive: () => Boolean(theme),
+        // The page's background right now, as the site paints it: this engine's sheets are switched off for
+        // the read and back on at once, with no frame between, so nothing flickers. Dearer than
+        // `nativeCanvas` (it restyles the page twice), so for a moment when a site has just changed its
+        // look and the scan that updates `nativeCanvas` has not caught up.
+        liveCanvas: () => {
+            if (!theme) return null;
+            const sheets = [];
+            if (veil) sheets.push(veil);
+            for (const scope of scopes.values()) {
+                const sheet = scope.constructed || scope.style.sheet;
+                if (sheet) sheets.push(sheet);
+            }
+            const was = sheets.map(sheet => sheet.disabled);
+            for (const sheet of sheets) sheet.disabled = true;
+            try {
+                for (const root of [document.body, document.documentElement]) {
+                    const background = root && parse(getComputedStyle(root).backgroundColor);
+                    if (background && background[3] > 0.9) return background.slice(0, 3);
+                }
+                return null;
+            } finally {
+                sheets.forEach((sheet, index) => { sheet.disabled = was[index]; });
+            }
+        },
+        nativeCanvas: () => {
+            for (const root of [document.body, document.documentElement]) {
+                const background = root && records.get(root)?.source?.background;
+                if (background && background[3] > 0.9) return background.slice(0, 3);
+            }
+            return dominantCanvas ? dominantCanvas.slice(0, 3) : null;
+        },
         // Diagnostics contain role counts and colors, never page text or URLs.
         inspect: () => ({generation, pending: dirty.size + scanning.length, nodes: records.size, veilMs, busyMs: Math.round(busyMs), flushes,
             roles: [...records.values()].reduce((counts, record) => {

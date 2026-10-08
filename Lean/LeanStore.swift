@@ -347,6 +347,43 @@ final class LeanStore: ObservableObject {
         return PageTheme(colors: themeColors, semantic: colorTheme.pageSemanticColors(isDark: isDarkMode))
     }
 
+    /// Match the light or dark of the page in front, read from the colour it
+    /// declares with `theme-color`. Off unless asked for.
+    @Published var followsSiteTheme: Bool {
+        didSet {
+            persist(followsSiteTheme, forKey: Self.followsSiteThemeKey)
+            for tab in tabs { tab.followsSiteScheme = followsSiteTheme }
+            refreshSiteTheme()
+        }
+    }
+
+    /// What the page in front asks for: nil when following is off, or the page
+    /// declares no colour. `isDarkMode` takes it over the interface theme.
+    @Published private(set) var siteIsDark: Bool?
+
+    /// Reads the selected tab's declared theme colour and, if that changes
+    /// light to dark or back, moves the browser and its pages with it.
+    func refreshSiteTheme() {
+        let next: Bool?
+        if !followsSiteTheme {
+            next = nil
+        } else if let tab = selectedTab, let sampled = tab.siteCanvasIsDark {
+            // What the page actually paints, which every site has.
+            next = sampled
+        } else if let tab = selectedTab, let color = tab.themeColor {
+            // Not read yet: what the page declares, if it declares anything.
+            next = Color(nsColor: color).relativeLuminance() < 0.2
+        } else if selectedTab?.isLoading == true {
+            // A page between two addresses declares nothing yet: hold the look it had.
+            return
+        } else {
+            next = nil
+        }
+        guard next != siteIsDark else { return }
+        withAnimation(.easeInOut(duration: 0.15)) { siteIsDark = next }
+        updateAllTabsTheme()
+    }
+
     @Published var scrollbarStyle: ScrollbarStyle {
         didSet {
             persist(scrollbarStyle.rawValue, forKey: Self.scrollbarKey)
@@ -721,6 +758,8 @@ final class LeanStore: ObservableObject {
             ?? UserDefaults.standard.object(forKey: Self.themesWebPagesKey) as? Bool
             ?? true
 
+        self.followsSiteTheme = databaseValue(self.database, Bool.self, forKey: Self.followsSiteThemeKey) ?? false
+
         // Pages at 120 Hz (default off: it costs energy, and a still page
         // costs nothing either way). Takes effect for new pages at once.
         let savedHighFrameRate = databaseValue(self.database, Bool.self, forKey: Self.highFrameRatePagesKey)
@@ -905,6 +944,7 @@ final class LeanStore: ObservableObject {
     }
 
     var isDarkMode: Bool {
+        if followsSiteTheme, let siteIsDark { return siteIsDark }
         switch theme {
         case .dark:
             return true
@@ -949,6 +989,7 @@ final class LeanStore: ObservableObject {
     }
 
     var colorScheme: ColorScheme? {
+        if followsSiteTheme, let siteIsDark { return siteIsDark ? .dark : .light }
         switch theme {
         case .dark: return .dark
         case .light: return .light
@@ -1336,6 +1377,9 @@ final class LeanStore: ObservableObject {
 
     private func handleTabSelectionChange(from previous: LeanTab.ID?, to current: LeanTab.ID?) {
         guard previous != current else { return }
+        // Read the page in front again: it may have changed its look while it was behind.
+        selectedTab?.scheduleSiteSchemeProbes()
+        refreshSiteTheme()
         if #available(macOS 15.4, *), !isPrivateSession, let tab = tabs.first(where: { $0.id == current }) {
             BrowserExtensionManager.shared.tabActivated(tab, previous: tabs.first { $0.id == previous })
         }
@@ -1967,6 +2011,7 @@ final class LeanStore: ObservableObject {
         tab.onStateChange = { [weak self, weak tab] in
             guard let self, let tab else { return }
             self.notifyTabsChanged()
+            if tab.id == self.selectedID { self.refreshSiteTheme() }
             // Coalesce: one debounced SQLite write instead of 2 per event.
             // History only for settled (non-loading) states, and never for
             // a failed navigation — the tab keeps the attempted address so
@@ -1985,6 +2030,7 @@ final class LeanStore: ObservableObject {
         }
         tab.peeksLinks = peeksLinks
         tab.peeksNewTabLinks = peeksNewTabLinks
+        tab.followsSiteScheme = followsSiteTheme
         tab.onPeekLink = { [weak self, weak tab] url in
             guard let self, let tab else { return }
             self.peek(url, from: tab)
@@ -2637,6 +2683,7 @@ final class LeanStore: ObservableObject {
     private static let nativePictureInPictureKey = "pip.native"
     private static let themedTabBarKey = "themedTabBar"
     private static let themesWebPagesKey = "themesWebPages"
+    private static let followsSiteThemeKey = "followsSiteTheme"
     private static let highFrameRatePagesKey = "highFrameRatePages"
     private static let showFullTitleKey = "showFullTitleOnActiveTab"
     private static let leanUIFontKey = "leanUIFont"

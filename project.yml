@@ -8,8 +8,8 @@ settings:
     SWIFT_VERSION: "5.0"
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
-    MARKETING_VERSION: "0.1.14"
-    CURRENT_PROJECT_VERSION: "14"
+    MARKETING_VERSION: "0.1.15"
+    CURRENT_PROJECT_VERSION: "15"
 packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle

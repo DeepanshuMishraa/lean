@@ -4,6 +4,20 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.15] - 2026-10-08
+
+### Added
+
+- Follow the site's light or dark (Settings, off by default): the browser, the light or dark variant of your colour theme, and the recoloured page switch to match the page in front. It reads the page's own background, works on any site, and follows a site's own theme toggle within a fraction of a second
+
+### Changed
+
+- The close button on icon-only tabs in the vertical sidebar is a badge on the tile's top-right corner
+
+### Fixed
+
+- Back, forward and reload (stop, while loading) are back in the vertical sidebar's header
+
 ## [0.1.14] - 2026-10-08
 
 ### Added

@@ -4,6 +4,16 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.16] - 2026-10-10
+
+### Added
+
+- Tab switcher order (Settings > Tabs): most recent (default), tab bar order, or least recent
+
+### Changed
+
+- The tab switcher (⌃Tab) now lists tabs by most recent use instead of tab bar order, so one press flips between your last two tabs
+
 ## [0.1.15] - 2026-10-08
 
 ### Added

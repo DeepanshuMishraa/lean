@@ -1778,6 +1778,29 @@ private struct TabsSection: View {
                 }
             }
 
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsHeaderLabel("Tab switcher order", uiFont: store.leanUIFont, isDark: store.isDarkMode)
+
+                CustomSegmentedPicker(
+                    options: [
+                        SegmentOption(id: TabSwitcherOrder.mostRecent.rawValue, label: TabSwitcherOrder.mostRecent.title, icon: .clock),
+                        SegmentOption(id: TabSwitcherOrder.tabBar.rawValue, label: TabSwitcherOrder.tabBar.title, icon: .list),
+                        SegmentOption(id: TabSwitcherOrder.leastRecent.rawValue, label: TabSwitcherOrder.leastRecent.title, icon: .clockCounterClockwise)
+                    ],
+                    selectedId: store.tabSwitcherOrder.rawValue,
+                    isDark: store.isDarkMode,
+                    uiFont: store.leanUIFont
+                ) { newId in
+                    if let order = TabSwitcherOrder(rawValue: newId) {
+                        store.tabSwitcherOrder = order
+                    }
+                }
+
+                Text(store.tabSwitcherOrder.subtitle)
+                    .font(store.leanUIFont.font(size: 12, weight: store.uiBodyWeight.fontWeight))
+                    .foregroundColor(store.isDarkMode ? Color.white.opacity(0.5) : Color.black.opacity(0.5))
+            }
+
             if store.tabLayout == .top {
                 VStack(alignment: .leading, spacing: 8) {
                     SettingsHeaderLabel("Tab bar theme", uiFont: store.leanUIFont, isDark: store.isDarkMode)

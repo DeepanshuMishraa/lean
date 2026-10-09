@@ -53,6 +53,31 @@ enum TabDisplayMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// How the tab switcher (⌃Tab) orders its tabs.
+enum TabSwitcherOrder: String, CaseIterable, Identifiable {
+    case mostRecent
+    case tabBar
+    case leastRecent
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .mostRecent: return "Most Recent"
+        case .tabBar: return "Tab Bar"
+        case .leastRecent: return "Least Recent"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .mostRecent: return "The tab you used last comes first, so ⌃Tab flips between your last two tabs."
+        case .tabBar: return "Tabs in the order they appear in the tab bar."
+        case .leastRecent: return "The tab you haven't touched longest comes first."
+        }
+    }
+}
+
 enum TabLayout: String, CaseIterable, Identifiable, Codable {
     case top = "top"
     case sidebar = "sidebar"
@@ -403,6 +428,12 @@ final class LeanStore: ObservableObject {
         }
     }
 
+    @Published var tabSwitcherOrder: TabSwitcherOrder {
+        didSet {
+            persist(tabSwitcherOrder.rawValue, forKey: Self.tabSwitcherOrderKey)
+        }
+    }
+
     /// The top strip takes the colour the active page declares for itself
     /// with `theme-color`, and follows it from tab to tab. Only the strip
     /// across the top — the sidebar layout is unaffected, and a page that
@@ -609,6 +640,8 @@ final class LeanStore: ObservableObject {
     private var adBlockUpdateObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
     private var inactiveSince: [LeanTab.ID: Date] = [:]
+    /// Tab IDs, most recently selected first. Tabs never selected this run are absent.
+    private var recentTabIDs: [LeanTab.ID] = []
     private var sleepWorkItems: [LeanTab.ID: DispatchWorkItem] = [:]
     private var sleepWorkTokens: [LeanTab.ID: UUID] = [:]
     private var memoryPressureSource: DispatchSourceMemoryPressure?
@@ -746,6 +779,11 @@ final class LeanStore: ObservableObject {
             ?? UserDefaults.standard.object(forKey: Self.thumbnailsSwitcherKey) as? Bool
             ?? true
         self.enableThumbnailsInTabSwitcher = savedThumbnails
+
+        let savedSwitcherOrder = databaseValue(self.database, String.self, forKey: Self.tabSwitcherOrderKey)
+            ?? UserDefaults.standard.string(forKey: Self.tabSwitcherOrderKey)
+            ?? TabSwitcherOrder.mostRecent.rawValue
+        self.tabSwitcherOrder = TabSwitcherOrder(rawValue: savedSwitcherOrder) ?? .mostRecent
 
         // Colour the tab bar from the page (default off).
         let savedThemedTabBar = databaseValue(self.database, Bool.self, forKey: Self.themedTabBarKey)
@@ -1377,6 +1415,10 @@ final class LeanStore: ObservableObject {
 
     private func handleTabSelectionChange(from previous: LeanTab.ID?, to current: LeanTab.ID?) {
         guard previous != current else { return }
+        if let current {
+            recentTabIDs.removeAll { $0 == current }
+            recentTabIDs.insert(current, at: 0)
+        }
         // Read the page in front again: it may have changed its look while it was behind.
         selectedTab?.scheduleSiteSchemeProbes()
         refreshSiteTheme()
@@ -2419,13 +2461,15 @@ final class LeanStore: ObservableObject {
         }
     }
 
-    func selectNextTab(reverse: Bool = false) {
-        guard tabs.count > 1,
+    /// `bySwitcherOrder` follows the switcher order setting instead of tab bar position.
+    func selectNextTab(reverse: Bool = false, bySwitcherOrder: Bool = false) {
+        let order = bySwitcherOrder ? switcherTabs : tabs
+        guard order.count > 1,
               let selectedID,
-              let index = tabs.firstIndex(where: { $0.id == selectedID }) else { return }
-        let offset = reverse ? tabs.count - 1 : 1
+              let index = order.firstIndex(where: { $0.id == selectedID }) else { return }
+        let offset = reverse ? order.count - 1 : 1
         withAnimation(Motion.tabSwitch) {
-            self.selectedID = tabs[(index + offset) % tabs.count].id
+            self.selectedID = order[(index + offset) % order.count].id
         }
         scheduleDebouncedPersist()
         DispatchQueue.main.async { [weak self] in
@@ -2469,7 +2513,27 @@ final class LeanStore: ObservableObject {
     var switcherTabs: [LeanTab] {
         // Exclude empty/new tabs from switcher; if all are empty, fall back to current tabs
         let loaded = tabs.filter { $0.url != nil }
-        return loaded.isEmpty ? tabs : loaded
+        return ordered(loaded.isEmpty ? tabs : loaded)
+    }
+
+    /// `candidates` (in tab bar order) arranged per the switcher order setting.
+    /// Tabs not selected yet this run count as least recent, in tab bar order.
+    private func ordered(_ candidates: [LeanTab]) -> [LeanTab] {
+        guard tabSwitcherOrder != .tabBar else { return candidates }
+        let byID = Dictionary(candidates.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var recencyIDs = recentTabIDs
+        if let selectedID {
+            recencyIDs.removeAll { $0 == selectedID }
+            recencyIDs.insert(selectedID, at: 0)
+        }
+        let used = recencyIDs.compactMap { byID[$0] }
+        let usedIDs = Set(used.map(\.id))
+        let unused = candidates.filter { !usedIDs.contains($0.id) }
+        switch tabSwitcherOrder {
+        case .tabBar: return candidates
+        case .mostRecent: return used + unused
+        case .leastRecent: return unused + used.reversed()
+        }
     }
 
     /// Tab IDs captured the moment the switcher opened. Cycling and
@@ -2624,6 +2688,7 @@ final class LeanStore: ObservableObject {
         persist(tabLayout.rawValue, forKey: Self.tabLayoutKey)
         persist(isSidebarCollapsed, forKey: Self.isSidebarCollapsedKey)
         persist(enableThumbnailsInTabSwitcher, forKey: Self.thumbnailsSwitcherKey)
+        persist(tabSwitcherOrder.rawValue, forKey: Self.tabSwitcherOrderKey)
         persist(themedTabBar, forKey: Self.themedTabBarKey)
         persist(themesWebPages, forKey: Self.themesWebPagesKey)
         persist(peeksLinks, forKey: Self.peeksLinksKey)
@@ -2678,6 +2743,7 @@ final class LeanStore: ObservableObject {
     private static let tabLayoutKey = "tabLayout"
     private static let isSidebarCollapsedKey = "isSidebarCollapsed"
     private static let thumbnailsSwitcherKey = "enableThumbnailsInTabSwitcher"
+    private static let tabSwitcherOrderKey = "tabSwitcherOrder"
     private static let peeksLinksKey = "links.peek"
     private static let peeksNewTabLinksKey = "links.peekNewTab"
     private static let nativePictureInPictureKey = "pip.native"

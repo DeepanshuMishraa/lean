@@ -177,13 +177,13 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
             if store.enableThumbnailsInTabSwitcher {
                 store.startTabSwitcher(reverse: false)
             } else {
-                store.selectNextTab()
+                store.selectNextTab(bySwitcherOrder: true)
             }
         case .previousTab:
             if store.enableThumbnailsInTabSwitcher {
                 store.startTabSwitcher(reverse: true)
             } else {
-                store.selectNextTab(reverse: true)
+                store.selectNextTab(reverse: true, bySwitcherOrder: true)
             }
         case .goToLastTab:
             store.selectTab(number: 9)

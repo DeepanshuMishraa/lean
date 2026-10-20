@@ -66,11 +66,18 @@ final class DownloadManager: ObservableObject {
     }
 
     private let database: AppDatabase?
+    /// Downloads started before this are last session's: history for
+    /// Settings, not the toolbar popover.
+    private let launchDate = Date()
     private var saveWorkItem: DispatchWorkItem?
     private var scopedAccessURL: URL?
 
-    init(database: AppDatabase? = nil) {
+    /// Where the list is saved: each space keeps its own. The folder is shared.
+    private let itemsKey: String
+
+    init(database: AppDatabase? = nil, itemsKey: String = DownloadManager.defaultItemsKey) {
         self.database = database
+        self.itemsKey = itemsKey
         let fallback = Self.defaultDownloadsDirectory()
         if let saved: URL = Self.read(database, URL.self, key: Self.directoryKey),
            Self.isUsableDirectory(saved) {
@@ -82,7 +89,7 @@ final class DownloadManager: ObservableObject {
             self.downloadDirectory = fallback
         }
         beginScopedAccess(for: downloadDirectory)
-        if let savedItems: [DownloadItem] = Self.read(database, [DownloadItem].self, key: Self.itemsKey) {
+        if let savedItems: [DownloadItem] = Self.read(database, [DownloadItem].self, key: itemsKey) {
             self.downloads = savedItems.map { item in
                 var fixed = item
                 // Active downloads can't survive a relaunch — mark them failed.
@@ -96,6 +103,12 @@ final class DownloadManager: ObservableObject {
             }
             pruneMissingFiles()
         }
+    }
+
+    /// Downloads started since launch. The popover lists only these, so it
+    /// starts empty after a relaunch while Settings keeps the full history.
+    var sessionDownloads: [DownloadItem] {
+        downloads.filter { $0.startDate >= launchDate }
     }
 
     var activeDownloads: [DownloadItem] {
@@ -267,7 +280,7 @@ final class DownloadManager: ObservableObject {
 
     // MARK: - Persistence
 
-    private static let itemsKey = "downloads_v1"
+    static let defaultItemsKey = "downloads_v1"
     private static let directoryKey = "downloadsDirectory_v1"
     private static let directoryBookmarkKey = "downloadsDirectoryBookmark_v1"
 
@@ -286,7 +299,7 @@ final class DownloadManager: ObservableObject {
         if snapshot.count > 100 {
             snapshot = Array(snapshot.prefix(100))
         }
-        if case .failure(let error) = database.set(snapshot, forKey: Self.itemsKey) {
+        if case .failure(let error) = database.set(snapshot, forKey: itemsKey) {
             NSLog("Could not persist downloads: %@", String(describing: error))
         }
     }

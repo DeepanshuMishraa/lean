@@ -32,6 +32,11 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Lean/Lean.entitlements
         INFOPLIST_FILE: Lean/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: lean
+      configs:
+        # Own sandbox container and preferences: a dev build or test host
+        # never opens the installed browser's profile.
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.dipxsy.lean.dev
   LeanNativeHosts:
     type: xpc-service
     platform: macOS

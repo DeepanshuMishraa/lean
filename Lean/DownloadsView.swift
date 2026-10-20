@@ -15,7 +15,7 @@ struct DownloadsPopover: View {
     @State private var isClearHovered = false
 
     private var downloads: [DownloadItem] {
-        store.downloadManager.downloads
+        store.downloadManager.sessionDownloads
     }
 
     var body: some View {

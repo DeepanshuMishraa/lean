@@ -170,6 +170,17 @@ private struct BrowserSession: Codable {
     var pinnedIndices: [Int]?
 }
 
+private struct SpacesState: Codable {
+    var spaces: [Space]
+    var selectedID: Space.ID
+}
+
+/// A space's tabs while another space is in front.
+private struct ParkedSpace {
+    var tabs: [LeanTab]
+    var selectedID: LeanTab.ID?
+}
+
 extension URL {
     /// The address without a name and password typed into it
     /// (https://user:pass@host), which must never be stored in history.
@@ -269,6 +280,13 @@ final class LeanStore: ObservableObject {
     @Published var isExtensionsPresented = false
     @Published var extensionsButtonFrame: CGRect = .zero
     @Published var extensionsPopoverFrame: CGRect = .zero
+    @Published var isSpaceThemeEditorPresented = false
+    @Published var spaceThemeEditorFrame: CGRect = .zero
+    /// The sidebar control that opened the editor; a click on it is not "outside".
+    @Published var spaceThemeButtonFrame: CGRect = .zero
+    @Published var isSitePopoverPresented = false
+    @Published var sitePopoverFrame: CGRect = .zero
+    @Published var sitePopoverButtonFrame: CGRect = .zero
     @Published var downloadManager: DownloadManager
     @Published var customShortcuts: [String: CustomKeyCombo] = [:] {
         didSet {
@@ -377,7 +395,7 @@ final class LeanStore: ObservableObject {
     @Published var followsSiteTheme: Bool {
         didSet {
             persist(followsSiteTheme, forKey: Self.followsSiteThemeKey)
-            for tab in tabs { tab.followsSiteScheme = followsSiteTheme }
+            for tab in everyTab { tab.followsSiteScheme = followsSiteTheme }
             refreshSiteTheme()
         }
     }
@@ -632,7 +650,35 @@ final class LeanStore: ObservableObject {
         }
     }
 
-    private let dataStore: WKWebsiteDataStore
+    /// Stands in for WebKit's stores: tests pass an in-memory one, and a
+    /// private window always has one (see `Space.makeDataStore`).
+    private let injectedDataStore: WKWebsiteDataStore?
+    private var spaceDataStores: [Space.ID: WKWebsiteDataStore] = [:]
+    /// The website data of the space in front.
+    private var dataStore: WKWebsiteDataStore {
+        if let store = spaceDataStores[selectedSpaceID] { return store }
+        let store = currentSpace.makeDataStore(injected: injectedDataStore)
+        spaceDataStores[selectedSpaceID] = store
+        return store
+    }
+    @Published private(set) var spaces: [Space]
+    @Published private(set) var selectedSpaceID: Space.ID
+    var currentSpace: Space {
+        spaces.first { $0.id == selectedSpaceID } ?? spaces[0]
+    }
+    /// Tabs of the spaces behind the one in front, kept alive as they were
+    /// left. A space not visited this run has none: its tabs come from its
+    /// saved session when it is first shown.
+    private var parkedSpaces: [Space.ID: ParkedSpace] = [:]
+    private var spacesPersistWorkItem: DispatchWorkItem?
+    /// Download lists of the parked spaces; their tabs still report to them.
+    private var downloadManagers: [Space.ID: DownloadManager] = [:]
+    /// Which way the last space switch went, for the sidebar's slide.
+    private(set) var spaceSwitchDirection: SpaceDirection = .forward
+    /// Every tab in this window, in front or parked: settings reach them all.
+    private var everyTab: [LeanTab] {
+        tabs + parkedSpaces.values.flatMap(\.tabs)
+    }
     private let database: AppDatabase?
     let isPrivateSession: Bool
     let mediaPermissionStore: MediaPermissionStore
@@ -674,9 +720,27 @@ final class LeanStore: ObservableObject {
     /// are read from the saved ones, and nothing is ever written back (see `persist`).
     init(dataStore: WKWebsiteDataStore? = nil, database: AppDatabase? = nil, isPrivateSession: Bool = false) {
         self.isPrivateSession = isPrivateSession
-        self.dataStore = isPrivateSession ? WKWebsiteDataStore.nonPersistent() : (dataStore ?? WKWebsiteDataStore.default())
+        self.injectedDataStore = isPrivateSession ? WKWebsiteDataStore.nonPersistent() : dataStore
         self.database = database ?? AppDatabase.openDefault()
-        self.downloadManager = DownloadManager(database: isPrivateSession ? nil : self.database)
+        // A private window is one space: it never shows the saved ones.
+        let savedSpaces = isPrivateSession ? nil : databaseValue(self.database, SpacesState.self, forKey: Self.spacesKey)
+        let initialSpace: Space
+        if let savedSpaces, let first = savedSpaces.spaces.first {
+            self.spaces = savedSpaces.spaces
+            initialSpace = savedSpaces.spaces.first { $0.id == savedSpaces.selectedID } ?? first
+        } else {
+            initialSpace = Space.personal()
+            self.spaces = [initialSpace]
+        }
+        self.selectedSpaceID = initialSpace.id
+        // History, bookmarks and recently closed are read for the space in front;
+        // what Lean kept before spaces (and in UserDefaults before that) is the first space's.
+        let isSharedSpace = initialSpace.websiteData == .shared
+        let spaceKey = { (key: String) in Self.storageKey(key, for: initialSpace) }
+        self.downloadManager = DownloadManager(
+            database: isPrivateSession ? nil : self.database,
+            itemsKey: spaceKey(DownloadManager.defaultItemsKey)
+        )
         self.mediaPermissionStore = MediaPermissionStore(database: isPrivateSession ? nil : self.database)
 
         let savedSearchEngine = databaseValue(self.database, String.self, forKey: Self.searchEngineKey)
@@ -701,8 +765,10 @@ final class LeanStore: ObservableObject {
         let savedSleepMinutes = databaseValue(self.database, Int.self, forKey: Self.autoSleepAfterMinutesKey) ?? 30
         self.autoSleepAfterMinutes = [5, 15, 30, 60].contains(savedSleepMinutes) ? savedSleepMinutes : 30
 
-        if let savedHistory = databaseValue(self.database, [HistoryItem].self, forKey: Self.historyKey) {
+        if let savedHistory = databaseValue(self.database, [HistoryItem].self, forKey: spaceKey(Self.historyKey)) {
             self.historyItems = savedHistory
+        } else if !isSharedSpace {
+            self.historyItems = []
         } else if let savedHistory = UserDefaults.standard.array(forKey: Self.historyKey) as? [[String: Any]] {
             self.historyItems = savedHistory.compactMap { item in
                 guard let rawURL = item["url"] as? String,
@@ -730,8 +796,8 @@ final class LeanStore: ObservableObject {
         self.importedBookmarks = loadedImportedBookmarks
 
         // Load bookmark folders
-        let savedFolders = databaseValue(self.database, [String].self, forKey: Self.bookmarkFoldersKey)
-            ?? UserDefaults.standard.stringArray(forKey: Self.bookmarkFoldersKey)
+        let savedFolders = databaseValue(self.database, [String].self, forKey: spaceKey(Self.bookmarkFoldersKey))
+            ?? (isSharedSpace ? UserDefaults.standard.stringArray(forKey: Self.bookmarkFoldersKey) : nil)
         var folders = savedFolders ?? [BookmarkFolder.defaultFolder]
         if !folders.contains(BookmarkFolder.defaultFolder) {
             folders.insert(BookmarkFolder.defaultFolder, at: 0)
@@ -740,9 +806,11 @@ final class LeanStore: ObservableObject {
         self.lastBookmarkFolder = databaseValue(self.database, String.self, forKey: Self.lastBookmarkFolderKey)
 
         // Load bookmarks (with migration from importedBookmarks on first run)
-        let savedBookmarks = databaseValue(self.database, [BookmarkItem].self, forKey: Self.bookmarksKey)
+        let savedBookmarks = databaseValue(self.database, [BookmarkItem].self, forKey: spaceKey(Self.bookmarksKey))
         if let savedBookmarks = savedBookmarks {
             self.bookmarks = savedBookmarks
+        } else if !isSharedSpace {
+            self.bookmarks = []
         } else {
             let migrated: [BookmarkItem] = loadedImportedBookmarks.map {
                 BookmarkItem(id: $0.id, title: $0.title, url: $0.url, folder: BookmarkFolder.defaultFolder)
@@ -942,20 +1010,22 @@ final class LeanStore: ObservableObject {
         configureMemoryPressureHandling()
         loadCustomShortcuts()
 
-        let savedSession = databaseValue(self.database, BrowserSession.self, forKey: Self.sessionStateKey)
-        let legacySessionURLs = databaseValue(self.database, [String].self, forKey: Self.sessionKey)
-            ?? (self.database == nil ? UserDefaults.standard.stringArray(forKey: Self.sessionKey) : nil)
+        let savedSession = databaseValue(self.database, BrowserSession.self, forKey: Self.sessionStateKey(for: currentSpace))
+        // Sessions from before spaces belong to the space that kept their data.
+        let legacySessionURLs = (isSharedSpace ? databaseValue(self.database, [String].self, forKey: Self.sessionKey) : nil)
+            ?? (self.database == nil && isSharedSpace ? UserDefaults.standard.stringArray(forKey: Self.sessionKey) : nil)
             ?? []
         let sessionURLs = (savedSession?.urls ?? legacySessionURLs).compactMap(URL.init(string:))
         let selectedIndex = min(savedSession?.selectedIndex ?? sessionURLs.count - 1, sessionURLs.count - 1)
-        let savedRecentlyClosed = databaseValue(self.database, [String].self, forKey: Self.recentlyClosedKey) ?? []
+        let savedRecentlyClosed = databaseValue(self.database, [String].self, forKey: spaceKey(Self.recentlyClosedKey)) ?? []
         recentlyClosed = isPrivateSession ? [] : savedRecentlyClosed.compactMap(URL.init(string:))
         if databaseValue(self.database, Bool.self, forKey: Self.migrationKey) != true {
             migrateLegacyState(sessionURLs: legacySessionURLs)
         }
         if savedSession == nil {
-            persist(BrowserSession(urls: legacySessionURLs, selectedIndex: max(0, selectedIndex)), forKey: Self.sessionStateKey)
+            persist(BrowserSession(urls: legacySessionURLs, selectedIndex: max(0, selectedIndex)), forKey: Self.sessionStateKey(for: currentSpace))
         }
+        persistSpaces()
         if isPrivateSession || sessionURLs.isEmpty {
             newTab()
         } else {
@@ -1105,7 +1175,7 @@ final class LeanStore: ObservableObject {
     func updateAllTabsTheme() {
         let isDark = isDarkMode
         let pageTheme = pageTheme
-        for tab in tabs {
+        for tab in everyTab {
             tab.applyTheme(isDark: isDark)
             tab.applyPageTheme(pageTheme)
         }
@@ -1113,7 +1183,7 @@ final class LeanStore: ObservableObject {
 
     func updateAllTabsScrollbarStyle() {
         let style = scrollbarStyle
-        for tab in tabs {
+        for tab in everyTab {
             tab.applyScrollbarStyle(style)
         }
     }
@@ -1121,7 +1191,7 @@ final class LeanStore: ObservableObject {
     func updateAllTabsHighFrameRate() {
         if highFrameRatePages {
             FrameRate.fast = true
-            for tab in tabs {
+            for tab in everyTab {
                 tab.applyHighFrameRate()
             }
         } else {
@@ -1131,26 +1201,26 @@ final class LeanStore: ObservableObject {
     }
 
     func updateAllTabsPeekPreferences() {
-        for tab in tabs {
+        for tab in everyTab {
             tab.peeksLinks = peeksLinks
             tab.peeksNewTabLinks = peeksNewTabLinks
         }
     }
 
     func updateAllTabsFonts() {
-        for tab in tabs {
+        for tab in everyTab {
             tab.applyPageFont(webPageFont)
         }
     }
 
     func updateAllTabsAdBlocking() {
-        for tab in tabs {
+        for tab in everyTab {
             tab.applyAdBlocking(adBlockingEnabled, excluding: adBlockingExcludedHosts)
         }
     }
 
     func updateAllTabsPasswordPreferences() {
-        for tab in tabs {
+        for tab in everyTab {
             tab.applyPasswordPreferences(
                 savePromptsEnabled: passwordSavePromptsEnabled,
                 suggestionsEnabled: passwordSuggestionsEnabled
@@ -1159,7 +1229,7 @@ final class LeanStore: ObservableObject {
     }
 
     func updateAllTabsPasskeys() {
-        for tab in tabs {
+        for tab in everyTab {
             tab.applyPasskeysPreferences(enabled: passkeysEnabled)
         }
     }
@@ -1868,7 +1938,7 @@ final class LeanStore: ObservableObject {
     }
 
     func cancelDownload(id: UUID) {
-        for tab in tabs {
+        for tab in everyTab {
             tab.cancelActiveDownload(id: id)
         }
         downloadManager.cancelDownload(id: id)
@@ -1936,7 +2006,7 @@ final class LeanStore: ObservableObject {
         let urls = persistedTabs.compactMap { $0.url?.absoluteString }
         let selectedIndex = persistedTabs.firstIndex { $0.id == selectedID } ?? max(0, urls.count - 1)
         let pinnedIndices = persistedTabs.enumerated().compactMap { $0.element.isPinned ? $0.offset : nil }
-        persist(BrowserSession(urls: urls, selectedIndex: selectedIndex, pinnedIndices: pinnedIndices), forKey: Self.sessionStateKey)
+        persist(BrowserSession(urls: urls, selectedIndex: selectedIndex, pinnedIndices: pinnedIndices), forKey: Self.sessionStateKey(for: currentSpace))
         persist(recentlyClosed.map(\.absoluteString), forKey: Self.recentlyClosedKey)
     }
 
@@ -1964,6 +2034,139 @@ final class LeanStore: ObservableObject {
             recordHistory(url: pending.url, title: pending.title)
         }
         saveSession()
+    }
+
+    // MARK: - Spaces
+
+    /// Puts another space in front. The one leaving keeps its tabs alive,
+    /// as they were; one not shown yet this run opens its saved session.
+    func switchToSpace(id: Space.ID, direction: SpaceDirection? = nil) {
+        guard !isPrivateSession, id != selectedSpaceID,
+              let newIndex = spaces.firstIndex(where: { $0.id == id }) else { return }
+        let oldIndex = spaces.firstIndex { $0.id == selectedSpaceID } ?? 0
+        spaceSwitchDirection = direction ?? (newIndex >= oldIndex ? .forward : .backward)
+        if peekTab != nil { closePeek() }
+        flushPendingPersist()
+        parkedSpaces[selectedSpaceID] = ParkedSpace(tabs: tabs, selectedID: selectedID)
+        downloadManagers[selectedSpaceID] = downloadManager
+        selectedSpaceID = id
+        loadSpaceData()
+        if let parked = parkedSpaces.removeValue(forKey: id) {
+            tabs = parked.tabs
+            selectedID = parked.selectedID ?? tabs.last?.id
+        } else {
+            tabs = []
+            selectedID = nil
+            restoreTabs(from: databaseValue(database, BrowserSession.self, forKey: Self.sessionStateKey(for: currentSpace)))
+        }
+        if tabs.isEmpty { newTab(focusAddress: false) }
+        persistSpaces()
+        saveSession()
+        scheduleAutoSleep()
+        refreshSiteTheme()
+    }
+
+    /// The space after (or before) the one in front, wrapping around.
+    func switchToAdjacentSpace(forward: Bool) {
+        guard spaces.count > 1, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) else { return }
+        let next = (index + (forward ? 1 : -1) + spaces.count) % spaces.count
+        switchToSpace(id: spaces[next].id, direction: forward ? .forward : .backward)
+    }
+
+    func addSpace() {
+        guard !isPrivateSession else { return }
+        let swatch = SpaceTheme.swatches[spaces.count % SpaceTheme.swatches.count]
+        let space = Space.new(named: "Space \(spaces.count + 1)", theme: .swatch(swatch))
+        spaces.append(space)
+        switchToSpace(id: space.id)
+    }
+
+    func renameSpace(id: Space.ID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = spaces.firstIndex(where: { $0.id == id }) else { return }
+        spaces[index].name = trimmed
+        persistSpaces()
+    }
+
+    /// Called on every drag step of the theme editor: the write waits for a pause.
+    func setTheme(_ theme: SpaceTheme, forSpace id: Space.ID) {
+        guard let index = spaces.firstIndex(where: { $0.id == id }), spaces[index].theme != theme else { return }
+        spaces[index].theme = theme
+        spacesPersistWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.persistSpaces() }
+        spacesPersistWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
+
+    /// Closes the space's tabs and erases its website data. The last space stays.
+    func deleteSpace(id: Space.ID) {
+        guard spaces.count > 1, let space = spaces.first(where: { $0.id == id }) else { return }
+        if id == selectedSpaceID { switchToAdjacentSpace(forward: false) }
+        parkedSpaces.removeValue(forKey: id)?.tabs.forEach { $0.destroy() }
+        spaces.removeAll { $0.id == id }
+        spaceDataStores[id] = nil
+        persist(BrowserSession(urls: [], selectedIndex: 0), forKey: Self.sessionStateKey(for: space))
+        if let database {
+            // Its history, bookmarks and recently closed go with it.
+            downloadManagers[id] = nil
+            for key in Self.spaceScopedKeys.union([DownloadManager.defaultItemsKey]) {
+                if case .failure(let error) = database.set([String](), forKey: Self.storageKey(key, for: space)) {
+                    NSLog("Could not erase %@ of deleted space %@: %@", key, space.name, String(describing: error))
+                }
+            }
+        }
+        persistSpaces()
+        if case .separate(let identifier) = space.websiteData, injectedDataStore == nil {
+            // WebKit refuses while a closed tab's page still holds the store; one turn later it has let go.
+            DispatchQueue.main.async {
+                WKWebsiteDataStore.remove(forIdentifier: identifier) { error in
+                    guard let error else { return }
+                    NSLog("Could not erase website data of deleted space %@ (store %@): %@. The data stays on disk until it is removed with the space's store.", space.name, identifier.uuidString, String(describing: error))
+                }
+            }
+        }
+    }
+
+    private func persistSpaces() {
+        spacesPersistWorkItem?.cancel()
+        spacesPersistWorkItem = nil
+        guard !isPrivateSession else { return }
+        persist(SpacesState(spaces: spaces, selectedID: selectedSpaceID), forKey: Self.spacesKey)
+    }
+
+    /// Reads the history, bookmarks and recently closed tabs of the space now in front.
+    private func loadSpaceData() {
+        let space = currentSpace
+        func key(_ name: String) -> String { Self.storageKey(name, for: space) }
+        historyItems = databaseValue(database, [HistoryItem].self, forKey: key(Self.historyKey)) ?? []
+        var folders = databaseValue(database, [String].self, forKey: key(Self.bookmarkFoldersKey)) ?? [BookmarkFolder.defaultFolder]
+        if !folders.contains(BookmarkFolder.defaultFolder) { folders.insert(BookmarkFolder.defaultFolder, at: 0) }
+        bookmarkFolders = folders
+        bookmarks = databaseValue(database, [BookmarkItem].self, forKey: key(Self.bookmarksKey)) ?? []
+        recentlyClosed = (databaseValue(database, [String].self, forKey: key(Self.recentlyClosedKey)) ?? [])
+            .compactMap(URL.init(string:))
+        let folder = downloadManager.downloadDirectory
+        downloadManager = downloadManagers.removeValue(forKey: space.id)
+            ?? DownloadManager(database: database, itemsKey: key(DownloadManager.defaultItemsKey))
+        // The folder is one setting for every space: carry over a change made in another.
+        if downloadManager.downloadDirectory != folder { downloadManager.setDownloadDirectory(folder) }
+    }
+
+    /// The sidebar's Clear: every tab in the space in front that isn't pinned.
+    func closeUnpinnedTabs() {
+        for tab in unpinnedTabs { closeImmediately(tab) }
+    }
+
+    private func restoreTabs(from session: BrowserSession?) {
+        guard let session else { return }
+        let urls = session.urls.compactMap(URL.init(string:))
+        guard !urls.isEmpty else { return }
+        let selectedIndex = min(max(0, session.selectedIndex), urls.count - 1)
+        let pinned = Set(session.pinnedIndices ?? [])
+        for (index, url) in urls.enumerated() {
+            let tab = newTab(url: url, select: index == selectedIndex, focusAddress: false)
+            if pinned.contains(index) { tab.isPinned = true }
+        }
     }
 
     func togglePin(tab: LeanTab) {
@@ -2059,7 +2262,8 @@ final class LeanStore: ObservableObject {
             // a failed navigation — the tab keeps the attempted address so
             // the omnibar/reload/session still work, but nothing was
             // committed to record. Session always.
-            if let tabURL = tab.url, !tab.isLoading, tab.pageError == nil {
+            // A parked space's tab still loads, but its visits are not the history of the space in front.
+            if let tabURL = tab.url, !tab.isLoading, tab.pageError == nil, self.tabs.contains(where: { $0 === tab }) {
                 self.pendingHistory = (tabURL, tab.title)
             }
             self.scheduleDebouncedPersist()
@@ -2711,8 +2915,10 @@ final class LeanStore: ObservableObject {
         persist(true, forKey: Self.migrationKey)
     }
 
+    /// Writes a setting, or, for a key in `spaceScopedKeys`, the value of the space in front.
     private func persist<T: Encodable>(_ value: T, forKey key: String) {
         guard let database, !isPrivateSession else { return }
+        let key = Self.spaceScopedKeys.contains(key) ? Self.storageKey(key, for: currentSpace) : key
         if case .failure(let error) = database.set(value, forKey: key) {
             NSLog("Could not persist %@: %@", key, String(describing: error))
         }
@@ -2721,6 +2927,26 @@ final class LeanStore: ObservableObject {
     private static let migrationKey = "sqliteMigration_v1"
     private static let sessionKey = "sessionURLs"
     private static let sessionStateKey = "browserSession_v1"
+    private static let spacesKey = "spaces_v1"
+
+    /// What each space keeps for itself. Settings, extensions and imported data stay shared.
+    private static let spaceScopedKeys: Set<String> = [historyKey, bookmarksKey, bookmarkFoldersKey, recentlyClosedKey]
+
+    /// The first space keeps the keys Lean used before spaces existed.
+    private static func storageKey(_ key: String, for space: Space) -> String {
+        switch space.websiteData {
+        case .shared: key
+        case .separate: "\(key)_\(space.id.uuidString)"
+        }
+    }
+
+    /// The first space keeps the key sessions had before spaces existed.
+    private static func sessionStateKey(for space: Space) -> String {
+        switch space.websiteData {
+        case .shared: sessionStateKey
+        case .separate: "browserSession_\(space.id.uuidString)"
+        }
+    }
     private static let recentlyClosedKey = "recentlyClosedURLs"
     private static let historyKey = "visitedHistory"
     private static let importedBookmarksKey = "importedBookmarks_v1"

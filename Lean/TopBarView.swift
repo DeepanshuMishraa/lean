@@ -1691,7 +1691,7 @@ struct DownloadToolbarButton: View {
                         .frame(width: 12 * CGFloat(store.downloadManager.overallProgress) * browserUIScale, height: 2 * browserUIScale)
                         .offset(y: 8 * browserUIScale)
                         .allowsHitTesting(false)
-                } else if !store.downloadManager.downloads.isEmpty {
+                } else if !store.downloadManager.sessionDownloads.isEmpty {
                     Circle()
                         .fill(store.adaptiveTheme.secondaryText.opacity(0.55))
                         .frame(width: 4 * browserUIScale, height: 4 * browserUIScale)
@@ -1721,7 +1721,7 @@ struct DownloadToolbarButton: View {
         if active > 0 {
             return "Downloads (\(active) active — click to view)"
         }
-        let total = store.downloadManager.downloads.count
+        let total = store.downloadManager.sessionDownloads.count
         if total > 0 {
             return "Downloads (\(total)) — click to view"
         }

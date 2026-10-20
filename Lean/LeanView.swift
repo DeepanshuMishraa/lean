@@ -32,7 +32,8 @@ struct LeanView: View {
 
     private var isTopBarVisible: Bool {
         // Popovers must keep the top bar visible
-        if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented {
+        if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented
+            || store.isSpaceThemeEditorPresented || store.isSitePopoverPresented {
             return true
         }
         if !store.enableZenMode {
@@ -49,7 +50,8 @@ struct LeanView: View {
     private var isSidebarEffectivelyVisible: Bool {
         guard store.tabLayout == .sidebar else { return false }
         // Popovers must keep the sidebar visible
-        if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented {
+        if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented
+            || store.isSpaceThemeEditorPresented || store.isSitePopoverPresented {
             return true
         }
         // If sidebar is pinned (!isSidebarCollapsed), it is ALWAYS visible and expanded (auto-hide disabled)
@@ -71,14 +73,16 @@ struct LeanView: View {
             }
         } else {
             // Never hide while quick settings, downloads, or extensions popover is open
-            if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented {
+            if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented
+            || store.isSpaceThemeEditorPresented || store.isSitePopoverPresented {
                 hideTopBarWorkItem?.cancel()
                 hideTopBarWorkItem = nil
                 return
             }
             hideTopBarWorkItem?.cancel()
             let item = DispatchWorkItem {
-                guard !store.isQuickSettingsPresented && !store.isDownloadsPresented && !store.isExtensionsPresented else { return }
+                guard !store.isQuickSettingsPresented && !store.isDownloadsPresented && !store.isExtensionsPresented
+                    && !store.isSpaceThemeEditorPresented && !store.isSitePopoverPresented else { return }
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                     isZenTopBarRevealed = false
                 }
@@ -106,14 +110,16 @@ struct LeanView: View {
             }
         } else {
             // Never hide while quick settings, downloads, or extensions popover is open
-            if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented {
+            if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented
+            || store.isSpaceThemeEditorPresented || store.isSitePopoverPresented {
                 hideSidebarWorkItem?.cancel()
                 hideSidebarWorkItem = nil
                 return
             }
             hideSidebarWorkItem?.cancel()
             let item = DispatchWorkItem {
-                guard !store.isQuickSettingsPresented && !store.isDownloadsPresented && !store.isExtensionsPresented else { return }
+                guard !store.isQuickSettingsPresented && !store.isDownloadsPresented && !store.isExtensionsPresented
+                    && !store.isSpaceThemeEditorPresented && !store.isSitePopoverPresented else { return }
                 if store.isSidebarCollapsed {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                         isZenSidebarRevealed = false
@@ -166,10 +172,12 @@ struct LeanView: View {
         .ignoresSafeArea(.all)
         .background(
             store.enableWindowBorder
-                ? AnyView((store.tabLayout == .sidebar ? store.frameBackground : store.effectiveZenColor).ignoresSafeArea())
+                ? (store.tabLayout == .sidebar
+                    ? AnyView(FrameBackground(store: store).ignoresSafeArea())
+                    : AnyView(store.effectiveZenColor.ignoresSafeArea()))
                 : (store.glassActive
                     ? AnyView(VisualEffectBlur(material: .underWindowBackground, blendingMode: .behindWindow).ignoresSafeArea())
-                    : AnyView(store.frameBackground.ignoresSafeArea()))
+                    : AnyView(FrameBackground(store: store).ignoresSafeArea()))
         )
         .background(WindowConfigurator(store: store, windowBox: windowBox, isTopBarVisible: isTopBarVisible, isSidebarVisible: isSidebarEffectivelyVisible))
         .preferredColorScheme(store.colorScheme)
@@ -411,6 +419,26 @@ struct LeanView: View {
                 .zIndex(190)
             }
 
+            // The space's theme, over the bottom of the sidebar and the page beside it
+            if store.isSpaceThemeEditorPresented && store.tabLayout == .sidebar {
+                SpaceThemeEditor(store: store)
+                    .padding(.leading, store.windowBorderWidth + 10)
+                    .padding(.bottom, store.windowBorderWidth + 46)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .bottomLeading)))
+                    .zIndex(191)
+            }
+
+            // Site controls, hanging under the sidebar's address bar
+            if store.isSitePopoverPresented && store.tabLayout == .sidebar {
+                let button = store.sitePopoverButtonFrame
+                SitePopover(store: store)
+                    .offset(x: max(8, button.maxX - 200), y: button.maxY + 6)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+                    .zIndex(191)
+            }
+
             // Bespoke Downloads Overlay
             if store.isDownloadsPresented {
                 ZStack(alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing) {
@@ -602,8 +630,10 @@ struct LeanView: View {
 
     private var mainContentCard: some View {
         ZStack {
-            (store.enableWindowBorder || store.glassActive ? Color.clear : store.frameBackground)
-                .ignoresSafeArea()
+            if !store.enableWindowBorder && !store.glassActive {
+                FrameBackground(store: store)
+                    .ignoresSafeArea()
+            }
 
             if let tab = store.selectedTab {
                 if tab.isSplit {
@@ -761,6 +791,22 @@ struct LeanView: View {
                 }
             }
 
+            if store.isSpaceThemeEditorPresented {
+                let isInsideEditor = store.spaceThemeEditorFrame.width > 0 && store.spaceThemeEditorFrame.insetBy(dx: -8, dy: -8).contains(swiftUIPoint)
+                let isInsideButton = store.spaceThemeButtonFrame.width > 0 && store.spaceThemeButtonFrame.insetBy(dx: -4, dy: -4).contains(swiftUIPoint)
+                if !isInsideEditor && !isInsideButton {
+                    store.isSpaceThemeEditorPresented = false
+                }
+            }
+
+            if store.isSitePopoverPresented {
+                let isInsidePopover = store.sitePopoverFrame.width > 0 && store.sitePopoverFrame.insetBy(dx: -8, dy: -8).contains(swiftUIPoint)
+                let isInsideButton = store.sitePopoverButtonFrame.width > 0 && store.sitePopoverButtonFrame.insetBy(dx: -4, dy: -4).contains(swiftUIPoint)
+                if !isInsidePopover && !isInsideButton {
+                    store.isSitePopoverPresented = false
+                }
+            }
+
             // When Downloads popover is open, dismiss when clicking outside its bounds (and the button)
             if store.isDownloadsPresented {
                 let popoverFrame = store.downloadsPopoverFrame.insetBy(dx: -8, dy: -8)
@@ -902,6 +948,13 @@ struct LeanView: View {
 
             // Intercept Escape (keyCode 53) to close quick settings, inline url bar, bookmarks, floating omnibar, new tab omnibar, or tab switcher
             if event.keyCode == 53 {
+                if store.isSpaceThemeEditorPresented || store.isSitePopoverPresented {
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        store.isSpaceThemeEditorPresented = false
+                        store.isSitePopoverPresented = false
+                    }
+                    return nil
+                }
                 if store.isBookmarkDialogPresented {
                     withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
                         store.dismissBookmarkDialog()

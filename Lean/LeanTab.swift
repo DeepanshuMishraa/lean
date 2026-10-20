@@ -14,6 +14,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private var storedWebView: LeanWebView?
     private var sleepingInteractionState: Any?
     private var pendingNavigationID = UUID()
+    /// When the main-frame navigation now under way was asked for; nil once it
+    /// commits, fails or is stopped. A reload of one stuck past
+    /// `stalledNavigationThreshold` restarts WebKit's network process first.
+    private(set) var uncommittedNavigationSince: Date?
+    static let stalledNavigationThreshold: TimeInterval = 8
     var popupOpenerID: LeanTab.ID?
     var hasActivePopup = false
 
@@ -875,6 +880,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         }
         loadingProgress = 0
         isLoading = true
+        // Kept when already set: reloading a stuck page again and again must not restart its clock.
+        if uncommittedNavigationSince == nil { uncommittedNavigationSince = Date() }
         pageError = nil
         onStateChange?()
         updateFavicon(for: url)
@@ -908,6 +915,18 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
     func reload() {
         if isSleeping, let url { load(url); return }
+        if let since = uncommittedNavigationSince, Date().timeIntervalSince(since) >= Self.stalledNavigationThreshold {
+            // Nothing has committed for a while: WebKit's network process has likely wedged on this
+            // host, and only a new one loads it again (see NetworkProcess).
+            NSLog("Reload of %@: navigation uncommitted for %.0fs; restarting WebKit's network process before loading again.",
+                  (url ?? webView.url)?.host ?? "a page", Date().timeIntervalSince(since))
+            NetworkProcess.restart(via: dataStore)
+            let target = url ?? webView.url
+            webView.stopLoading()
+            uncommittedNavigationSince = nil
+            if let target { load(target) }
+            return
+        }
         if pageError != nil || webView.url == nil || webView.isLoading {
             let target = url ?? webView.url
             webView.stopLoading()
@@ -930,6 +949,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         onStateChange?()
         webView.reloadFromOrigin()
     }
+    /// Leaves `uncommittedNavigationSince` alone: a stuck page is often stopped, then reloaded.
     func stop() {
         isLoading = false
         webView.stopLoading()
@@ -1866,6 +1886,7 @@ extension LeanTab: WKNavigationDelegate {
         lastProgressPublishDate = Date()
         loadingProgress = 0
         isLoading = true
+        if uncommittedNavigationSince == nil { uncommittedNavigationSince = Date() }
         pageError = nil
         mediaPlayingFrames.removeAll()
         isPlayingMedia = false
@@ -1873,6 +1894,7 @@ extension LeanTab: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation?) {
+        uncommittedNavigationSince = nil
         pageError = nil
         pendingMainFrameURL = nil
         if let web = webView as? LeanWebView {
@@ -1897,6 +1919,7 @@ extension LeanTab: WKNavigationDelegate {
         loadingProgress = 1.0
         lastPublishedProgress = 1.0
         isLoading = false
+        uncommittedNavigationSince = nil
         pageError = nil
         pendingMainFrameURL = nil
         refreshState()
@@ -2084,6 +2107,7 @@ extension LeanTab: WKNavigationDelegate {
         if tryHTTPFallback(for: error) { return }
         pendingLogin = nil
         isLoading = false
+        clearStallUnlessCancelled(error)
         recordPageErrorIfMainFrame(error)
         // Always refresh: recording the error alone publishes to nobody —
         // the content card watches the store, not the tab — so without
@@ -2095,11 +2119,19 @@ extension LeanTab: WKNavigationDelegate {
         if tryHTTPFallback(for: error) { return }
         pendingLogin = nil
         isLoading = false
+        clearStallUnlessCancelled(error)
         recordPageErrorIfMainFrame(error)
         // Same as above: the error page must appear at once, not on the
         // next redraw. refreshState keeps the attempted address for a
         // fresh tab out of history (nothing committed to record).
         refreshState()
+    }
+
+    /// A real failure settles the navigation. A cancellation does not: stopping
+    /// or reloading a stuck page cancels it, and the stall must still be seen.
+    private func clearStallUnlessCancelled(_ error: Error) {
+        guard (error as NSError).code != NSURLErrorCancelled else { return }
+        uncommittedNavigationSince = nil
     }
 
     /// Show an error page for a failed main-frame navigation; stay silent
@@ -2737,5 +2769,9 @@ extension LeanTab: WKDownloadDelegate {
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+extension String {
+    /// A host without its leading "www.", as the sidebar and tab titles show it.
     var droppingWWW: String { hasPrefix("www.") ? String(dropFirst(4)) : self }
 }

@@ -4,6 +4,23 @@ All notable changes to Lean are documented here. Lean is currently in
 **alpha**: expect rough edges (see `README.md` Known limitations) and
 update often — releases arrive through the built-in updater.
 
+## [0.1.17] - 2026-10-21
+
+### Added
+
+- Spaces: separate browsing contexts, each with its own tabs, logins and site data, history, bookmarks, recently closed tabs and downloads. Switch with the dots at the bottom of the sidebar or a swipe, and give each space a name and a colour tint
+- A site popover in the sidebar's address bar: page actions, extensions, this site's switches and how it is connected
+
+### Changed
+
+- The downloads popover shows only this session's downloads; the full history stays in Settings
+- The sidebar toggle sits next to the traffic lights
+
+### Fixed
+
+- Reloading a page stuck loading (for example x.com after closing a tab mid-reload) now recovers without relaunching Lean
+- With Liquid Glass on, the vertical sidebar is a rounded card instead of a pill
+
 ## [0.1.16] - 2026-10-10
 
 ### Added

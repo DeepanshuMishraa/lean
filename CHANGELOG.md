@@ -1,10 +1,11 @@
 # Changelog
 
-All notable changes to Lean are documented here. Lean is currently in
-**alpha**: expect rough edges (see `README.md` Known limitations) and
-update often — releases arrive through the built-in updater.
+All notable changes to Lean are documented here. Releases arrive through
+the built-in updater.
 
-## [0.1.17] - 2026-10-21
+## [1.0.0] - 2026-10-21
+
+Lean is out of alpha. This release also includes everything below.
 
 ### Added
 
@@ -19,6 +20,8 @@ update often — releases arrive through the built-in updater.
 - Liquid Glass is kept for buttons and menus; the sidebar, address bar and settings cards are frosted
 - Settings lists its sections across the top instead of in a second sidebar
 - Pinned tabs share the sidebar's width, and the selected tab is clearly highlighted in both styles
+- Resizing the window and sliding the sidebar no longer redraw the whole window on every frame, and colour themes are cheaper to draw
+- With the System interface theme, Lean and open pages follow macOS switching between light and dark
 
 ### Fixed
 

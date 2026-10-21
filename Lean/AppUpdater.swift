@@ -9,9 +9,6 @@ import Sparkle
 /// ad-hoc signed, unnotarized app.
 @MainActor
 final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
-    /// Release channel shown in the UI. The app is pre-1.0.
-    static let releaseChannel = "Alpha"
-
     private var controller: SPUStandardUpdaterController!
 
     override init() {

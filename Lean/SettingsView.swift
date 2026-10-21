@@ -716,7 +716,7 @@ private struct GeneralSection: View {
 
                 HStack(alignment: .center, spacing: 16) {
                     VStack(alignment: .leading, spacing: 2.5) {
-                        Text("Lean \(updater.marketingVersion) \(AppUpdater.releaseChannel)")
+                        Text("Lean \(updater.marketingVersion)")
                             .font(store.leanUIFont.font(size: 13, weight: .medium))
                             .foregroundColor(store.themeColors.primaryText)
                         Text("Build \(updater.buildVersion) · Signed updates from GitHub releases.")

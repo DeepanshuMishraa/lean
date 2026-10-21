@@ -1789,6 +1789,8 @@ extension LeanTab: WKScriptMessageHandler {
                 }
             }
         }
+        // Lets macOS fold the wake-up into others instead of waking for it alone.
+        mediaPruneTimer?.tolerance = 0.3
     }
 
     private func pruneSilentMediaFrames() {

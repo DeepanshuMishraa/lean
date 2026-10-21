@@ -19,6 +19,8 @@ struct TabSelectionRenderingTests {
             backing: .buffered,
             defer: false
         )
+        // As the app's windows: ARC owns it, so close() must not also release it.
+        window.isReleasedWhenClosed = false
         let content = NSView(frame: stage.bounds)
         window.contentView = content
         content.addSubview(stage)
@@ -39,6 +41,9 @@ struct TabSelectionRenderingTests {
             backing: .buffered,
             defer: false
         )
+        // As the app's windows: closed below while tab switches still have work
+        // in flight that holds it, so close() must not free it under them.
+        window.isReleasedWhenClosed = false
         let host = NSHostingView(rootView: LeanView(store: store, updater: AppUpdater()))
         window.contentView = host
         window.makeKeyAndOrderFront(nil)

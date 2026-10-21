@@ -26,8 +26,6 @@ struct LeanView: View {
     @State private var isZenSidebarRevealed = false
     @State private var hideSidebarWorkItem: DispatchWorkItem?
     @State private var isMouseOverSidebar = false
-    /// The page card, in global coordinates: a kept peek grows to fill it.
-    @State private var pageCardFrame: CGRect?
     /// Which window this view is in. Key monitors and notifications are
     /// app-wide, so with two windows each must ignore the other's events.
     @State private var windowBox = WindowBox()
@@ -462,7 +460,7 @@ struct LeanView: View {
 
             // Link Preview / Peek Panel (Shift + Click)
             if let page = store.peekTab {
-                PeekPanel(store: store, tab: page, pageCard: pageCardFrame)
+                PeekPanel(store: store, tab: page)
                     .zIndex(185)
             }
 
@@ -604,7 +602,7 @@ struct LeanView: View {
             if let tab = store.selectedTab {
                 if tab.isSplit {
                     SplitTabsContainerView(parentTab: tab, store: store)
-                        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { pageCardFrame = $0 }
+                        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { store.pageCardFrame = $0 }
                         .padding(.leading, cardLeadingPadding)
                         .padding(.trailing, cardTrailingPadding)
                         .padding(.bottom, cardBottomPadding)
@@ -666,7 +664,7 @@ struct LeanView: View {
                             .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
                     )
                     .leanCardShadow(glass: store.glassActive, color: store.adaptiveTheme.webCardShadow, radius: store.adaptiveTheme.webCardShadowRadius, x: 0, y: store.adaptiveTheme.isFrameLight ? 2 : 3)
-                    .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { pageCardFrame = $0 }
+                    .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { store.pageCardFrame = $0 }
                     .padding(.leading, cardLeadingPadding)
                     .padding(.trailing, cardTrailingPadding)
                     .padding(.bottom, cardBottomPadding)

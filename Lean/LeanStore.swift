@@ -221,9 +221,10 @@ final class LeanStore: ObservableObject {
     @Published var isInlineURLEditing = false
     @Published var isNewTabOmnibarFloating = false
     @Published var showsSettings = false
-    @Published var floatingPaletteFrame: CGRect = .zero
-    @Published var inlineURLBarFrame: CGRect = .zero
-    @Published var inlineSuggestionsFrame: CGRect = .zero
+    // Read only by LeanView's click monitor; not @Published (see bookmarksButtonFrame).
+    var floatingPaletteFrame: CGRect = .zero
+    var inlineURLBarFrame: CGRect = .zero
+    var inlineSuggestionsFrame: CGRect = .zero
     @Published var suggestionDropdown: SuggestionDropdown?
     /// The tab whose site card (connection, zoom, sound…) hangs under the
     /// inline URL bar: set while its address is being edited and untouched.
@@ -243,8 +244,12 @@ final class LeanStore: ObservableObject {
     @Published var bookmarkFolders: [String] = [BookmarkFolder.defaultFolder]
     @Published var selectedBookmarkFolder: String = BookmarkFolder.allFolder
     @Published var isBookmarksPresented = false
-    @Published var bookmarksButtonFrame: CGRect = .zero
-    @Published var bookmarksPaletteFrame: CGRect = .zero
+    // Frames of buttons and popovers, written from layout and read only by
+    // LeanView's click monitor to tell inside from outside. Not @Published:
+    // they change on every resize and animation frame, and publishing them
+    // re-rendered the whole window each time.
+    var bookmarksButtonFrame: CGRect = .zero
+    var bookmarksPaletteFrame: CGRect = .zero
     @Published var isBookmarkDialogPresented = false
     @Published var dialogBookmarkTitle = ""
     @Published var dialogBookmarkFolder = BookmarkFolder.defaultFolder {
@@ -257,18 +262,21 @@ final class LeanStore: ObservableObject {
     /// Folder the user last chose in the ⌘D dialog; the next bookmark starts there.
     private var lastBookmarkFolder: String?
     @Published var dialogBookmarkURL: URL? = nil
-    @Published var dialogBookmarkFrame: CGRect = .zero
+    var dialogBookmarkFrame: CGRect = .zero
     @Published var selectedSettingsCategory: SettingsCategory = .general
     @Published var isQuickSettingsPresented = false
-    @Published var quickSettingsPopoverFrame: CGRect = .zero
-    @Published var quickSettingsSubmenuFrame: CGRect = .zero
-    @Published var settingsButtonFrame: CGRect = .zero
+    var quickSettingsPopoverFrame: CGRect = .zero
+    var quickSettingsSubmenuFrame: CGRect = .zero
+    var settingsButtonFrame: CGRect = .zero
     @Published var isDownloadsPresented = false
-    @Published var downloadsButtonFrame: CGRect = .zero
-    @Published var downloadsPopoverFrame: CGRect = .zero
+    var downloadsButtonFrame: CGRect = .zero
+    var downloadsPopoverFrame: CGRect = .zero
     @Published var isExtensionsPresented = false
-    @Published var extensionsButtonFrame: CGRect = .zero
-    @Published var extensionsPopoverFrame: CGRect = .zero
+    var extensionsButtonFrame: CGRect = .zero
+    var extensionsPopoverFrame: CGRect = .zero
+    /// The page card, in global coordinates: a kept peek grows to fill it.
+    /// Read when a peek renders, which a store change already triggers.
+    var pageCardFrame: CGRect?
     @Published var downloadManager: DownloadManager
     @Published var customShortcuts: [String: CustomKeyCombo] = [:] {
         didSet {
@@ -659,6 +667,11 @@ final class LeanStore: ObservableObject {
     private var sleepWorkItems: [LeanTab.ID: DispatchWorkItem] = [:]
     private var sleepWorkTokens: [LeanTab.ID: UUID] = [:]
     private var memoryPressureSource: DispatchSourceMemoryPressure?
+    /// The system's light or dark, for the System interface theme. Kept by
+    /// `appearanceObserver` instead of asked of AppKit on every read: views
+    /// read `isDarkMode` hundreds of times per render.
+    @Published private var systemIsDark = LeanStore.systemAppearanceIsDark()
+    private var appearanceObserver: NSKeyValueObservation?
     private let pictureInPicture = PictureInPicture()
     private var pictureInPictureTabID: LeanTab.ID?
     /// Generation guard for the async lift: Isolate.on answers a runloop
@@ -954,6 +967,7 @@ final class LeanStore: ObservableObject {
         }
         ContentBlocker.refreshIfNeeded()
         configureMemoryPressureHandling()
+        observeSystemAppearance()
         loadCustomShortcuts()
 
         let savedSession = databaseValue(self.database, BrowserSession.self, forKey: Self.sessionStateKey)
@@ -1003,7 +1017,24 @@ final class LeanStore: ObservableObject {
         case .light:
             return false
         case .system:
-            return NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return systemIsDark
+        }
+    }
+
+    private static func systemAppearanceIsDark() -> Bool {
+        NSApplication.shared.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+
+    private func observeSystemAppearance() {
+        appearanceObserver = NSApplication.shared.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                let isDark = Self.systemAppearanceIsDark()
+                guard self.systemIsDark != isDark else { return }
+                self.systemIsDark = isDark
+                // Pages follow the interface theme, as when it is changed in Settings.
+                if self.theme == .system { self.updateAllTabsTheme() }
+            }
         }
     }
 
@@ -1029,15 +1060,40 @@ final class LeanStore: ObservableObject {
         return themeColors.sidebarChrome
     }
 
+    /// What `adaptiveTheme` is derived from: it is rebuilt only when this changes.
+    private struct AdaptiveThemeInputs: Equatable {
+        let paintsBorder: Bool
+        let frameColor: Color
+        let isDark: Bool
+        let isGlass: Bool
+        let isSidebarLayout: Bool
+        let theme: BrowserTheme
+    }
+
+    private var adaptiveThemeCache: (inputs: AdaptiveThemeInputs, theme: AdaptiveFrameTheme)?
+
+    /// Read hundreds of times per render, so built once per change of its
+    /// inputs: building it measures the frame colour's luminance through NSColor.
     var adaptiveTheme: AdaptiveFrameTheme {
-        AdaptiveFrameTheme(
-            isBorderEnabled: paintsWindowBorder,
+        let inputs = AdaptiveThemeInputs(
+            paintsBorder: paintsWindowBorder,
             frameColor: effectiveZenColor,
-            baseThemeColors: themeColors,
-            isBaseDark: isDarkMode,
+            isDark: isDarkMode,
             isGlass: glassActive,
-            isSidebarLayout: tabLayout == .sidebar
+            isSidebarLayout: tabLayout == .sidebar,
+            theme: colorTheme
         )
+        if let cache = adaptiveThemeCache, cache.inputs == inputs { return cache.theme }
+        let theme = AdaptiveFrameTheme(
+            isBorderEnabled: inputs.paintsBorder,
+            frameColor: inputs.frameColor,
+            baseThemeColors: themeColors,
+            isBaseDark: inputs.isDark,
+            isGlass: inputs.isGlass,
+            isSidebarLayout: inputs.isSidebarLayout
+        )
+        adaptiveThemeCache = (inputs, theme)
+        return theme
     }
 
     var colorScheme: ColorScheme? {
@@ -1198,7 +1254,9 @@ final class LeanStore: ObservableObject {
         }
         // Not known to be playing (the flag lags the page by up to a second and a half): ask the page, so a
         // tab with no video (a new tab, a page being read) is left exactly as it is.
-        tab.canEnterNativePictureInPicture(strict: strict) { [weak self, weak tab] canEnter in
+        // The window weakly too: a probe answered after its window closed must not keep it alive. A closed
+        // window then reads as none, and parking falls back to Lean's own floating page as it does without one.
+        tab.canEnterNativePictureInPicture(strict: strict) { [weak self, weak tab, weak window] canEnter in
             DispatchQueue.main.async {
                 guard let self, let tab else { return }
                 guard self.pipGeneration == generation, self.selectedID != tab.id, !self.pictureInPicture.showing,

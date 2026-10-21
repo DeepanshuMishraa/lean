@@ -74,8 +74,16 @@ enum BrowserTheme: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// Nil for the default look.
+    /// Nil for the default look. Parsed once: views read the palette many
+    /// times per render, and building it parses seven hex colours.
     func palette(isDark: Bool) -> ThemePalette? {
+        (isDark ? Self.darkPalettes : Self.lightPalettes)[self] ?? nil
+    }
+
+    private static let darkPalettes = Dictionary(uniqueKeysWithValues: allCases.map { ($0, $0.makePalette(isDark: true)) })
+    private static let lightPalettes = Dictionary(uniqueKeysWithValues: allCases.map { ($0, $0.makePalette(isDark: false)) })
+
+    private func makePalette(isDark: Bool) -> ThemePalette? {
         switch self {
         case .standard:
             return nil

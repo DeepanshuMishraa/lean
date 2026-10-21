@@ -159,6 +159,8 @@ final class PictureInPicture {
                 }
             }
         }
+        // The progress bar can lag a frame or two; macOS may fold this wake-up into others.
+        ticker?.tolerance = 0.05
     }
 
     /// Fade in after the isolated layout has settled (see Isolate.settled).

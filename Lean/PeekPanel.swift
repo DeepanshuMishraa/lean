@@ -30,8 +30,6 @@ struct PeekPanel: View {
     /// observes the tab, so progress ticks (10Hz) don't re-evaluate this
     /// whole card + its hosted WebView.
     let tab: LeanTab
-    /// The page card in global coordinates: where a kept peek grows to.
-    let pageCard: CGRect?
 
     /// Off until the panel's first frame, so it can grow from its link.
     @State private var isShown = false
@@ -62,7 +60,7 @@ struct PeekPanel: View {
         GeometryReader { geo in
             let space = geo.frame(in: .global)
             // Everything happens over the page card: the sidebar stays as it is.
-            let page = pageCard.map { $0.offsetBy(dx: -space.minX, dy: -space.minY) }
+            let page = store.pageCardFrame.map { $0.offsetBy(dx: -space.minX, dy: -space.minY) }
                 ?? CGRect(origin: .zero, size: geo.size)
             let resting = Self.restingRect(in: page)
             let rect: CGRect = switch pose {

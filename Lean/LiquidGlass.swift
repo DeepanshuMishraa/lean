@@ -12,12 +12,33 @@ extension LeanStore {
     }
 }
 
+/// The window's frosted surface under Liquid Glass: the desktop blurred
+/// through the sidebar material, deepened in dark mode and tinted by a colour
+/// theme. The pinned sidebar is this window background; the auto-hidden one
+/// draws the same view, so the two are indistinguishable.
+struct LeanWindowMaterial: View {
+    @ObservedObject var store: LeanStore
+
+    var body: some View {
+        ZStack {
+            VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow)
+            if store.isDarkMode {
+                Color.black.opacity(0.3)
+            }
+            if let palette = store.themeColors.palette {
+                palette.background.opacity(0.4)
+            }
+        }
+    }
+}
+
 extension View {
     /// A group of toolbar controls on one glass capsule.
     @ViewBuilder
     func leanGlassGroup(_ active: Bool) -> some View {
         if active, #available(macOS 26, *) {
-            padding(.horizontal, 3).glassEffect(.regular, in: .capsule)
+            // Room on every side, so a hovered button's highlight never meets the capsule's edge.
+            padding(.horizontal, 4).padding(.vertical, 2).glassEffect(.regular, in: .capsule)
         } else {
             self
         }

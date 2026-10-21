@@ -7,29 +7,16 @@ struct SidebarView: View {
     @ObservedObject var store: LeanStore
     @Namespace private var sidebarTabSelectionNamespace
 
+    private var sidebarBackground: Color {
+        store.frameBackground
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // 1. Header Row: Custom Titlebar with Traffic Lights + Sidebar Toggle Button
             HStack(spacing: 0) {
                 SidebarTrafficLights(store: store)
                     .padding(.leading, 14)
-
-                InteractiveIconButton(
-                    icon: .sidebar,
-                    helpText: store.isSidebarCollapsed ? "Pin Sidebar (Always Expanded) (⌘S)" : "Enable Auto-hide (⌘S)",
-                    size: 24,
-                    iconSize: 13,
-                    color: store.isSidebarCollapsed ? store.adaptiveTheme.secondaryText : store.adaptiveTheme.primaryText,
-                    hoverColor: store.adaptiveTheme.primaryText,
-                    hoverBackground: store.adaptiveTheme.iconHoverBackground,
-                    pressedBackground: store.adaptiveTheme.iconPressedBackground,
-                    isDark: store.adaptiveTheme.effectiveIsDark
-                ) {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                        store.toggleSidebar()
-                    }
-                }
-                .padding(.leading, 6)
 
                 Spacer(minLength: 0)
                     .background(WindowDragView())
@@ -99,7 +86,22 @@ struct SidebarView: View {
                     }
                 }
 
-                Spacer().frame(width: 8)
+                InteractiveIconButton(
+                    icon: .sidebar,
+                    helpText: store.isSidebarCollapsed ? "Pin Sidebar (Always Expanded) (⌘S)" : "Enable Auto-hide (⌘S)",
+                    size: 24,
+                    iconSize: 12,
+                    color: store.isSidebarCollapsed ? store.adaptiveTheme.secondaryText : store.adaptiveTheme.primaryText,
+                    hoverColor: store.adaptiveTheme.primaryText,
+                    hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                    pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                    isDark: store.adaptiveTheme.effectiveIsDark
+                ) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        store.toggleSidebar()
+                    }
+                }
+                .padding(.trailing, 8)
             }
             .frame(height: store.scaled(38))
             .padding(.top, store.scaled(6))
@@ -108,12 +110,13 @@ struct SidebarView: View {
             SidebarAddressBar(store: store)
                 .padding(.horizontal, 10)
                 .padding(.top, 6)
-                .padding(.bottom, store.pinnedTabs.isEmpty ? 10 : 8)
+                .padding(.bottom, 12)
                 .zIndex(10)
 
-            // 3. Pinned Tabs Grid (Positioned above TABS + row)
+            // 3. Pinned Tabs Grid (Positioned above TABS + row). Up to three
+            // across, sharing the full width: one pinned tab is one wide tile.
             if !store.pinnedTabs.isEmpty {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(store.pinnedTabs.count, 3)), spacing: 8) {
                     ForEach(store.pinnedTabs) { tab in
                         SidebarPinnedTabItem(
                             tab: tab,
@@ -126,46 +129,82 @@ struct SidebarView: View {
                     }
                 }
                 .padding(.horizontal, 10)
+                .padding(.bottom, 14)
+            }
+
+            // 4. Section Title Row with + New Tab Icon
+            HStack(spacing: 6) {
+                Text("Tabs")
+                    .font(store.headingFont(size: 11, weight: .bold))
+                    .foregroundColor(store.adaptiveTheme.secondaryText.opacity(0.85))
+                    .textCase(.uppercase)
+                    .kerning(0.8)
+
+                if store.isPrivateSession {
+                    PrivateSessionBadge(store: store)
+                }
+
+                Spacer()
+
+                InteractiveIconButton(
+                    icon: .plus,
+                    helpText: "New Tab (⌘T)",
+                    size: 24,
+                    iconSize: 12,
+                    color: store.adaptiveTheme.secondaryText,
+                    hoverColor: store.adaptiveTheme.primaryText,
+                    hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                    pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                    isDark: store.adaptiveTheme.effectiveIsDark
+                ) {
+                    _ = store.newTab()
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 6)
+
+            // 5. Vertical Tab Strip (Unpinned tabs)
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 4) {
+                    if store.tabDisplayMode == .iconOnly {
+                        iconTabRuns
+                    } else {
+                        ForEach(store.unpinnedTabs) { tab in
+                            tabRow(tab)
+                        }
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, store.tabDisplayMode == .iconOnly ? 6 : 0)
                 .padding(.bottom, 8)
             }
 
-            // 4. The space in front: its name, then its tabs. Slides sideways when the space changes.
-            VStack(alignment: .leading, spacing: 0) {
-                SidebarSpaceHeader(store: store)
-                    .padding(.horizontal, 10)
-                    .padding(.top, 4)
-
-                SidebarClearRow(store: store)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 6)
-
-                SidebarNewTabRow(store: store)
-                    .padding(.horizontal, 8)
-                    .padding(.top, 2)
-
-                // 5. Vertical Tab Strip (Unpinned tabs)
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 4) {
-                        if store.tabDisplayMode == .iconOnly {
-                            iconTabRuns
-                        } else {
-                            ForEach(store.unpinnedTabs) { tab in
-                                tabRow(tab)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.top, store.tabDisplayMode == .iconOnly ? 6 : 2)
-                    .padding(.bottom, 8)
-                }
-            }
-            .id(store.selectedSpaceID)
-            .transition(spaceTransition)
-
             Spacer(minLength: 0)
 
-            // 6. Bottom Footer Row: Downloads, the spaces as dots, a new space
+            // 6. Bottom Footer Row: Downloads, Theme toggle, Settings, New Tab
             HStack(spacing: 6) {
+                ExtensionToolbarButton(store: store)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .preference(key: ExtensionsButtonFrameKey.self, value: proxy.frame(in: .global))
+                        }
+                    )
+                    .onPreferenceChange(ExtensionsButtonFrameKey.self) { frame in
+                        store.extensionsButtonFrame = frame
+                    }
+
+                BookmarkToolbarButton(store: store)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .preference(key: BookmarksButtonFrameKey.self, value: proxy.frame(in: .global))
+                        }
+                    )
+                    .onPreferenceChange(BookmarksButtonFrameKey.self) { frame in
+                        store.bookmarksButtonFrame = frame
+                    }
+
                 DownloadToolbarButton(store: store)
                     .background(
                         GeometryReader { proxy in
@@ -179,29 +218,43 @@ struct SidebarView: View {
 
                 Spacer()
 
-                if !store.isPrivateSession {
-                    SpaceDots(store: store)
-
-                    Spacer()
-
-                    InteractiveIconButton(
-                        icon: .plus,
-                        helpText: "New Space",
-                        size: 24,
-                        iconSize: 12,
-                        color: store.adaptiveTheme.secondaryText,
-                        hoverColor: store.adaptiveTheme.primaryText,
-                        hoverBackground: store.adaptiveTheme.iconHoverBackground,
-                        pressedBackground: store.adaptiveTheme.iconPressedBackground,
-                        isDark: store.adaptiveTheme.effectiveIsDark
-                    ) {
-                        Haptics.select()
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                            store.addSpace()
-                        }
+                InteractiveIconButton(
+                    icon: store.isDarkMode ? .sun : .moon,
+                    helpText: store.isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
+                    size: 24,
+                    iconSize: 12,
+                    color: store.adaptiveTheme.secondaryText,
+                    hoverColor: store.adaptiveTheme.primaryText,
+                    hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                    pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                    isDark: store.adaptiveTheme.effectiveIsDark
+                ) {
+                    withAnimation(.easeInOut(duration: 0.22)) {
+                        store.toggleTheme()
                     }
-                } else {
-                    PrivateSessionBadge(store: store)
+                }
+
+                InteractiveIconButton(
+                    icon: .gear,
+                    helpText: "Settings (⌘,)",
+                    size: 24,
+                    iconSize: 12,
+                    color: store.isQuickSettingsPresented ? store.adaptiveTheme.primaryText : store.adaptiveTheme.secondaryText,
+                    hoverColor: store.adaptiveTheme.primaryText,
+                    hoverBackground: store.adaptiveTheme.iconHoverBackground,
+                    pressedBackground: store.adaptiveTheme.iconPressedBackground,
+                    isDark: store.adaptiveTheme.effectiveIsDark
+                ) {
+                    store.isQuickSettingsPresented.toggle()
+                }
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear
+                            .preference(key: SettingsButtonFrameKey.self, value: proxy.frame(in: .global))
+                    }
+                )
+                .onPreferenceChange(SettingsButtonFrameKey.self) { frame in
+                    store.settingsButtonFrame = frame
                 }
             }
             .frame(height: store.scaled(38))
@@ -210,22 +263,17 @@ struct SidebarView: View {
         }
         .frame(width: store.scaled(256))
         .background {
-            if store.liquidGlassEnabled, #available(macOS 26, *) {
-                // Default glass shape is a capsule; match the card radius in LeanView.sidebarCard.
-                Color.clear.glassEffect(.regular, in: .rect(cornerRadius: max(store.adaptiveTheme.cardCornerRadius, 14)))
+            if store.glassActive {
+                // Pinned, the window's own material is the sidebar. Floating over
+                // the page it draws that same material, so it reads as the window
+                // sliding in (LeanView.sidebarCard shapes it).
+                if store.isSidebarCollapsed {
+                    LeanWindowMaterial(store: store)
+                }
             } else {
-                FrameBackground(store: store)
+                sidebarBackground
             }
         }
-        .modifier(SpaceSwipe(store: store))
-    }
-
-    private var spaceTransition: AnyTransition {
-        let forward = store.spaceSwitchDirection == .forward
-        return .asymmetric(
-            insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
-            removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity)
-        )
     }
 
     private func tabRow(_ tab: LeanTab) -> some View {
@@ -316,7 +364,7 @@ private struct SidebarAddressBar: View {
     private var addressField: some View {
         TextField("Search or Enter URL...", text: $text)
             .textFieldStyle(.plain)
-            .font(isFocused ? store.bodyFont(size: 13) : store.headingFont(size: 13, weight: .semibold))
+            .font(store.bodyFont(size: 13))
             .foregroundColor(store.adaptiveTheme.primaryText)
             .focused($isFocused)
             .onSubmit {
@@ -344,8 +392,19 @@ private struct SidebarAddressBar: View {
 
     @ViewBuilder
     private var barBackground: some View {
-        if store.liquidGlassEnabled, #available(macOS 26, *) {
-            Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
+        if store.glassActive {
+            // A frosted field on the window's blur; glass is kept for buttons and menus.
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(store.isDarkMode ? Color.white.opacity(isFocused ? 0.10 : 0.07) : Color.white.opacity(isFocused ? 0.75 : 0.55))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(
+                            isFocused
+                                ? (store.themeColors.accent ?? store.adaptiveTheme.primaryText.opacity(0.4))
+                                : (store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06)),
+                            lineWidth: isFocused ? 1.25 : 0.5
+                        )
+                )
         } else {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05))
@@ -378,14 +437,11 @@ private struct SidebarAddressBar: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
-            if isFocused {
-                LeanIcon.magnifyingGlass.fill
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 12, height: 12)
-                    .foregroundColor(store.adaptiveTheme.secondaryText)
-                    .padding(.trailing, 4)
-            }
+        HStack(spacing: 8) {
+            LeanIcon.magnifyingGlass.fill
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 12, height: 12)
+                .foregroundColor(store.adaptiveTheme.secondaryText)
 
             addressField
 
@@ -416,42 +472,16 @@ private struct SidebarAddressBar: View {
                         }
                     }
                 } label: {
-                    Image(systemName: didCopyLink ? "checkmark" : "link")
-                        .font(.system(size: 12, weight: .medium))
+                    (didCopyLink ? LeanIcon.check.bold : LeanIcon.copy.fill)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
                         .foregroundColor(didCopyLink ? Color.green : store.adaptiveTheme.secondaryText)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 22, height: 22)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.hitArea)
                 .contentShape(Rectangle())
                 .help("Copy Page Link")
-            }
-
-            if !isFocused {
-                Button {
-                    Haptics.select()
-                    withAnimation(.easeOut(duration: 0.12)) { store.isSitePopoverPresented.toggle() }
-                } label: {
-                    LeanIcon.slidersHorizontal.fill
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 13, height: 13)
-                        .foregroundColor(store.isSitePopoverPresented ? store.adaptiveTheme.primaryText : store.adaptiveTheme.secondaryText)
-                        .frame(width: 24, height: 24)
-                        .background(
-                            store.isSitePopoverPresented ? store.adaptiveTheme.iconHoverBackground : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        )
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.hitArea)
-                .help("Site controls and extensions")
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear
-                            .onAppear { store.sitePopoverButtonFrame = proxy.frame(in: .global) }
-                            .onChange(of: proxy.frame(in: .global)) { _, frame in store.sitePopoverButtonFrame = frame }
-                    }
-                )
             }
         }
         .padding(.horizontal, store.scaled(10))
@@ -476,13 +506,7 @@ private struct SidebarAddressBar: View {
                 isFocused = false
                 return
             }
-            if !focused {
-                focusWasRequested = false
-                syncFromTab()
-            } else if let url = store.selectedTab?.url, appliedSuggestionText == nil, query.isEmpty {
-                // The bar showed just the site; editing starts from the whole address.
-                text = url.absoluteString
-            }
+            if !focused { focusWasRequested = false }
             syncDropdown()
         }
         .onDisappear {
@@ -503,11 +527,10 @@ private struct SidebarAddressBar: View {
         }
     }
 
-    /// At rest the bar names the site; editing shows the whole address.
     private func syncFromTab() {
         if !isFocused {
             if let url = store.selectedTab?.url {
-                text = url.host.map { $0.droppingWWW } ?? url.absoluteString
+                text = url.absoluteString
             } else {
                 text = ""
             }
@@ -609,19 +632,7 @@ struct SidebarTabItem: View {
         .buttonStyle(.hitArea)
         .overlay { TabMiddleClick { onClose() } }
         .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected && store.liquidGlassEnabled ? Color.clear : (isHovered ? (store.isDarkMode ? Color.white.opacity(0.07) : Color.black.opacity(0.05)) : Color.clear))
-
-                if isSelected {
-                    if store.liquidGlassEnabled, #available(macOS 26, *) {
-                        Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
-                    } else {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(store.isDarkMode ? Color.white.opacity(0.12) : Color.black.opacity(0.08))
-                    }
-                }
-            }
+            SidebarItemBackground(store: store, isSelected: isSelected, isHovered: isHovered)
         }
         .contentShape(Rectangle())
         .onDrag {
@@ -648,7 +659,7 @@ struct SidebarTabItem: View {
                     LeanIcon.x.bold
                         .interpolation(.high)
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: store.scaled(8), height: store.scaled(8))
+                        .frame(width: store.scaled(9), height: store.scaled(9))
                         .foregroundColor(store.adaptiveTheme.tabCloseButtonForeground)
                         .frame(width: store.scaled(20), height: store.scaled(20))
                         .background(
@@ -952,6 +963,61 @@ struct SidebarTabItem: View {
 }
 
 // MARK: - Sidebar Pinned Tab Item (Grid tile with centered favicon)
+/// The surface behind a sidebar tab row or pinned tile. Selected, it is tinted
+/// glass in Liquid Glass and the theme's filled tab in Solid; hovered, a faint
+/// wash. Pinned tiles always show a resting tile so a lone one still reads as
+/// a button.
+private struct SidebarItemBackground: View {
+    @ObservedObject var store: LeanStore
+    let isSelected: Bool
+    let isHovered: Bool
+    var isTile = false
+    var radius: CGFloat = 8
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+    }
+
+    private var wash: Color {
+        let dark = store.isDarkMode
+        if isHovered { return dark ? Color.white.opacity(0.09) : Color.black.opacity(0.06) }
+        if isTile { return dark ? Color.white.opacity(0.05) : Color.black.opacity(0.035) }
+        return .clear
+    }
+
+    var body: some View {
+        if isSelected {
+            if store.glassActive {
+                // A frosted pill lit from above. Not a glassEffect: that draws
+                // over the row's own label and close button, washing them out.
+                shape
+                    .fill(store.isDarkMode ? Color.white.opacity(0.12) : Color.white.opacity(0.65))
+                    .overlay(
+                        shape.strokeBorder(
+                            LinearGradient(
+                                colors: store.isDarkMode
+                                    ? [Color.white.opacity(0.22), Color.white.opacity(0.04)]
+                                    : [Color.white.opacity(0.9), Color.black.opacity(0.06)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.75
+                        )
+                    )
+                    .shadow(color: Color.black.opacity(store.isDarkMode ? 0.18 : 0.06), radius: 3, x: 0, y: 1)
+            } else if isTile {
+                shape
+                    .fill(store.adaptiveTheme.activeTabBackground)
+                    .overlay(shape.strokeBorder(store.adaptiveTheme.activeTabStroke, lineWidth: 0.75))
+            } else {
+                shape.fill(store.isDarkMode ? Color.white.opacity(0.12) : Color.black.opacity(0.08))
+            }
+        } else {
+            shape.fill(wash)
+        }
+    }
+}
+
 private struct SidebarPinnedTabItem: View {
     @ObservedObject var tab: LeanTab
     let isSelected: Bool
@@ -977,37 +1043,13 @@ private struct SidebarPinnedTabItem: View {
                     TabFaviconView(tab: tab, isDark: store.adaptiveTheme.effectiveIsDark, size: isRoomy ? 20 : 16)
                 }
             }
-            .scaleEffect(isSelected ? 1.06 : 0.95)
             .frame(maxWidth: .infinity)
-            .frame(height: store.scaled(isRoomy ? 44 : 46))
+            .frame(height: store.scaled(isRoomy ? 44 : 40))
             .background {
-                ZStack {
-                    if store.liquidGlassEnabled, #available(macOS 26, *) {
-                        Color.clear.glassEffect(
-                            isSelected ? .regular.interactive() : .clear.interactive(),
-                            in: .rect(cornerRadius: 10)
-                        )
-                    } else {
-                        // Pinned tiles sit on a ground of their own, as in a dock.
-                        if !isRoomy && !isSelected {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(store.isDarkMode ? Color.white.opacity(isHovered ? 0.13 : 0.07) : Color.black.opacity(isHovered ? 0.09 : 0.045))
-                        } else if isHovered && !isSelected {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(store.isDarkMode ? Color.white.opacity(0.14) : Color.black.opacity(0.09))
-                        }
-                        if isSelected {
-                            RoundedRectangle(cornerRadius: isRoomy ? 8 : 10, style: .continuous)
-                                .fill(store.adaptiveTheme.activeTabBackground)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: isRoomy ? 8 : 10, style: .continuous)
-                                        .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 0.75)
-                                )
-                        }
-                    }
-                }
+                SidebarItemBackground(store: store, isSelected: isSelected, isHovered: isHovered, isTile: true, radius: 10)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .animation(.easeOut(duration: 0.14), value: isSelected)
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.hitArea)
         .overlay(alignment: .topTrailing) {

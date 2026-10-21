@@ -20,10 +20,54 @@ final class LeanWebView: WKWebView {
 
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
+        lastContextPoint = pagePoint(of: event)
+        contextMenuHook?(menu)
+    }
+
+    private func pagePoint(of event: NSEvent) -> CGPoint {
         let local = convert(event.locationInWindow, from: nil)
         let top = isFlipped ? local.y : bounds.height - local.y
-        lastContextPoint = CGPoint(x: local.x / pageZoom, y: top / pageZoom)
-        contextMenuHook?(menu)
+        return CGPoint(x: local.x / pageZoom, y: top / pageZoom)
+    }
+
+    // MARK: - force click
+
+    /// A force click deepened to its second stage, at this point in page
+    /// (CSS) coordinates. Once per press.
+    var onForceClick: ((CGPoint) -> Void)?
+
+    /// Where the last press landed, from the window's top-left corner: a
+    /// link peek grows out of this point.
+    private(set) var lastPressInWindow: CGPoint?
+
+    /// From a force click until just after its release. The click that ends
+    /// a force click is still a click, and must not follow the link it peeked at.
+    private(set) var isForceClicking = false
+    private var forceClickRelease: DispatchWorkItem?
+
+    override func mouseDown(with event: NSEvent) {
+        if let height = window?.contentView?.bounds.height {
+            lastPressInWindow = CGPoint(x: event.locationInWindow.x, y: height - event.locationInWindow.y)
+        }
+        forceClickRelease?.cancel()
+        isForceClicking = false
+        super.mouseDown(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        super.mouseUp(with: event)
+        guard isForceClicking else { return }
+        // WebKit decides the click's navigation after mouseUp returns.
+        let release = DispatchWorkItem { [weak self] in self?.isForceClicking = false }
+        forceClickRelease = release
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: release)
+    }
+
+    override func pressureChange(with event: NSEvent) {
+        super.pressureChange(with: event)
+        guard event.stage >= 2, !isForceClicking else { return }
+        isForceClicking = true
+        onForceClick?(pagePoint(of: event))
     }
 
     /// Keep horizontal rubber-banding for swipe navigation, but do not bounce

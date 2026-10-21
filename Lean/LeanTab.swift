@@ -150,8 +150,9 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     var onNativePictureInPictureLeft: ((_ session: String, _ stillPlaying: Bool, _ closed: Bool) -> Void)?
     var onOpenURLInNewTab: ((URL, Bool) -> Void)?
     var onOpenSourceTab: ((String, String?) -> LeanTab?)?
-    /// Shift-clicked link, for a peek over the page. Set by the store.
-    var onPeekLink: ((URL) -> Void)?
+    /// Shift- or force-clicked link, for a peek over the page, with where the
+    /// press landed in the window (nil when there was none). Set by the store.
+    var onPeekLink: ((URL, CGPoint?) -> Void)?
     /// A download that failed on its own (not cancelled). Set by the store.
     var onDownloadFailed: (() -> Void)?
     /// Peek tabs live outside the row: links inside one just go.
@@ -352,6 +353,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         addPasskeyHandler(to: webView.configuration.userContentController)
         webView.contextMenuHook = { [weak self] menu in
             self?.appendPageMenuItems(to: menu)
+        }
+        // A force click peeks at the link under it, in place of WebKit's own preview.
+        webView.allowsLinkPreview = false
+        webView.onForceClick = { [weak self] point in
+            self?.peekAtLink(at: point)
         }
         // Layer-backed for stage hosting. Never asynchronous: async layer
         // backing on a WKWebView forces offscreen compositing and is what
@@ -1124,6 +1130,24 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             } else {
                 self.onDownloadFailed?()
             }
+        }
+    }
+
+    /// Force click: a peek at the link under the point (page coordinates),
+    /// if there is one. Read in Lean's own world, so a page cannot fake it.
+    private func peekAtLink(at point: CGPoint) {
+        guard !isPeekTab else { return }
+        let press = webView.lastPressInWindow
+        let script = """
+        const link = document.elementFromPoint(x, y)?.closest('a[href]');
+        return link ? link.href : '';
+        """
+        webView.callAsyncJavaScript(script, arguments: ["x": point.x, "y": point.y], in: nil, in: LeanWeb.world) { [weak self] result in
+            guard case .success(let value) = result,
+                  let raw = value as? String,
+                  let url = URL(string: raw),
+                  let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) else { return }
+            self?.onPeekLink?(url, press)
         }
     }
 
@@ -2237,6 +2261,11 @@ extension LeanTab: WKNavigationDelegate {
             onOpenURLInNewTab?(url, isPeekTab || navigationAction.modifierFlags.contains(.shift))
             return
         }
+        // The click that ends a force click: the link is already being peeked at.
+        if navigationAction.navigationType == .linkActivated, self.webView.isForceClicking {
+            decisionHandler(.cancel)
+            return
+        }
         // Shift-click, when Settings says so: a peek at the link, over this
         // page (see PeekPanel). Only from a tab in the row — within a peek,
         // a link just goes.
@@ -2246,7 +2275,7 @@ extension LeanTab: WKNavigationDelegate {
            let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
            navigationAction.modifierFlags.intersection([.shift, .command, .option, .control]) == .shift {
             decisionHandler(.cancel)
-            onPeekLink?(url)
+            onPeekLink?(url, self.webView.lastPressInWindow)
             return
         }
         if let url = navigationAction.request.url,
@@ -2407,6 +2436,9 @@ extension LeanTab: WKUIDelegate {
             onOpenURLInNewTab?(url, isPeekTab || navigationAction.modifierFlags.contains(.shift))
             return nil
         }
+        if navigationAction.navigationType == .linkActivated, self.webView.isForceClicking {
+            return nil
+        }
         // A plain click on a link that asks for a new tab (target="_blank"), when Settings says to peek: a peek
         // over this page, like a shift-click. Scripts (window.open, sign-in popups) are not links and keep their
         // own window.
@@ -2414,7 +2446,7 @@ extension LeanTab: WKUIDelegate {
            navigationAction.navigationType == .linkActivated,
            navigationAction.modifierFlags.intersection([.shift, .command, .option, .control]).isEmpty,
            let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
-            onPeekLink?(url)
+            onPeekLink?(url, self.webView.lastPressInWindow)
             return nil
         }
         // From inside a peek, a link that wants a new tab ends the peek: it becomes a normal tab first.
@@ -2769,9 +2801,5 @@ extension LeanTab: WKDownloadDelegate {
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
-}
-
-extension String {
-    /// A host without its leading "www.", as the sidebar and tab titles show it.
     var droppingWWW: String { hasPrefix("www.") ? String(dropFirst(4)) : self }
 }

@@ -493,7 +493,9 @@ struct AdaptiveFrameTheme {
         if isBorderEnabled {
             return isFrameLight ? Color(white: 0.10).opacity(0.65) : Color.white.opacity(0.72)
         }
-        return baseThemeColors.secondaryText
+        // Primary, not secondary: it sits on the selected row's highlight, and
+        // a muted grey on a tinted pill all but disappears.
+        return baseThemeColors.primaryText.opacity(0.9)
     }
 
     var tabCloseButtonHoverBackground: Color {
@@ -571,8 +573,10 @@ struct AdaptiveFrameTheme {
         if isBorderEnabled {
             return isFrameLight ? Color.black.opacity(0.09) : Color.white.opacity(0.14)
         }
-        if isSidebarLayout && !isGlass {
-            return isBaseDark ? Color.white.opacity(0.08) : Color.black.opacity(0.07)
+        // The page sits on the window's frame in the sidebar layout: a hairline
+        // keeps its edge readable on a light frame and a dark one alike.
+        if isSidebarLayout {
+            return isBaseDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08)
         }
         return Color.clear
     }

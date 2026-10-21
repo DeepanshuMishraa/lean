@@ -20,11 +20,6 @@ extension LeanStore {
         }
     }
 
-    /// Whether the tab in front has its inspector up.
-    var isInspectorVisible: Bool {
-        inspector().map { asks($0, "isVisible") } ?? false
-    }
-
     /// ⌥⌘J: the inspector, at its console.
     func showConsole() {
         guard let inspector = inspector() else { return }

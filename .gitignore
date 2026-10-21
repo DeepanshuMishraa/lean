@@ -9,3 +9,5 @@ build/
 .pi/
 .DS_Store
 *.xcresult
+# SwiftPM build cache.
+.build/

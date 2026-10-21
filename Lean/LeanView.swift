@@ -26,14 +26,15 @@ struct LeanView: View {
     @State private var isZenSidebarRevealed = false
     @State private var hideSidebarWorkItem: DispatchWorkItem?
     @State private var isMouseOverSidebar = false
+    /// The page card, in global coordinates: a kept peek grows to fill it.
+    @State private var pageCardFrame: CGRect?
     /// Which window this view is in. Key monitors and notifications are
     /// app-wide, so with two windows each must ignore the other's events.
     @State private var windowBox = WindowBox()
 
     private var isTopBarVisible: Bool {
         // Popovers must keep the top bar visible
-        if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented
-            || store.isSpaceThemeEditorPresented || store.isSitePopoverPresented {
+        if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented {
             return true
         }
         if !store.enableZenMode {
@@ -50,8 +51,7 @@ struct LeanView: View {
     private var isSidebarEffectivelyVisible: Bool {
         guard store.tabLayout == .sidebar else { return false }
         // Popovers must keep the sidebar visible
-        if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented
-            || store.isSpaceThemeEditorPresented || store.isSitePopoverPresented {
+        if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented {
             return true
         }
         // If sidebar is pinned (!isSidebarCollapsed), it is ALWAYS visible and expanded (auto-hide disabled)
@@ -73,16 +73,14 @@ struct LeanView: View {
             }
         } else {
             // Never hide while quick settings, downloads, or extensions popover is open
-            if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented
-            || store.isSpaceThemeEditorPresented || store.isSitePopoverPresented {
+            if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented {
                 hideTopBarWorkItem?.cancel()
                 hideTopBarWorkItem = nil
                 return
             }
             hideTopBarWorkItem?.cancel()
             let item = DispatchWorkItem {
-                guard !store.isQuickSettingsPresented && !store.isDownloadsPresented && !store.isExtensionsPresented
-                    && !store.isSpaceThemeEditorPresented && !store.isSitePopoverPresented else { return }
+                guard !store.isQuickSettingsPresented && !store.isDownloadsPresented && !store.isExtensionsPresented else { return }
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                     isZenTopBarRevealed = false
                 }
@@ -110,16 +108,14 @@ struct LeanView: View {
             }
         } else {
             // Never hide while quick settings, downloads, or extensions popover is open
-            if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented
-            || store.isSpaceThemeEditorPresented || store.isSitePopoverPresented {
+            if store.isQuickSettingsPresented || store.isDownloadsPresented || store.isExtensionsPresented {
                 hideSidebarWorkItem?.cancel()
                 hideSidebarWorkItem = nil
                 return
             }
             hideSidebarWorkItem?.cancel()
             let item = DispatchWorkItem {
-                guard !store.isQuickSettingsPresented && !store.isDownloadsPresented && !store.isExtensionsPresented
-                    && !store.isSpaceThemeEditorPresented && !store.isSitePopoverPresented else { return }
+                guard !store.isQuickSettingsPresented && !store.isDownloadsPresented && !store.isExtensionsPresented else { return }
                 if store.isSidebarCollapsed {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                         isZenSidebarRevealed = false
@@ -171,13 +167,12 @@ struct LeanView: View {
         }
         .ignoresSafeArea(.all)
         .background(
-            store.enableWindowBorder
-                ? (store.tabLayout == .sidebar
-                    ? AnyView(FrameBackground(store: store).ignoresSafeArea())
-                    : AnyView(store.effectiveZenColor.ignoresSafeArea()))
+            store.paintsWindowBorder
+                ? AnyView((store.tabLayout == .sidebar ? store.frameBackground : store.effectiveZenColor).ignoresSafeArea())
                 : (store.glassActive
-                    ? AnyView(VisualEffectBlur(material: .underWindowBackground, blendingMode: .behindWindow).ignoresSafeArea())
-                    : AnyView(FrameBackground(store: store).ignoresSafeArea()))
+                    // The sidebar's frosted material across the whole window: the sidebar has no surface of its own.
+                    ? AnyView(LeanWindowMaterial(store: store).ignoresSafeArea())
+                    : AnyView(store.frameBackground.ignoresSafeArea()))
         )
         .background(WindowConfigurator(store: store, windowBox: windowBox, isTopBarVisible: isTopBarVisible, isSidebarVisible: isSidebarEffectivelyVisible))
         .preferredColorScheme(store.colorScheme)
@@ -405,8 +400,8 @@ struct LeanView: View {
             if store.isQuickSettingsPresented {
                 ZStack(alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing) {
                     QuickSettingsPopover(store: store)
-                        .padding(.top, store.tabLayout == .sidebar ? 0 : store.scaled(store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : store.scaled(4)))
-                        .padding(.trailing, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? store.windowBorderWidth : 0) + 12))
+                        .padding(.top, store.tabLayout == .sidebar ? 0 : store.scaled(store.showsWindowBorder ? 34 : 36) + (store.showsWindowBorder ? store.windowBorderWidth : store.scaled(4)))
+                        .padding(.trailing, store.tabLayout == .sidebar ? 0 : ((store.showsWindowBorder ? store.windowBorderWidth : 0) + 12))
                         .padding(.leading, store.tabLayout == .sidebar ? (store.windowBorderWidth + 12) : 0)
                         .padding(.bottom, store.tabLayout == .sidebar ? (store.windowBorderWidth + 46) : 0)
                 }
@@ -419,32 +414,12 @@ struct LeanView: View {
                 .zIndex(190)
             }
 
-            // The space's theme, over the bottom of the sidebar and the page beside it
-            if store.isSpaceThemeEditorPresented && store.tabLayout == .sidebar {
-                SpaceThemeEditor(store: store)
-                    .padding(.leading, store.windowBorderWidth + 10)
-                    .padding(.bottom, store.windowBorderWidth + 46)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .bottomLeading)))
-                    .zIndex(191)
-            }
-
-            // Site controls, hanging under the sidebar's address bar
-            if store.isSitePopoverPresented && store.tabLayout == .sidebar {
-                let button = store.sitePopoverButtonFrame
-                SitePopover(store: store)
-                    .offset(x: max(8, button.maxX - 200), y: button.maxY + 6)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
-                    .zIndex(191)
-            }
-
             // Bespoke Downloads Overlay
             if store.isDownloadsPresented {
                 ZStack(alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing) {
                     DownloadsPopover(store: store)
-                        .padding(.top, store.tabLayout == .sidebar ? 0 : store.scaled(store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : store.scaled(4)))
-                        .padding(.trailing, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? store.windowBorderWidth : 0) + 12))
+                        .padding(.top, store.tabLayout == .sidebar ? 0 : store.scaled(store.showsWindowBorder ? 34 : 36) + (store.showsWindowBorder ? store.windowBorderWidth : store.scaled(4)))
+                        .padding(.trailing, store.tabLayout == .sidebar ? 0 : ((store.showsWindowBorder ? store.windowBorderWidth : 0) + 12))
                         .padding(.leading, store.tabLayout == .sidebar ? (store.windowBorderWidth + 12) : 0)
                         .padding(.bottom, store.tabLayout == .sidebar ? (store.windowBorderWidth + 46) : 0)
                 }
@@ -461,8 +436,8 @@ struct LeanView: View {
             if store.isExtensionsPresented {
                 ZStack(alignment: store.tabLayout == .sidebar ? .bottomLeading : .topTrailing) {
                     ExtensionsPopover(store: store)
-                        .padding(.top, store.tabLayout == .sidebar ? 0 : store.scaled(store.enableWindowBorder ? 34 : 36) + (store.enableWindowBorder ? store.windowBorderWidth : store.scaled(4)))
-                        .padding(.trailing, store.tabLayout == .sidebar ? 0 : ((store.enableWindowBorder ? store.windowBorderWidth : 0) + 12))
+                        .padding(.top, store.tabLayout == .sidebar ? 0 : store.scaled(store.showsWindowBorder ? 34 : 36) + (store.showsWindowBorder ? store.windowBorderWidth : store.scaled(4)))
+                        .padding(.trailing, store.tabLayout == .sidebar ? 0 : ((store.showsWindowBorder ? store.windowBorderWidth : 0) + 12))
                         .padding(.leading, store.tabLayout == .sidebar ? (store.windowBorderWidth + 12) : 0)
                         .padding(.bottom, store.tabLayout == .sidebar ? (store.windowBorderWidth + 46) : 0)
                 }
@@ -487,7 +462,7 @@ struct LeanView: View {
 
             // Link Preview / Peek Panel (Shift + Click)
             if let page = store.peekTab {
-                PeekPanel(store: store, tab: page)
+                PeekPanel(store: store, tab: page, pageCard: pageCardFrame)
                     .zIndex(185)
             }
 
@@ -530,26 +505,21 @@ struct LeanView: View {
     }
 
     // MARK: - Sidebar Left Column
-    /// Pinned, the sidebar is part of the window frame. Auto-hidden, it
-    /// floats over the page, so it needs its own opaque, rounded surface.
+    /// Pinned, the sidebar is part of the window frame. Auto-hidden, it slides
+    /// in over the page as that same frame: flush with the window's edges, no
+    /// outline, only its page-side corners rounded and a soft shadow on the page.
     private var sidebarCard: some View {
         let floating = store.isSidebarCollapsed
-        let edge: CGFloat = floating ? 8 : (glassInset > 0 ? glassInset : (store.enableWindowBorder ? store.windowBorderWidth : 0))
-        let radius = max(store.adaptiveTheme.cardCornerRadius, 14)
+        let edge: CGFloat = floating ? 0 : (store.showsWindowBorder ? store.windowBorderWidth : 0)
+        let radius = floating ? max(store.adaptiveTheme.cardCornerRadius, 14) : 0
         return SidebarView(store: store)
             .background {
                 if floating && !store.glassActive {
                     store.frameBackground
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: floating ? radius : 0, style: .continuous))
-            .overlay {
-                if floating {
-                    RoundedRectangle(cornerRadius: radius, style: .continuous)
-                        .stroke(store.adaptiveTheme.isFrameLight ? Color.black.opacity(0.10) : Color.white.opacity(0.12), lineWidth: 1)
-                }
-            }
-            .shadow(color: floating ? Color.black.opacity(store.isDarkMode ? 0.45 : 0.18) : .clear, radius: 18, x: 4, y: 2)
+            .clipShape(UnevenRoundedRectangle(bottomTrailingRadius: radius, topTrailingRadius: radius, style: .continuous))
+            .shadow(color: floating ? Color.black.opacity(store.isDarkMode ? 0.35 : 0.12) : .clear, radius: 14, x: 3, y: 0)
             .padding(.top, edge)
             .padding(.bottom, edge)
             .padding(.leading, edge)
@@ -563,27 +533,26 @@ struct LeanView: View {
 
     // MARK: - Main Content Card & Spacing
     /// Margin around the page card in vertical layout: the chosen border
-    /// thickness when there is a border, a fixed gap when there is not.
-    private var sidebarCardMargin: CGFloat {
-        store.enableWindowBorder ? store.windowBorderWidth : 8
-    }
+    /// thickness, in both styles. The window shows through it as the frame,
+    /// one surface with the sidebar (see LeanStore.showsWindowBorder).
+    private var sidebarCardMargin: CGFloat { store.windowBorderWidth }
 
     private var cardTopPadding: CGFloat {
         if store.tabLayout == .sidebar {
             return sidebarCardMargin
         }
-        if !store.enableWindowBorder { return glassInset }
+        if !store.showsWindowBorder { return glassInset }
         return isTopBarVisible ? 2 : store.windowBorderWidth
     }
 
     /// The inset that lets the page float over the glass window.
-    private var glassInset: CGFloat { store.glassActive && !store.enableWindowBorder ? 8 : 0 }
+    private var glassInset: CGFloat { store.glassActive && !store.showsWindowBorder ? 8 : 0 }
 
     private var cardBottomPadding: CGFloat {
         if store.tabLayout == .sidebar {
             return sidebarCardMargin
         }
-        return store.enableWindowBorder ? store.windowBorderWidth : glassInset
+        return store.showsWindowBorder ? store.windowBorderWidth : glassInset
     }
 
     private var isCurrentTabWebPage: Bool {
@@ -595,13 +564,12 @@ struct LeanView: View {
     private var cardLeadingPadding: CGFloat {
         if store.tabLayout == .sidebar {
             if isSidebarEffectivelyVisible && !store.isSidebarCollapsed {
-                // The sidebar's own inset from the window edge, its width, then a small gap.
-                let edgeInset = glassInset > 0 ? glassInset : (store.enableWindowBorder ? store.windowBorderWidth : 0)
-                return edgeInset + store.scaled(256) + 4
+                // The sidebar is the window itself, right up to the card.
+                return store.scaled(256)
             }
             return sidebarCardMargin
         }
-        let basePadding = store.enableWindowBorder ? store.windowBorderWidth : glassInset
+        let basePadding = store.showsWindowBorder ? store.windowBorderWidth : glassInset
         return basePadding
     }
 
@@ -609,35 +577,34 @@ struct LeanView: View {
         if store.tabLayout == .sidebar {
             return sidebarCardMargin
         }
-        return store.enableWindowBorder ? store.windowBorderWidth : glassInset
+        return store.showsWindowBorder ? store.windowBorderWidth : glassInset
     }
 
     private var zoomIndicatorTopPadding: CGFloat {
         if store.tabLayout == .top && isTopBarVisible {
-            let topBarHeight = store.scaled(store.enableWindowBorder ? 34 : 36)
-            let borderPadding = store.enableWindowBorder ? store.windowBorderWidth : 0
+            let topBarHeight = store.scaled(store.showsWindowBorder ? 34 : 36)
+            let borderPadding = store.showsWindowBorder ? store.windowBorderWidth : 0
             return topBarHeight + borderPadding + store.scaled(10)
         } else {
-            let borderPadding = store.enableWindowBorder ? store.windowBorderWidth : 0
+            let borderPadding = store.showsWindowBorder ? store.windowBorderWidth : 0
             return borderPadding + store.scaled(12)
         }
     }
 
     private var zoomIndicatorTrailingPadding: CGFloat {
-        let borderPadding = store.enableWindowBorder ? store.windowBorderWidth : 0
+        let borderPadding = store.showsWindowBorder ? store.windowBorderWidth : 0
         return borderPadding + store.scaled(14)
     }
 
     private var mainContentCard: some View {
         ZStack {
-            if !store.enableWindowBorder && !store.glassActive {
-                FrameBackground(store: store)
-                    .ignoresSafeArea()
-            }
+            (store.showsWindowBorder || store.glassActive ? Color.clear : store.frameBackground)
+                .ignoresSafeArea()
 
             if let tab = store.selectedTab {
                 if tab.isSplit {
                     SplitTabsContainerView(parentTab: tab, store: store)
+                        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { pageCardFrame = $0 }
                         .padding(.leading, cardLeadingPadding)
                         .padding(.trailing, cardTrailingPadding)
                         .padding(.bottom, cardBottomPadding)
@@ -699,6 +666,7 @@ struct LeanView: View {
                             .stroke(store.adaptiveTheme.webCardStroke, lineWidth: 1)
                     )
                     .leanCardShadow(glass: store.glassActive, color: store.adaptiveTheme.webCardShadow, radius: store.adaptiveTheme.webCardShadowRadius, x: 0, y: store.adaptiveTheme.isFrameLight ? 2 : 3)
+                    .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { pageCardFrame = $0 }
                     .padding(.leading, cardLeadingPadding)
                     .padding(.trailing, cardTrailingPadding)
                     .padding(.bottom, cardBottomPadding)
@@ -788,22 +756,6 @@ struct LeanView: View {
                 let isInsideButton = store.settingsButtonFrame.width > 0 && buttonFrame.contains(swiftUIPoint)
                 if !isInsidePopover && !isInsideSubmenu && !isInsideButton {
                     store.isQuickSettingsPresented = false
-                }
-            }
-
-            if store.isSpaceThemeEditorPresented {
-                let isInsideEditor = store.spaceThemeEditorFrame.width > 0 && store.spaceThemeEditorFrame.insetBy(dx: -8, dy: -8).contains(swiftUIPoint)
-                let isInsideButton = store.spaceThemeButtonFrame.width > 0 && store.spaceThemeButtonFrame.insetBy(dx: -4, dy: -4).contains(swiftUIPoint)
-                if !isInsideEditor && !isInsideButton {
-                    store.isSpaceThemeEditorPresented = false
-                }
-            }
-
-            if store.isSitePopoverPresented {
-                let isInsidePopover = store.sitePopoverFrame.width > 0 && store.sitePopoverFrame.insetBy(dx: -8, dy: -8).contains(swiftUIPoint)
-                let isInsideButton = store.sitePopoverButtonFrame.width > 0 && store.sitePopoverButtonFrame.insetBy(dx: -4, dy: -4).contains(swiftUIPoint)
-                if !isInsidePopover && !isInsideButton {
-                    store.isSitePopoverPresented = false
                 }
             }
 
@@ -948,13 +900,6 @@ struct LeanView: View {
 
             // Intercept Escape (keyCode 53) to close quick settings, inline url bar, bookmarks, floating omnibar, new tab omnibar, or tab switcher
             if event.keyCode == 53 {
-                if store.isSpaceThemeEditorPresented || store.isSitePopoverPresented {
-                    withAnimation(.easeOut(duration: 0.12)) {
-                        store.isSpaceThemeEditorPresented = false
-                        store.isSitePopoverPresented = false
-                    }
-                    return nil
-                }
                 if store.isBookmarkDialogPresented {
                     withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
                         store.dismissBookmarkDialog()
@@ -1385,17 +1330,17 @@ private struct WindowConfigurator: NSViewRepresentable {
         window.acceptsMouseMovedEvents = true
         window.isReleasedWhenClosed = false
         // Glass needs a translucent window to refract; otherwise solid.
-        let translucent = store.glassActive && !store.enableWindowBorder
+        let translucent = store.glassActive
         window.isOpaque = !translucent
         window.backgroundColor = translucent
             ? NSColor.clear
-            : (store.enableWindowBorder
+            : (store.paintsWindowBorder
                 ? NSColor(store.tabLayout == .sidebar ? store.frameBackground : store.effectiveZenColor)
                 : (store.tabLayout == .sidebar
                     ? NSColor(store.frameBackground)
                     : (store.themeColors.palette.map { NSColor($0.background) }
                         ?? (store.isDarkMode ? NSColor.black : NSColor.white))))
-        window.appearance = store.enableWindowBorder
+        window.appearance = store.paintsWindowBorder
             ? (store.adaptiveTheme.isFrameLight ? NSAppearance(named: .aqua) : NSAppearance(named: .darkAqua))
             : (store.isDarkMode ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua))
 

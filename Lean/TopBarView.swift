@@ -39,16 +39,17 @@ struct TopBarView: View {
                             }
                         }
                         .padding(2)
-                        .leanGlassGroup(store.glassActive)
+                        // One quiet tray in both styles: a glass capsule here wrapped
+                        // each pinned icon in a pill around its own highlight.
                         .background(
-                            store.liquidGlassEnabled ? Color.clear : (store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04)),
-                            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            store.isDarkMode ? Color.white.opacity(0.06) : Color.black.opacity(0.04),
+                            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .stroke(
-                                    store.liquidGlassEnabled ? Color.clear : (store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06)),
-                                    lineWidth: 0.75
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(
+                                    store.isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06),
+                                    lineWidth: 0.5
                                 )
                         )
 
@@ -74,7 +75,7 @@ struct TopBarView: View {
                     }
 
                 }
-                .padding(.vertical, store.enableWindowBorder ? 3 : 5)
+                .padding(.vertical, store.showsWindowBorder ? 3 : 5)
                 .background {
                     GeometryReader { geometry in
                         Color.clear.preference(key: TabContentWidthKey.self, value: geometry.size.width)
@@ -123,7 +124,7 @@ struct TopBarView: View {
                 InteractiveIconButton(
                     icon: .plus,
                     helpText: "New Tab (⌘T)",
-                    size: store.enableWindowBorder ? 26 : 24,
+                    size: store.showsWindowBorder ? 26 : 24,
                     iconSize: 12,
                     color: store.adaptiveTheme.secondaryText,
                     hoverColor: store.adaptiveTheme.primaryText,
@@ -307,9 +308,9 @@ struct TopBarView: View {
 
             Spacer().frame(width: 12)
         }
-        .frame(height: store.scaled(store.enableWindowBorder ? 34 : 36))
+        .frame(height: store.scaled(store.showsWindowBorder ? 34 : 36))
         .background {
-            if !store.enableWindowBorder && !store.glassActive {
+            if !store.showsWindowBorder && !store.glassActive {
                 store.themeColors.topBarBackground
             }
         }
@@ -319,7 +320,7 @@ struct TopBarView: View {
         // on outside clicks is already handled by the global mouse monitor in
         // LeanView.setupKeyMonitor, which doesn't swallow the click.
         .animation(.easeInOut(duration: 0.2), value: store.isDarkMode)
-        .animation(.easeInOut(duration: 0.2), value: store.enableWindowBorder)
+        .animation(.easeInOut(duration: 0.2), value: store.showsWindowBorder)
         .animation(.easeInOut(duration: 0.2), value: store.effectiveZenColor)
     }
 
@@ -400,7 +401,7 @@ private struct TopBarTabItem: View {
                 idealWidth: showURLBar ? store.scaled(320) : (tab.isSplit ? (store.tabDisplayMode == .iconOnly ? nil : store.scaled(CGFloat(130 * tab.splitTabs.count))) : nil),
                 maxWidth: showURLBar ? store.scaled(440) : (tab.isSplit ? (store.tabDisplayMode == .iconOnly ? nil : store.scaled(CGFloat(180 * tab.splitTabs.count))) : tabTitleMaxWidth)
             )
-            .frame(height: store.scaled(store.enableWindowBorder ? 27 : 26))
+            .frame(height: store.scaled(store.showsWindowBorder ? 27 : 26))
         }
         .buttonStyle(.hitArea)
         .overlay { TabMiddleClick { onClose() } }
@@ -421,13 +422,13 @@ private struct TopBarTabItem: View {
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .fill(store.adaptiveTheme.activeTabBackground)
                                 .overlay(
-                                    store.enableWindowBorder
+                                    store.showsWindowBorder
                                         ? RoundedRectangle(cornerRadius: 8, style: .continuous)
                                             .stroke(store.adaptiveTheme.activeTabStroke, lineWidth: 1)
                                         : nil
                                 )
                                 .shadow(
-                                    color: store.enableWindowBorder ? store.adaptiveTheme.activeTabShadow : Color.clear,
+                                    color: store.showsWindowBorder ? store.adaptiveTheme.activeTabShadow : Color.clear,
                                     radius: store.adaptiveTheme.isFrameLight ? 2 : 4,
                                     x: 0,
                                     y: 1
@@ -669,7 +670,7 @@ private struct TopBarTabItem: View {
                     .buttonStyle(.hitArea)
                 }
             }
-            .frame(height: store.scaled(store.enableWindowBorder ? 27 : 26))
+            .frame(height: store.scaled(store.showsWindowBorder ? 27 : 26))
             .padding(.horizontal, 6)
 
         case .textOnly:
@@ -759,7 +760,7 @@ private struct TopBarTabItem: View {
         }
         .scaleEffect(isSelected ? 1.06 : 0.95)
         .animation(.easeInOut(duration: 0.2), value: tab.isLoading)
-        .frame(width: store.scaled(28), height: store.scaled(store.enableWindowBorder ? 27 : 26))
+        .frame(width: store.scaled(28), height: store.scaled(store.showsWindowBorder ? 27 : 26))
         .overlay(alignment: .bottomTrailing) {
             if tab.isPlayingMedia {
                 TabMediaIndicatorView(tab: tab, theme: store.adaptiveTheme, compact: true)
@@ -914,8 +915,24 @@ private struct TopBarPinnedTabItem: View {
                             .fill(store.adaptiveTheme.iconHoverBackground)
                     }
                     if isSelected {
-                        if store.liquidGlassEnabled, #available(macOS 26, *) {
-                            Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 6))
+                        if store.glassActive {
+                            // Frosted and lit from above, as in the sidebar: glass here sat
+                            // inside the group's own glass and doubled up around the icon.
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(store.isDarkMode ? Color.white.opacity(0.14) : Color.white.opacity(0.7))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .strokeBorder(
+                                            LinearGradient(
+                                                colors: store.isDarkMode
+                                                    ? [Color.white.opacity(0.22), Color.white.opacity(0.04)]
+                                                    : [Color.white.opacity(0.9), Color.black.opacity(0.06)],
+                                                startPoint: .top,
+                                                endPoint: .bottom
+                                            ),
+                                            lineWidth: 0.75
+                                        )
+                                )
                         } else {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 .fill(store.adaptiveTheme.activeTabBackground)
@@ -1370,8 +1387,12 @@ struct InteractiveIconButton: View {
                 .foregroundColor(foregroundColor)
                 .frame(width: size * browserUIScale, height: size * browserUIScale)
                 .background {
-                    if liquidGlassEnabled && isHovered && isEnabled, #available(macOS 26, *) {
-                        Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 5))
+                    if liquidGlassEnabled {
+                        // Inside a glass capsule a square highlight runs into its curved
+                        // ends: a circle inset from the button's edges stays within them.
+                        Circle()
+                            .fill(backgroundColor)
+                            .padding(2)
                     } else {
                         RoundedRectangle(cornerRadius: 5, style: .continuous)
                             .fill(backgroundColor)
@@ -1691,7 +1712,7 @@ struct DownloadToolbarButton: View {
                         .frame(width: 12 * CGFloat(store.downloadManager.overallProgress) * browserUIScale, height: 2 * browserUIScale)
                         .offset(y: 8 * browserUIScale)
                         .allowsHitTesting(false)
-                } else if !store.downloadManager.sessionDownloads.isEmpty {
+                } else if !store.downloadManager.downloads.isEmpty {
                     Circle()
                         .fill(store.adaptiveTheme.secondaryText.opacity(0.55))
                         .frame(width: 4 * browserUIScale, height: 4 * browserUIScale)
@@ -1721,7 +1742,7 @@ struct DownloadToolbarButton: View {
         if active > 0 {
             return "Downloads (\(active) active — click to view)"
         }
-        let total = store.downloadManager.sessionDownloads.count
+        let total = store.downloadManager.downloads.count
         if total > 0 {
             return "Downloads (\(total)) — click to view"
         }

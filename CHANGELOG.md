@@ -8,18 +8,25 @@ update often — releases arrive through the built-in updater.
 
 ### Added
 
-- Spaces: separate browsing contexts, each with its own tabs, logins and site data, history, bookmarks, recently closed tabs and downloads. Switch with the dots at the bottom of the sidebar or a swipe, and give each space a name and a colour tint
-- A site popover in the sidebar's address bar: page actions, extensions, this site's switches and how it is connected
+- Force click a link to peek at it, as shift-click already could
+- Settings › Appearance › Style: choose Liquid Glass or Solid
 
 ### Changed
 
-- The downloads popover shows only this session's downloads; the full history stays in Settings
-- The sidebar toggle sits next to the traffic lights
+- A peek grows out of the link you pressed and shrinks back into it. Keeping it grows it to fill the page before it becomes a tab. It is just the page, over a blurred one, with close and expand beside it
+- With tabs in the sidebar, the sidebar is part of the window and the page sits in a frame of your border thickness, in both styles. Liquid Glass makes the window frosted, darker in dark mode and tinted by your colour theme
+- The auto-hidden sidebar slides in as the same surface, flush with the window's edges
+- Liquid Glass is kept for buttons and menus; the sidebar, address bar and settings cards are frosted
+- Settings lists its sections across the top instead of in a second sidebar
+- Pinned tabs share the sidebar's width, and the selected tab is clearly highlighted in both styles
 
 ### Fixed
 
 - Reloading a page stuck loading (for example x.com after closing a tab mid-reload) now recovers without relaunching Lean
-- With Liquid Glass on, the vertical sidebar is a rounded card instead of a pill
+- With Liquid Glass on, the window behind the sidebar is see-through instead of solid
+- Border thickness works with tabs on top in Liquid Glass
+- Button hover highlights stay inside their glass capsule
+- The close button on the selected tab is visible again
 
 ## [0.1.16] - 2026-10-10
 

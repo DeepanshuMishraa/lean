@@ -43,26 +43,6 @@ struct DownloadsTests {
     }
 
     @MainActor
-    @Test("Last session's downloads stay in history but leave the popover")
-    func relaunchStartsSessionEmpty() throws {
-        let (database, dir) = try temporaryDownloadsDatabase()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let previous = DownloadManager(database: database)
-        let oldID = previous.beginDownload(fileName: "old.zip", sourceURL: nil, destinationURL: URL(fileURLWithPath: "/tmp/lean-old.zip"), totalBytes: 10)
-        previous.finishDownload(id: oldID)
-        #expect(previous.sessionDownloads.map(\.id) == [oldID])
-        _ = database.set(previous.downloads, forKey: "downloads_v1")
-
-        let relaunched = DownloadManager(database: database)
-        #expect(relaunched.downloads.map(\.id) == [oldID])
-        #expect(relaunched.sessionDownloads.isEmpty)
-
-        let newID = relaunched.beginDownload(fileName: "new.zip", sourceURL: nil, destinationURL: URL(fileURLWithPath: "/tmp/lean-new.zip"), totalBytes: 10)
-        #expect(relaunched.sessionDownloads.map(\.id) == [newID])
-        #expect(relaunched.downloads.map(\.id) == [newID, oldID])
-    }
-
-    @MainActor
     @Test("DownloadManager unique destination avoids collisions")
     func uniqueDestination() throws {
         let manager = DownloadManager(database: nil)

@@ -11,19 +11,27 @@ struct SettingsGroup<Content: View>: View {
 
     private var colors: ThemeColors { ThemeColors(isDark: isDark, palette: palette) }
 
+    /// Under Liquid Glass a frosted card on the window's blur, not glass:
+    /// glass is kept for controls and menus.
+    private var fill: Color {
+        guard glass else { return colors.settingsGroupFill }
+        return isDark ? Color.white.opacity(0.05) : Color.white.opacity(0.55)
+    }
+
+    private var stroke: Color {
+        guard glass else { return colors.settingsGroupStroke }
+        return isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             content()
         }
-        .background(
-            glass ? Color.clear : colors.settingsGroupFill,
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-        )
+        .background(fill, in: RoundedRectangle(cornerRadius: glass ? 12 : 10, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(glass ? Color.clear : colors.settingsGroupStroke, lineWidth: 0.75)
+            RoundedRectangle(cornerRadius: glass ? 12 : 10, style: .continuous)
+                .strokeBorder(stroke, lineWidth: glass ? 0.5 : 0.75)
         )
-        .leanGlassIf(glass, radius: 14)
     }
 }
 
@@ -1018,9 +1026,11 @@ struct FrameWidthPickerRow: View {
                             RoundedRectangle(cornerRadius: 5.5, style: .continuous)
                                 .fill(
                                     isSelected
-                                        ? (isDark ? Color(white: 0.17) : Color.white)
+                                        ? (isDark ? Color.white.opacity(0.16) : Color.white)
                                         : (isHovered ? (isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.025)) : Color.clear)
                                 )
+                                // Lifted, so the choice reads on a frosted light card as well as a dark one.
+                                .shadow(color: isSelected ? Color.black.opacity(isDark ? 0.3 : 0.12) : .clear, radius: 1.5, x: 0, y: 0.5)
                         )
                         .contentShape(Rectangle())
                     }

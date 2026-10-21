@@ -59,53 +59,31 @@ struct SettingsView: View {
     @State private var selectedCategory: SettingsCategory = .general
     @StateObject private var dropdownState = DropdownMenuState()
 
+    /// One column: categories across the top, the chosen one centred below.
+    /// The browser's own sidebar is beside it, so Settings has none of its own.
     var body: some View {
-        GeometryReader { geometry in
-            let isCompact = geometry.size.width < 640
+        VStack(spacing: 0) {
+            categoryToolbar
 
-            if isCompact {
-                // Compact Layout: Top pill category switcher
-                VStack(spacing: 0) {
-                    compactCategoryBar
-                    Divider()
-                        .background(dividerColor)
+            Rectangle()
+                .fill(dividerColor)
+                .frame(height: 0.75)
 
-                    ScrollView(.vertical, showsIndicators: false) {
-                        contentForSelectedCategory
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 28)
-                            .frame(maxWidth: .infinity)
-                    }
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 24) {
+                    categoryHeader
+
+                    contentForSelectedCategory
                 }
-                .background(contentBackground)
-            } else {
-                // Desktop Layout: Clean Master-Detail Sidebar + Detail Pane
-                HStack(spacing: 0) {
-                    sidebarView
-                        .frame(width: 210)
-                        .background(sidebarBackground)
-                        .leanGlassIf(store.glassActive, radius: 18)
-                        .padding(store.glassActive ? 8 : 0)
-
-                    Rectangle()
-                        .fill(dividerColor)
-                        .frame(width: 0.75)
-
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 24) {
-                            categoryHeader
-
-                            contentForSelectedCategory
-                        }
-                        .frame(maxWidth: 580)
-                        .padding(.horizontal, 48)
-                        .padding(.vertical, 40)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .background(contentBackground)
-                }
+                .frame(maxWidth: 620, alignment: .leading)
+                .padding(.horizontal, 32)
+                .padding(.top, 32)
+                .padding(.bottom, 48)
+                .frame(maxWidth: .infinity)
             }
+            .id(selectedCategory)
         }
+        .background(contentBackground)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environmentObject(dropdownState)
         .environment(\.leanSettingsFont, store.leanUIFont)
@@ -126,14 +104,10 @@ struct SettingsView: View {
     }
 
     // MARK: - Color Tokens
-    // Under Liquid Glass the panes are clear so the translucent window
-    // shows through; the sidebar and grouped rows are glass themselves.
-    private var sidebarBackground: Color {
-        store.glassActive ? Color.clear : store.themeColors.settingsSidebarBackground
-    }
-
+    // Settings is a page like any other, in both styles: an opaque card, so
+    // the window frame around it (the border thickness) reads as a frame.
     private var contentBackground: Color {
-        store.glassActive ? Color.clear : store.themeColors.windowBackground
+        store.themeColors.windowBackground
     }
 
     private var dividerColor: Color {
@@ -148,64 +122,27 @@ struct SettingsView: View {
         store.themeColors.palette?.textMuted ?? (store.isDarkMode ? Color(white: 0.50) : Color(white: 0.48))
     }
 
-    // MARK: - Sidebar View
-    private var sidebarView: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            // Settings Title
-            HStack(spacing: 10) {
-                Text("Settings")
-                    .font(store.headingFont(size: 16))
-                    .foregroundColor(primaryText)
-                    .tracking(-0.2)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 24)
-
-            // Category Items
-            VStack(spacing: 3) {
-                ForEach(SettingsCategory.allCases) { category in
-                    SidebarCategoryButton(
-                        category: category,
-                        isSelected: category == selectedCategory,
-                        isDark: store.isDarkMode,
-                        primaryText: primaryText,
-                        headingFont: store.headingFont
-                    ) {
-                        selectedCategory = category
-                    }
+    // MARK: - Category Toolbar
+    /// Every category in one centred row, icon over label. Scrolls sideways
+    /// when the page is too narrow to hold them all.
+    private var categoryToolbar: some View {
+        let row = HStack(spacing: 2) {
+            ForEach(SettingsCategory.allCases) { category in
+                ToolbarCategoryButton(
+                    category: category,
+                    isSelected: category == selectedCategory,
+                    store: store
+                ) {
+                    withAnimation(.easeOut(duration: 0.14)) { selectedCategory = category }
                 }
             }
-            .padding(.horizontal, 10)
-
-            Spacer()
-
-            // Footer version
-            Text("Lean \(updater.marketingVersion) \(AppUpdater.releaseChannel)")
-                .font(store.bodyFont(size: 10.5))
-                .foregroundColor(store.isDarkMode ? Color.white.opacity(0.25) : Color.black.opacity(0.30))
-                .padding(.horizontal, 16)
-                .padding(.bottom, 20)
         }
-    }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
 
-    // MARK: - Compact Category Bar
-    private var compactCategoryBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(SettingsCategory.allCases) { category in
-                    CompactCategoryButton(
-                        category: category,
-                        isSelected: category == selectedCategory,
-                        isDark: store.isDarkMode,
-                        primaryText: primaryText,
-                        headingFont: store.headingFont
-                    ) {
-                        selectedCategory = category
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+        return ViewThatFits(in: .horizontal) {
+            row.frame(maxWidth: .infinity)
+            ScrollView(.horizontal, showsIndicators: false) { row }
         }
     }
 
@@ -732,8 +669,8 @@ private struct GeneralSection: View {
 
                 SettingsGroup(isDark: store.isDarkMode) {
                     CustomToggleRow(
-                        title: "Peek at links in a panel",
-                        subtitle: "A shift-click on a link opens it in a panel over the page instead of following it. Escape, ⌘W or a click beside it puts it away; keeping it makes it a tab.",
+                        title: "Peek at links with a shift-click",
+                        subtitle: "A shift-click on a link opens it in a panel over the page instead of following it, as a force click always does. Escape, ⌘W or a click beside it puts it away; keeping it makes it a tab.",
                         isOn: $store.peeksLinks,
                         isDark: store.isDarkMode,
                         uiFont: store.leanUIFont
@@ -1225,13 +1162,26 @@ private struct AppearanceSection: View {
 
                 SettingsGroup(isDark: store.isDarkMode) {
                     if #available(macOS 26, *) {
-                        CustomToggleRow(
-                            title: "Liquid Glass",
-                            subtitle: "Use macOS glass for browser controls. Follows the system Liquid Glass slider.",
-                            isOn: $store.liquidGlassEnabled,
+                        SettingsSliderRow(
+                            title: "Style",
+                            subtitle: "Liquid Glass floats the page and sidebar on a frosted window, and blurs the page behind a peek. Solid keeps the opaque frame.",
+                            uiFont: store.leanUIFont,
                             isDark: store.isDarkMode,
-                            uiFont: store.leanUIFont
-                        )
+                            headingWeight: store.uiHeadingWeight,
+                            bodyWeight: store.uiBodyWeight
+                        ) {
+                            CustomSegmentedPicker(
+                                options: [
+                                    SegmentOption(id: "glass", label: "Liquid Glass", icon: .sparkle),
+                                    SegmentOption(id: "solid", label: "Solid", icon: .squaresFour)
+                                ],
+                                selectedId: store.liquidGlassEnabled ? "glass" : "solid",
+                                isDark: store.isDarkMode,
+                                uiFont: store.leanUIFont
+                            ) { newId in
+                                store.liquidGlassEnabled = newId == "glass"
+                            }
+                        }
                         SettingsRowDivider(isDark: store.isDarkMode)
                     }
 
@@ -3135,121 +3085,49 @@ private struct SettingsIconButton: View {
     }
 }
 
-// MARK: - Sidebar Category Button
-private struct SidebarCategoryButton: View {
+// MARK: - Toolbar Category Button
+
+private struct ToolbarCategoryButton: View {
     let category: SettingsCategory
     let isSelected: Bool
-    let isDark: Bool
-    let primaryText: Color
-    let headingFont: (CGFloat) -> Font
+    @ObservedObject var store: LeanStore
     let onSelect: () -> Void
 
     @State private var isHovered = false
 
-    private var iconColor: Color {
-        if isSelected || isHovered { return primaryText }
-        return isDark ? Color.white.opacity(0.55) : Color.black.opacity(0.50)
+    private var foreground: Color {
+        if isSelected || isHovered { return store.themeColors.primaryText }
+        return store.isDarkMode ? Color.white.opacity(0.55) : Color.black.opacity(0.5)
     }
 
-    private var labelColor: Color {
-        if isSelected || isHovered { return primaryText }
-        return isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.60)
-    }
-
-    private var rowFill: Color {
-        if isSelected { return isDark ? Color.white.opacity(0.09) : Color.black.opacity(0.06) }
-        if isHovered { return isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.035) }
-        return Color.clear
-    }
-
-    private var rowStroke: Color? {
-        guard isSelected else { return nil }
-        return isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04)
+    private var fill: Color {
+        let dark = store.isDarkMode
+        if isSelected { return dark ? Color.white.opacity(0.10) : Color.black.opacity(0.06) }
+        if isHovered { return dark ? Color.white.opacity(0.05) : Color.black.opacity(0.035) }
+        return .clear
     }
 
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: 10) {
+            VStack(spacing: 5) {
                 category.icon.fill
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: 14, height: 14)
-                    .foregroundColor(iconColor)
-                    .frame(width: 18)
-
+                    .frame(width: 16, height: 16)
                 Text(category.rawValue)
-                    .font(headingFont(13))
-                    .foregroundColor(labelColor)
-
-                Spacer(minLength: 0)
+                    .font(store.headingFont(size: 11))
+                    .lineLimit(1)
+                    .fixedSize()
             }
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 32)
-            // Static background: no sliding pill, so the hit area never
-            // moves between mouseDown and mouseUp.
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(rowFill)
-                    .overlay(
-                        Group {
-                            if let stroke = rowStroke {
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .stroke(stroke, lineWidth: 0.5)
-                            }
-                        }
-                    )
-            )
+            .foregroundColor(foreground)
+            .padding(.horizontal, 10)
+            .frame(minWidth: 62)
+            .frame(height: 50)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(fill))
             .contentShape(Rectangle())
         }
         .buttonStyle(.hitArea)
-        .contentShape(Rectangle())
         .onHover { isHovered = $0 }
-    }
-}
-
-// MARK: - Compact Category Button
-private struct CompactCategoryButton: View {
-    let category: SettingsCategory
-    let isSelected: Bool
-    let isDark: Bool
-    let primaryText: Color
-    let headingFont: (CGFloat) -> Font
-    let onSelect: () -> Void
-
-    @State private var isHovered = false
-
-    private var labelColor: Color {
-        if isSelected || isHovered { return primaryText }
-        return isDark ? Color.white.opacity(0.50) : Color.black.opacity(0.50)
-    }
-
-    private var rowFill: Color {
-        if isSelected { return isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.07) }
-        if isHovered { return isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.035) }
-        return Color.clear
-    }
-
-    var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 6) {
-                category.icon.fill
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 12, height: 12)
-                Text(category.rawValue)
-            }
-            .font(headingFont(12))
-            .foregroundColor(labelColor)
-            .padding(.horizontal, 12)
-            .frame(height: 30)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(rowFill)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.hitArea)
-        .contentShape(Rectangle())
-        .onHover { isHovered = $0 }
+        .help(category.subtitle)
     }
 }
 

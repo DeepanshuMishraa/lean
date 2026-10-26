@@ -340,7 +340,7 @@ final class LeanStore: ObservableObject {
         }
     }
 
-    @Published var autoSleepAfterMinutes = 30 {
+    @Published var autoSleepAfterMinutes = 5 {
         didSet {
             persist(autoSleepAfterMinutes, forKey: Self.autoSleepAfterMinutesKey)
             scheduleAutoSleep()
@@ -666,6 +666,9 @@ final class LeanStore: ObservableObject {
     private var recentTabIDs: [LeanTab.ID] = []
     private var sleepWorkItems: [LeanTab.ID: DispatchWorkItem] = [:]
     private var sleepWorkTokens: [LeanTab.ID: UUID] = [:]
+    /// Coalesced enforcement of the live-page budget (see `enforceLiveTabBudget`).
+    private var liveBudgetWorkItem: DispatchWorkItem?
+    private var isRestoringSession = false
     private var memoryPressureSource: DispatchSourceMemoryPressure?
     /// The system's light or dark, for the System interface theme. Kept by
     /// `appearanceObserver` instead of asked of AppKit on every read: views
@@ -725,8 +728,8 @@ final class LeanStore: ObservableObject {
         self.passkeysEnabled = initialPasskeys
         Passkeys.isEnabled = initialPasskeys
         self.autoSleepTabsEnabled = databaseValue(self.database, Bool.self, forKey: Self.autoSleepTabsEnabledKey) ?? true
-        let savedSleepMinutes = databaseValue(self.database, Int.self, forKey: Self.autoSleepAfterMinutesKey) ?? 30
-        self.autoSleepAfterMinutes = [5, 15, 30, 60].contains(savedSleepMinutes) ? savedSleepMinutes : 30
+        let savedSleepMinutes = databaseValue(self.database, Int.self, forKey: Self.autoSleepAfterMinutesKey) ?? 5
+        self.autoSleepAfterMinutes = [5, 15, 30, 60].contains(savedSleepMinutes) ? savedSleepMinutes : 5
 
         if let savedHistory = databaseValue(self.database, [HistoryItem].self, forKey: Self.historyKey) {
             self.historyItems = savedHistory
@@ -987,13 +990,11 @@ final class LeanStore: ObservableObject {
         if isPrivateSession || sessionURLs.isEmpty {
             newTab()
         } else {
-            let pinnedSet = Set(savedSession?.pinnedIndices ?? [])
-            for (index, url) in sessionURLs.enumerated() {
-                let tab = newTab(url: url, select: index == selectedIndex)
-                if pinnedSet.contains(index) {
-                    tab.isPinned = true
-                }
-            }
+            restoreTabs(
+                urls: sessionURLs,
+                selectedIndex: selectedIndex,
+                pinnedIndices: savedSession?.pinnedIndices ?? []
+            )
         }
         if !hasMigratedFontToGeist {
             persist(defaultFont, forKey: Self.leanUIFontKey)
@@ -1542,13 +1543,19 @@ final class LeanStore: ObservableObject {
         scheduleAutoSleep()
     }
 
+    /// How many inactive tabs may keep a live WebKit page. The selected tab is
+    /// always live on top of this. A page is the expensive part of a tab, so
+    /// this is the ceiling that keeps memory from growing with the tab row.
+    private static let maxLiveInactiveTabs = 1
+
     private func scheduleAutoSleep() {
         sleepWorkItems.values.forEach { $0.cancel() }
         sleepWorkItems.removeAll()
         sleepWorkTokens.removeAll()
         guard autoSleepTabsEnabled else { return }
+        scheduleLiveBudgetEnforcement()
         let timeout = TimeInterval(autoSleepAfterMinutes * 60)
-        for tab in tabs where tab.id != selectedID {
+        for tab in tabs where tab.id != selectedID && hasLivePage(tab) {
             let inactiveAt = inactiveSince[tab.id] ?? Date()
             inactiveSince[tab.id] = inactiveAt
             let delay = max(0, timeout - Date().timeIntervalSince(inactiveAt))
@@ -1565,23 +1572,86 @@ final class LeanStore: ObservableObject {
         }
     }
 
-    private func attemptAutoSleep(_ tab: LeanTab) {
-        guard autoSleepTabsEnabled, selectedID != tab.id,
-              tab.id != pictureInPictureTabID, tab.id != nativePictureInPictureTabID,
-              tabs.contains(where: { $0.id == tab.id }) else { return }
-        tab.requestSleep(while: { [weak self, weak tab] in
-            guard let self, let tab else { return false }
-            return self.autoSleepTabsEnabled && self.selectedID != tab.id
-                && self.nativePictureInPictureTabID != tab.id
-                && self.tabs.contains(where: { $0.id == tab.id })
-        }) { [weak self, weak tab] slept in
-            guard let self, let tab, !slept else { return }
-            self.scheduleSleepRetry(for: tab)
+    /// Every page kept by an inactive tab, including the panes of a split.
+    private func liveTabs(in tab: LeanTab) -> [LeanTab] {
+        var seen = Set<LeanTab.ID>()
+        return ([tab] + tab.splitTabs).filter { seen.insert($0.id).inserted }
+    }
+
+    private func hasLivePage(_ tab: LeanTab) -> Bool {
+        liveTabs(in: tab).contains { $0.hasWebView && !$0.isSleeping }
+    }
+
+    /// Whether the tab still belongs to this window, either in the row or as
+    /// a pane of a split that is in the row.
+    private func isOpenTab(_ tab: LeanTab) -> Bool {
+        tabs.contains { $0.id == tab.id || $0.splitTabs.contains { $0.id == tab.id } }
+    }
+
+    private func isInPictureInPicture(_ tab: LeanTab) -> Bool {
+        tab.id == pictureInPictureTabID || tab.id == nativePictureInPictureTabID
+    }
+
+    /// Puts off the expensive checks (two JS reads and a snapshot per tab)
+    /// until the switch animation is over, then sleeps everything past the
+    /// live-page budget. Without this, every switch swaps one renderer for the
+    /// next and old pages pile up until the 5–60 minute timer notices.
+    private func scheduleLiveBudgetEnforcement() {
+        guard autoSleepTabsEnabled else { return }
+        liveBudgetWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.liveBudgetWorkItem = nil
+            self.enforceLiveTabBudget()
+        }
+        liveBudgetWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+    }
+
+    private func enforceLiveTabBudget(keep requestedKeep: Int? = nil, force: Bool = false) {
+        guard force || autoSleepTabsEnabled else { return }
+        let keep = requestedKeep ?? Self.maxLiveInactiveTabs
+        let groups = tabs.filter { $0.id != selectedID && hasLivePage($0) }
+        guard groups.count > keep else { return }
+        // `recentTabIDs` is most-recent-first and starts with the selected
+        // tab; the rest of the prefix is what stays live.
+        let keepIDs = Set(recentTabIDs.prefix(keep + 1))
+        let evictable = groups
+            .filter { !keepIDs.contains($0.id) }
+            .sorted { lhs, rhs in
+                let left = inactiveSince[lhs.id] ?? .distantPast
+                let right = inactiveSince[rhs.id] ?? .distantPast
+                return left < right
+            }
+        for group in evictable.prefix(groups.count - keep) {
+            attemptAutoSleep(group, force: force)
+        }
+    }
+
+    private func attemptAutoSleep(_ tab: LeanTab, force: Bool = false, notifyOnFailure: Bool = false) {
+        guard force || autoSleepTabsEnabled,
+              selectedID != tab.id,
+              isOpenTab(tab) else { return }
+        let members = liveTabs(in: tab).filter { $0.hasWebView && !$0.isSleeping && !isInPictureInPicture($0) }
+        guard !members.isEmpty, !isInPictureInPicture(tab) else { return }
+        for member in members {
+            member.requestSleep(while: { [weak self, weak tab, weak member] in
+                guard let self, let tab, let member else { return false }
+                return (force || self.autoSleepTabsEnabled) && self.selectedID != tab.id
+                    && self.isOpenTab(tab) && !self.isInPictureInPicture(member)
+            }) { [weak self, weak tab] slept in
+                guard let self, let tab, !slept else { return }
+                if notifyOnFailure {
+                    NSSound.beep()
+                } else if !force {
+                    self.scheduleSleepRetry(for: tab)
+                }
+            }
         }
     }
 
     private func scheduleSleepRetry(for tab: LeanTab) {
-        guard autoSleepTabsEnabled, selectedID != tab.id else { return }
+        guard autoSleepTabsEnabled, selectedID != tab.id, isOpenTab(tab) else { return }
         sleepWorkItems[tab.id]?.cancel()
         let token = UUID()
         sleepWorkTokens[tab.id] = token
@@ -1596,32 +1666,61 @@ final class LeanStore: ObservableObject {
     }
 
     func sleepTab(_ tab: LeanTab, notifyOnFailure: Bool = false) {
-        guard selectedID != tab.id, tabs.contains(where: { $0.id == tab.id }) else { return }
+        guard selectedID != tab.id, isOpenTab(tab) else { return }
         sleepWorkItems[tab.id]?.cancel()
         sleepWorkItems[tab.id] = nil
         sleepWorkTokens[tab.id] = nil
-        tab.requestSleep(while: { [weak self, weak tab] in
-            guard let self, let tab else { return false }
-            return self.selectedID != tab.id && self.tabs.contains(where: { $0.id == tab.id })
-        }) { [weak self, weak tab] slept in
-            guard !slept, let self, let tab else { return }
-            if notifyOnFailure { NSSound.beep() }
-            self.scheduleSleepRetry(for: tab)
-        }
+        attemptAutoSleep(tab, force: true, notifyOnFailure: notifyOnFailure)
     }
 
     private func configureMemoryPressureHandling() {
         let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
-        source.setEventHandler { [weak self] in
+        source.setEventHandler { [weak self, weak source] in
+            guard let self, let source else { return }
+            let critical = source.data.contains(.critical)
             Task { @MainActor in
-                guard let self, self.autoSleepTabsEnabled else { return }
-                for tab in self.tabs where tab.id != self.selectedID {
-                    self.attemptAutoSleep(tab)
-                }
+                self.relieveMemoryPressure(critical: critical)
             }
         }
         source.resume()
         memoryPressureSource = source
+    }
+
+    /// The system is already short on memory: the auto-sleep setting is not
+    /// worth an out-of-memory kill. Unsaved forms, media, downloads and PiP are
+    /// still respected by `requestSleep`.
+    private func relieveMemoryPressure(critical: Bool) {
+        enforceLiveTabBudget(keep: critical ? 0 : Self.maxLiveInactiveTabs, force: true)
+        guard critical else { return }
+        dataStore.removeData(ofTypes: [WKWebsiteDataTypeMemoryCache], modifiedSince: .distantPast, completionHandler: {})
+        URLCache.shared.removeAllCachedResponses()
+    }
+
+    /// The window closed: nothing in this store can be shown again. Tearing
+    /// every tab down releases its page and breaks the split-tab self-reference
+    /// (a parent lists itself among its panes), which otherwise keeps the whole
+    /// window's tabs and renderers alive after the window is gone.
+    func tearDown() {
+        // The window is closing: write what is still coalescing before the
+        // tabs go, so reopening brings back the address last shown.
+        flushPendingPersist()
+        liveBudgetWorkItem?.cancel()
+        liveBudgetWorkItem = nil
+        sleepWorkItems.values.forEach { $0.cancel() }
+        sleepWorkItems.removeAll()
+        sleepWorkTokens.removeAll()
+        recentTabIDs.removeAll()
+        inactiveSince.removeAll()
+        pictureInPictureTabID = nil
+        nativePictureInPictureTabID = nil
+        // The pressure source stays: its handler holds this store weakly, and
+        // a reopened window must keep reacting to system memory pressure.
+        let open = tabs
+        tabs.removeAll()
+        for tab in open { tab.destroy() }
+        peekTab?.destroy()
+        peekTab = nil
+        peekSourceTabID = nil
     }
 
     func isAdBlockingEnabled(for host: String?) -> Bool {
@@ -2003,7 +2102,40 @@ final class LeanStore: ObservableObject {
         NotificationCenter.default.post(name: .focusAddress, object: nil)
     }
 
+    /// Opens the saved session, with only the tab in front making its page.
+    /// Every other tab stays an address and a title until it is first shown,
+    /// instead of starting a renderer process per tab at launch.
+    private func restoreTabs(urls: [URL], selectedIndex: Int, pinnedIndices: [Int]) {
+        let pinnedSet = Set(pinnedIndices)
+        isRestoringSession = true
+        for (index, url) in urls.enumerated() {
+            let tab = newTab(url: url, select: index == selectedIndex)
+            if pinnedSet.contains(index) {
+                tab.isPinned = true
+            }
+        }
+        isRestoringSession = false
+        saveSession()
+        scheduleAutoSleep()
+    }
+
+    /// A closed window released its pages (see `tearDown`). When it comes
+    /// back, reopen the session it saved, so closing the last window saves
+    /// memory without losing the tabs.
+    func restoreSessionIfNeeded() {
+        guard !isPrivateSession, tabs.isEmpty,
+              let session = databaseValue(database, BrowserSession.self, forKey: Self.sessionStateKey) else { return }
+        let urls = session.urls.compactMap(URL.init(string:))
+        guard !urls.isEmpty else { return }
+        restoreTabs(
+            urls: urls,
+            selectedIndex: min(session.selectedIndex, urls.count - 1),
+            pinnedIndices: session.pinnedIndices ?? []
+        )
+    }
+
     func saveSession() {
+        guard !isRestoringSession else { return }
         let persistedTabs = tabs.filter { $0.url != nil }
         let urls = persistedTabs.compactMap { $0.url?.absoluteString }
         let selectedIndex = persistedTabs.firstIndex { $0.id == selectedID } ?? max(0, urls.count - 1)
@@ -2064,7 +2196,17 @@ final class LeanStore: ObservableObject {
         focusAddress: Bool = true,
         popupOpenerID: LeanTab.ID? = nil
     ) -> LeanTab {
-        let tab = createTab(url: url, configuration: configuration, popupOpenerID: popupOpenerID)
+        // A background open (⌘-click, restored tab) keeps its address and
+        // nothing else: making its page now would add a renderer process for
+        // something nobody is looking at yet. Popups are already being loaded
+        // by WebKit and keep their configuration.
+        let deferLoad = !select && configuration == nil
+        let tab = createTab(
+            url: url,
+            configuration: configuration,
+            popupOpenerID: popupOpenerID,
+            deferInitialLoad: deferLoad
+        )
         tabs.append(tab)
         if let popupOpenerID, let opener = tabs.first(where: { $0.id == popupOpenerID }) {
             opener.hasActivePopup = true
@@ -2085,7 +2227,8 @@ final class LeanStore: ObservableObject {
     func createTab(
         url: URL? = nil,
         configuration: WKWebViewConfiguration? = nil,
-        popupOpenerID: LeanTab.ID? = nil
+        popupOpenerID: LeanTab.ID? = nil,
+        deferInitialLoad: Bool = false
     ) -> LeanTab {
         let tab = LeanTab(
             dataStore: dataStore,
@@ -2100,7 +2243,8 @@ final class LeanStore: ObservableObject {
             passwordSavePromptsEnabled: passwordSavePromptsEnabled,
             passwordSuggestionsEnabled: passwordSuggestionsEnabled,
             passkeysEnabled: passkeysEnabled,
-            configuration: configuration
+            configuration: configuration,
+            deferInitialLoad: deferInitialLoad
         )
         wireTab(tab)
         tab.popupOpenerID = popupOpenerID

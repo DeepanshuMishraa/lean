@@ -1297,22 +1297,59 @@ private struct WindowConfigurator: NSViewRepresentable {
     let isTopBarVisible: Bool
     let isSidebarVisible: Bool
 
+    final class Coordinator {
+        private let store: LeanStore
+        private var closeObserver: NSObjectProtocol?
+
+        init(store: LeanStore) {
+            self.store = store
+        }
+
+        deinit {
+            if let closeObserver {
+                NotificationCenter.default.removeObserver(closeObserver)
+            }
+        }
+
+        func observe(_ window: NSWindow) {
+            guard closeObserver == nil else { return }
+            closeObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self else { return }
+                MainActor.assumeIsolated {
+                    self.store.tearDown()
+                }
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(store: store)
+    }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
-            configure(view: view)
+            configure(view: view, coordinator: context.coordinator)
         }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async {
-            configure(view: nsView)
+            configure(view: nsView, coordinator: context.coordinator)
         }
     }
 
-    private func configure(view: NSView) {
+    private func configure(view: NSView, coordinator: Coordinator) {
         guard let window = view.window else { return }
+        // A reopened window has its pages released by `tearDown`; bring the
+        // saved tabs back instead of showing an empty browser.
+        store.restoreSessionIfNeeded()
+        coordinator.observe(window)
         windowBox.window = window
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = store.liquidGlassEnabled ? .none : .automatic
@@ -1514,6 +1551,7 @@ private struct PageLoadingBar: View {
 
         // Small delay to avoid flashing on instant navigations (cache hits)
         let workItem = DispatchWorkItem {
+            showWorkItem = nil
             showDelayElapsed = true
             withAnimation(.easeOut(duration: 0.12)) {
                 isVisible = true
@@ -1541,6 +1579,7 @@ private struct PageLoadingBar: View {
 
         dismissWorkItem?.cancel()
         let workItem = DispatchWorkItem {
+            dismissWorkItem = nil
             withAnimation(.easeInOut(duration: 0.28)) {
                 isVisible = false
             }

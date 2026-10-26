@@ -5,6 +5,27 @@ import WebKit
 @MainActor
 final class LeanTab: NSObject, ObservableObject, Identifiable {
     let id = UUID()
+
+    /// `WKUserContentController` retains its message handlers strongly. A weak
+    /// proxy keeps that ownership from reaching back into the tab, so a page
+    /// cannot keep a closed tab (and its renderer process) alive when a
+    /// teardown path is ever missed. Registered under the same names.
+    private final class MessageHandlerProxy: NSObject, WKScriptMessageHandler {
+        weak var tab: LeanTab?
+
+        init(tab: LeanTab) {
+            self.tab = tab
+        }
+
+        func userContentController(
+            _ userContentController: WKUserContentController,
+            didReceive message: WKScriptMessage
+        ) {
+            MainActor.assumeIsolated {
+                tab?.userContentController(userContentController, didReceive: message)
+            }
+        }
+    }
     private let dataStore: WKWebsiteDataStore
     /// A private tab keeps its cookies and storage in memory only, and is
     /// left out of history, the saved session and Reopen Closed Tab.
@@ -12,6 +33,14 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     private let initialConfiguration: WKWebViewConfiguration?
     private var isDark: Bool
     private var storedWebView: LeanWebView?
+    /// Kept alive by the web view's content controller (which retains it),
+    /// and itself holds the tab only weakly.
+    private lazy var messageHandlerProxy = MessageHandlerProxy(tab: self)
+    /// A tab restored from the last session, or opened in the background, does
+    /// not make its page until it is first shown. A live WebKit page is the
+    /// expensive part of a tab, so the row can hold many tabs while only the
+    /// ones on screen cost a renderer process.
+    private var deferredInitialURL: URL?
     private var sleepingInteractionState: Any?
     private var pendingNavigationID = UUID()
     /// When the main-frame navigation now under way was asked for; nil once it
@@ -223,7 +252,8 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         passwordSavePromptsEnabled: Bool = true,
         passwordSuggestionsEnabled: Bool = true,
         passkeysEnabled: Bool = true,
-        configuration: WKWebViewConfiguration? = nil
+        configuration: WKWebViewConfiguration? = nil,
+        deferInitialLoad: Bool = false
     ) {
         self.dataStore = dataStore
         self.isPrivate = isPrivate
@@ -252,11 +282,15 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
             self.title = "Settings"
         } else if let host = initialURL?.host {
             self.title = host
-            updateFavicon()
+            if !deferInitialLoad { updateFavicon() }
         }
 
         if let initialURL {
-            self.load(initialURL)
+            if deferInitialLoad {
+                deferredInitialURL = initialURL
+            } else {
+                self.load(initialURL)
+            }
         }
     }
 
@@ -341,15 +375,15 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
 
         let webView = LeanWebView(frame: .zero, configuration: configuration)
         storedWebView = webView
-        webView.configuration.userContentController.add(self, name: PageScripts.pageReadyMessageName)
-        webView.configuration.userContentController.add(self, name: PageScripts.contextMenuMessageName)
-        webView.configuration.userContentController.add(self, name: PageScripts.passwordFormMessageName)
-        webView.configuration.userContentController.add(self, name: PageScripts.passwordFieldMessageName)
+        webView.configuration.userContentController.add(messageHandlerProxy, name: PageScripts.pageReadyMessageName)
+        webView.configuration.userContentController.add(messageHandlerProxy, name: PageScripts.contextMenuMessageName)
+        webView.configuration.userContentController.add(messageHandlerProxy, name: PageScripts.passwordFormMessageName)
+        webView.configuration.userContentController.add(messageHandlerProxy, name: PageScripts.passwordFieldMessageName)
         // Lean's own world: a page cannot post this message itself.
-        webView.configuration.userContentController.add(self, contentWorld: LeanWeb.world, name: PageScripts.middleClickMessageName)
-        webView.configuration.userContentController.add(self, contentWorld: LeanWeb.world, name: NativePiP.leftMessageName)
-        webView.configuration.userContentController.add(self, contentWorld: LeanWeb.world, name: PageScripts.themeFrameMessageName)
-        webView.configuration.userContentController.add(self, name: PageScripts.mediaStateMessageName)
+        webView.configuration.userContentController.add(messageHandlerProxy, contentWorld: LeanWeb.world, name: PageScripts.middleClickMessageName)
+        webView.configuration.userContentController.add(messageHandlerProxy, contentWorld: LeanWeb.world, name: NativePiP.leftMessageName)
+        webView.configuration.userContentController.add(messageHandlerProxy, contentWorld: LeanWeb.world, name: PageScripts.themeFrameMessageName)
+        webView.configuration.userContentController.add(messageHandlerProxy, name: PageScripts.mediaStateMessageName)
         addPasskeyHandler(to: webView.configuration.userContentController)
         webView.contextMenuHook = { [weak self] menu in
             self?.appendPageMenuItems(to: menu)
@@ -436,7 +470,11 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         ]
 
         syncContentRuleLists()
-        if isSleeping, let restoreURL = url {
+        if let deferred = deferredInitialURL {
+            // First made visible: this is the moment the page is worth a renderer.
+            deferredInitialURL = nil
+            load(deferred)
+        } else if isSleeping, let restoreURL = url {
             DispatchQueue.main.async { [weak self, weak webView] in
                 guard let self, let webView else { return }
                 self.restoreSleepingWebView(webView, url: restoreURL)
@@ -860,6 +898,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
     }
 
     func load(_ url: URL, isHTTPFallbackRetry: Bool = false) {
+        deferredInitialURL = nil
         pendingNavigationID = UUID()
         let navigationID = pendingNavigationID
         if !isHTTPFallbackRetry {
@@ -1320,6 +1359,7 @@ final class LeanTab: NSObject, ObservableObject, Identifiable {
         splitTabs.removeAll()
         sleepingInteractionState = nil
         restoreScrollPosition = nil
+        deferredInitialURL = nil
         isSleeping = false
         progressObserver?.invalidate()
         progressObserver = nil
@@ -1700,7 +1740,7 @@ extension LeanTab: WKScriptMessageHandler {
             return
         }
         if message.name == PageScripts.middleClickMessageName {
-            guard message.webView === webView else { return }
+            guard message.webView === storedWebView else { return }
             onCloseTab?()
             return
         }
@@ -1741,7 +1781,7 @@ extension LeanTab: WKScriptMessageHandler {
         }
         guard message.name == PageScripts.pageReadyMessageName,
               message.frameInfo.isMainFrame,
-              message.webView === webView else {
+              message.webView === storedWebView else {
             return
         }
         // The page changed its own light or dark: read it again right away.

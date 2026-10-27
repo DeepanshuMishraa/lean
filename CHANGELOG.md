@@ -3,6 +3,20 @@
 All notable changes to Lean are documented here. Releases arrive through
 the built-in updater.
 
+## [1.0.1] - 2026-10-27
+
+### Changed
+
+- Background tabs sleep after 5 minutes by default instead of 30; Settings › Tabs › Sleeping tabs still offers 15, 30 and 60
+- Opening or restoring a window makes a page only for the tab in front, and every other tab loads when you first show it
+- At most one inactive tab keeps a loaded page, so memory stays flat as tabs pile up
+
+### Fixed
+
+- Tabs sleep on memory pressure even with automatic sleeping off, and caches are cleared when pressure is critical
+- Reopening a closed window restores its session again
+- Closed windows, split tabs and the loading bar no longer keep their pages and handlers alive
+
 ## [1.0.0] - 2026-10-21
 
 Lean is out of alpha. This release also includes everything below.
